@@ -3,6 +3,7 @@ package com.sanchr.feature.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.DeviceInfo
 import com.sanchr.proto.auth.RegisterRequest
@@ -10,7 +11,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -42,6 +42,7 @@ sealed interface LoginUiState {
 class LoginViewModel @Inject constructor(
     private val authServiceClient: AuthServiceClient,
     private val sessionManager: SessionManager,
+    private val pushTokenManager: PushTokenManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<LoginUiState>(LoginUiState.PhoneInput())
@@ -129,6 +130,9 @@ class LoginViewModel @Inject constructor(
                         userId = response.user?.id ?: "",
                         expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1000),
                     )
+
+                    // Upload FCM token to backend now that we have a valid session
+                    uploadPushToken()
                 }
 
                 _uiState.value = LoginUiState.OtpSent(fullPhoneNumber = fullNumber)
@@ -139,6 +143,20 @@ class LoginViewModel @Inject constructor(
                     phoneNumber = phoneNumber,
                     countryCode = countryCode,
                 )
+            }
+        }
+    }
+
+    /**
+     * Uploads the current FCM token to the backend after successful authentication.
+     * Runs in a fire-and-forget fashion; failure is non-fatal.
+     */
+    private fun uploadPushToken() {
+        viewModelScope.launch {
+            try {
+                pushTokenManager.uploadToken()
+            } catch (_: Exception) {
+                // Non-critical: token will be retried on next app launch or token rotation
             }
         }
     }
