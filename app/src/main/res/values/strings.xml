@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sanchr</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_chats">Chats</string>
+    <string name="nav_calls">Calls</string>
+    <string name="nav_contacts">Contacts</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Auth -->
+    <string name="login_title">Welcome to Sanchr</string>
+    <string name="login_subtitle">Private messaging, redefined.</string>
+    <string name="phone_hint">Phone number</string>
+    <string name="otp_title">Verify your number</string>
+    <string name="otp_subtitle">Enter the 6-digit code sent to %s</string>
+    <string name="register_title">Create your profile</string>
+
+    <!-- General -->
+    <string name="continue_button">Continue</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="search_hint">Search</string>
+    <string name="no_messages">No messages yet</string>
+    <string name="no_calls">No call history</string>
+    <string name="no_contacts">No contacts found</string>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_storage">Storage &amp; Data</string>
+    <string name="settings_chat">Chat Settings</string>
+    <string name="settings_encryption_keys">Encryption Keys</string>
+    <string name="settings_help">Help Center</string>
+
+    <!-- Vault -->
+    <string name="vault_title">Vault</string>
+    <string name="vault_subtitle">Your encrypted storage</string>
+
+    <!-- Calls -->
+    <string name="call_incoming">Incoming call</string>
+    <string name="call_outgoing">Calling...</string>
+    <string name="call_ended">Call ended</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_back">Navigate back</string>
+    <string name="cd_profile_picture">Profile picture</string>
+    <string name="cd_send_message">Send message</string>
+    <string name="cd_attach_file">Attach file</string>
+    <string name="cd_end_call">End call</string>
+    <string name="cd_mute">Mute</string>
+    <string name="cd_speaker">Speaker</string>
+</resources>

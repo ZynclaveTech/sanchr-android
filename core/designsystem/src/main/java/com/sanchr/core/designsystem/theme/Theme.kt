@@ -1,0 +1,73 @@
+package com.sanchr.core.designsystem.theme
+
+import android.app.Activity
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+
+/**
+ * Sanchr application theme.
+ *
+ * Wraps Material3 [MaterialTheme] with Sanchr-specific color, typography, shape,
+ * and spacing tokens. Also provides the [SanchrSpacing] via composition local.
+ *
+ * @param darkTheme Whether to use the dark color scheme.
+ * @param dynamicColor Whether to use dynamic color (Android 12+). Defaults to false
+ *   because Sanchr has a specific brand identity.
+ * @param content The composable content.
+ */
+@Composable
+fun SanchrTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> SanchrDarkColorScheme
+        else -> SanchrLightColorScheme
+    }
+
+    // Update system bar colors to match the theme
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            window.statusBarColor = colorScheme.background.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalSanchrSpacing provides SanchrSpacing(),
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = SanchrTypography,
+            shapes = SanchrShapes,
+            content = content,
+        )
+    }
+}
+
+/**
+ * Convenience accessor for Sanchr spacing tokens within a composable.
+ * Usage: `SanchrTheme.spacing.default`
+ */
+object SanchrTheme {
+    val spacing: SanchrSpacing
+        @Composable
+        get() = LocalSanchrSpacing.current
+}
