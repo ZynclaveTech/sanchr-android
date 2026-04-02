@@ -2,8 +2,10 @@ package com.sanchr.feature.auth.navigation
 
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
+import androidx.navigation.navArgument
 import com.sanchr.feature.auth.LoginScreen
 import com.sanchr.feature.auth.OtpScreen
 import com.sanchr.feature.auth.RegisterScreen
@@ -13,6 +15,12 @@ const val LOGIN_ROUTE = "auth/login"
 const val OTP_ROUTE = "auth/otp/{phoneNumber}"
 const val REGISTER_ROUTE = "auth/register"
 
+/**
+ * Builds the authentication navigation graph with type-safe arguments.
+ *
+ * Routes:
+ *   login -> otp/{phoneNumber} -> register
+ */
 fun NavGraphBuilder.authGraph(
     navController: NavController,
     onAuthSuccess: () -> Unit,
@@ -21,18 +29,33 @@ fun NavGraphBuilder.authGraph(
         composable(LOGIN_ROUTE) {
             LoginScreen(
                 onNavigateToOtp = { phoneNumber ->
-                    navController.navigate("auth/otp/$phoneNumber")
+                    val encodedPhone = java.net.URLEncoder.encode(
+                        phoneNumber,
+                        "UTF-8",
+                    )
+                    navController.navigate("auth/otp/$encodedPhone")
                 },
             )
         }
 
-        composable(OTP_ROUTE) { backStackEntry ->
-            val phoneNumber = backStackEntry.arguments?.getString("phoneNumber") ?: ""
+        composable(
+            route = OTP_ROUTE,
+            arguments = listOf(
+                navArgument("phoneNumber") {
+                    type = NavType.StringType
+                },
+            ),
+        ) { backStackEntry ->
+            val encodedPhone = backStackEntry.arguments?.getString("phoneNumber") ?: ""
+            val phoneNumber = java.net.URLDecoder.decode(encodedPhone, "UTF-8")
             OtpScreen(
                 phoneNumber = phoneNumber,
                 onVerified = { isNewUser ->
                     if (isNewUser) {
-                        navController.navigate(REGISTER_ROUTE)
+                        navController.navigate(REGISTER_ROUTE) {
+                            // Don't allow going back to OTP after successful verification
+                            popUpTo(OTP_ROUTE) { inclusive = true }
+                        }
                     } else {
                         onAuthSuccess()
                     }

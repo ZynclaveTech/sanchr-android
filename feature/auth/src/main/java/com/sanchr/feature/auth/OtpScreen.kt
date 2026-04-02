@@ -1,6 +1,8 @@
 package com.sanchr.feature.auth
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,10 +16,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,7 +35,11 @@ import androidx.compose.ui.unit.dp
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextButton
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.SanchrGray400
+import com.sanchr.core.designsystem.theme.SanchrIndigo500
+import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import kotlinx.coroutines.delay
 
 @Composable
 fun OtpScreen(
@@ -43,10 +51,41 @@ fun OtpScreen(
     var otpCode by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var resendCountdown by remember { mutableIntStateOf(30) }
+    var canResend by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
+    // Auto-focus the OTP input
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+
+    // Countdown timer for resend
+    LaunchedEffect(resendCountdown) {
+        if (resendCountdown > 0) {
+            delay(1_000L)
+            resendCountdown--
+        } else {
+            canResend = true
+        }
+    }
+
+    // Auto-submit when all 6 digits entered
+    LaunchedEffect(otpCode) {
+        if (otpCode.length == 6 && !isLoading) {
+            isLoading = true
+            errorMessage = null
+            try {
+                // TODO: Call AuthServiceClient.verifyOtp() with otpCode and phoneNumber
+                // val response = authServiceClient.verifyOtp(VerifyOTPRequest(phoneNumber, otpCode))
+                // onVerified(response.isNewUser)
+                delay(1_500L) // Placeholder delay
+                onVerified(true)
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Verification failed"
+                isLoading = false
+            }
+        }
     }
 
     Scaffold(
@@ -76,15 +115,22 @@ fun OtpScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             Text(
-                text = "We sent a verification code to\n$phoneNumber",
+                text = "We sent a verification code to",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
 
+            Text(
+                text = phoneNumber,
+                style = MaterialTheme.typography.bodyMedium,
+                color = SanchrIndigo500,
+                textAlign = TextAlign.Center,
+            )
+
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // OTP input field
+            // --- 6-digit OTP input ---
             BasicTextField(
                 value = otpCode,
                 onValueChange = { value ->
@@ -122,29 +168,47 @@ fun OtpScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
+
+            // --- Countdown timer / Resend ---
+            if (!canResend) {
+                Text(
+                    text = "Resend in 0:${resendCountdown.toString().padStart(2, '0')}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SanchrGray400,
+                )
+            } else {
+                SanchrTextButton(
+                    onClick = {
+                        // Reset countdown and resend
+                        canResend = false
+                        resendCountdown = 30
+                        otpCode = ""
+                        errorMessage = null
+                        // TODO: Call authServiceClient.register() again to resend OTP
+                    },
+                ) {
+                    Text(
+                        text = "Didn't receive? Resend code",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = SanchrIndigo500,
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
             SanchrButton(
                 text = if (isLoading) "Verifying..." else "Verify",
                 onClick = {
-                    // TODO: Verify OTP via gRPC, call onVerified(isNewUser)
-                    isLoading = true
+                    if (otpCode.length == 6 && !isLoading) {
+                        isLoading = true
+                        // Auto-submit LaunchedEffect handles verification
+                    }
                 },
                 enabled = otpCode.length == 6 && !isLoading,
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
-
-            SanchrTextButton(onClick = {
-                // TODO: Resend OTP
-            }) {
-                Text(
-                    text = "Resend code",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
         }
     }
 }
@@ -158,25 +222,23 @@ private fun OtpDigitBox(
 ) {
     val borderColor = when {
         isError -> MaterialTheme.colorScheme.error
-        isFocused -> MaterialTheme.colorScheme.primary
+        isFocused -> SanchrIndigo500
         digit.isNotEmpty() -> MaterialTheme.colorScheme.outline
         else -> MaterialTheme.colorScheme.outlineVariant
     }
 
-    // TODO: Draw bordered box with digit centered
-    // Using a Surface with border and Text for the digit
-    androidx.compose.material3.Surface(
+    Surface(
         modifier = modifier
             .width(48.dp)
             .height(56.dp),
-        shape = com.sanchr.core.designsystem.theme.SanchrShapeTokens.CornerMedium,
+        shape = SanchrShapeTokens.CornerMedium,
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             width = if (isFocused) 2.dp else 1.dp,
             color = borderColor,
         ),
     ) {
-        androidx.compose.foundation.layout.Box(
+        Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier.fillMaxSize(),
         ) {

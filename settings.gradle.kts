@@ -26,6 +26,9 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 include(":app")
 
+// Proto / gRPC stubs
+include(":proto")
+
 // Core modules
 include(":core:common")
 include(":core:designsystem")

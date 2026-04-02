@@ -1,20 +1,36 @@
 package com.sanchr.feature.chats
 
 import com.sanchr.core.model.Conversation
-import com.sanchr.core.model.Message
 
 /**
  * UI state for the chat detail (conversation) screen.
  */
 data class ChatDetailUiState(
     val conversation: Conversation? = null,
-    val messages: List<Message> = emptyList(),
-    val currentUserId: String = "",
-    val messageInput: String = "",
+    val messages: List<MessageUiModel> = emptyList(),
+    val inputText: String = "",
     val isLoading: Boolean = true,
     val isSending: Boolean = false,
+    val peerTyping: Boolean = false,
+    val error: String? = null,
     val isLoadingMore: Boolean = false,
     val hasMoreMessages: Boolean = true,
-    val errorMessage: String? = null,
-    val isTyping: Boolean = false, // Remote user is typing
+    val currentUserId: String = "",
 )
+
+data class MessageUiModel(
+    val id: String,
+    val text: String,
+    val timestamp: Long,
+    val isFromMe: Boolean,
+    val status: MessageStatus,
+    val contentType: String,
+)
+
+enum class MessageStatus {
+    SENDING,
+    SENT,
+    DELIVERED,
+    READ,
+    FAILED,
+}

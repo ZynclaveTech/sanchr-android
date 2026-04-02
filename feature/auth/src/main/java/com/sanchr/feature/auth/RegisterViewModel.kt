@@ -3,6 +3,10 @@ package com.sanchr.feature.auth
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.datastore.SessionManager
+import com.sanchr.proto.auth.AuthServiceClient
+import com.sanchr.proto.auth.RegisterRequest
+import com.sanchr.proto.media.MediaServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,8 +25,9 @@ data class RegisterUiState(
 
 @HiltViewModel
 class RegisterViewModel @Inject constructor(
-    // TODO: Inject UserRepository for profile creation
-    // TODO: Inject KeyManager for generating identity keys on registration
+    private val authServiceClient: AuthServiceClient,
+    private val mediaServiceClient: MediaServiceClient,
+    private val sessionManager: SessionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RegisterUiState())
@@ -50,13 +55,43 @@ class RegisterViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                // TODO: Upload avatar if selected
-                // TODO: Generate Signal identity keys
-                // TODO: Create user profile via gRPC
-                // TODO: Upload pre-keys to server
+                // Step 1: Upload avatar if selected
+                var avatarUrl = ""
+                if (state.avatarUri != null) {
+                    // TODO: Read file bytes from URI, upload via MediaServiceClient
+                    // val uploadUrl = mediaServiceClient.getUploadUrl(...)
+                    // Upload bytes to presigned URL
+                    // val confirm = mediaServiceClient.confirmUpload(...)
+                    // avatarUrl = confirm.mediaUrl
+                }
+
+                // Step 2: Create user profile via gRPC
+                val phoneNumber = sessionManager.getUserId() ?: ""
+                val request = RegisterRequest(
+                    phoneNumber = phoneNumber,
+                    displayName = state.displayName,
+                )
+                val response = authServiceClient.register(request)
+
+                // Step 3: Store tokens
+                if (response.accessToken.isNotEmpty()) {
+                    sessionManager.saveSession(
+                        accessToken = response.accessToken,
+                        refreshToken = response.refreshToken,
+                        userId = response.user?.id ?: "",
+                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1000),
+                    )
+                }
+
+                // Step 4: Generate Signal identity keys (placeholder)
+                // TODO: Generate identity key pair via KeyManager
+                // TODO: Upload pre-key bundle via KeyServiceClient
+
                 onSuccess()
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = e.message ?: "Registration failed") }
+                _uiState.update {
+                    it.copy(errorMessage = e.message ?: "Registration failed")
+                }
             } finally {
                 _uiState.update { it.copy(isLoading = false) }
             }
