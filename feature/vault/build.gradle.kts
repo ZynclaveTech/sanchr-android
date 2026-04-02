@@ -32,7 +32,9 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.designsystem)
     implementation(projects.core.model)
+    implementation(projects.core.crypto)
     implementation(projects.domain.vault)
+    implementation(projects.proto)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

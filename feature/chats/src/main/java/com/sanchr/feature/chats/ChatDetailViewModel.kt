@@ -7,6 +7,7 @@ import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
+import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.proto.messaging.EncryptedEnvelope
@@ -27,6 +28,7 @@ class ChatDetailViewModel @Inject constructor(
     private val messagingServiceClient: MessagingServiceClient,
     private val sessionManager: SessionManager,
     private val encryptionHelper: ChatEncryptionHelper,
+    private val notificationHandler: NotificationHandler,
 ) : ViewModel() {
 
     private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
@@ -41,6 +43,7 @@ class ChatDetailViewModel @Inject constructor(
     init {
         observeMessages()
         markAsRead()
+        clearNotificationsForConversation()
         connectMessageStream()
     }
 
@@ -61,6 +64,14 @@ class ChatDetailViewModel @Inject constructor(
         viewModelScope.launch {
             messageRepository.markAsRead(conversationId)
         }
+    }
+
+    /**
+     * Clears any pending system notifications for this conversation and
+     * updates the summary badge count. Called when the user opens the chat.
+     */
+    private fun clearNotificationsForConversation() {
+        notificationHandler.cancelNotificationsForConversation(conversationId)
     }
 
     /**

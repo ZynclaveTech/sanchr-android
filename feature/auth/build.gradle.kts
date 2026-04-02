@@ -35,6 +35,7 @@ dependencies {
     implementation(projects.core.network)
     implementation(projects.core.datastore)
     implementation(projects.core.crypto)
+    implementation(projects.core.notifications)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

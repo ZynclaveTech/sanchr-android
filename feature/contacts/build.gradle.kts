@@ -33,6 +33,7 @@ dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.model)
     implementation(projects.domain.contacts)
+    implementation(projects.proto)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -47,4 +48,5 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.coil.compose)
 }

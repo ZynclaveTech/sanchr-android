@@ -34,6 +34,7 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.crypto)
     implementation(projects.core.datastore)
+    implementation(projects.core.notifications)
     implementation(projects.domain.messaging)
     implementation(projects.proto)
 
