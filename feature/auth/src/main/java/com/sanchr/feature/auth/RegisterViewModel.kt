@@ -3,6 +3,7 @@ package com.sanchr.feature.auth
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.RegisterRequest
@@ -28,6 +29,7 @@ class RegisterViewModel @Inject constructor(
     private val authServiceClient: AuthServiceClient,
     private val mediaServiceClient: MediaServiceClient,
     private val sessionManager: SessionManager,
+    private val signalKeyManager: SignalKeyManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RegisterUiState())
@@ -83,9 +85,8 @@ class RegisterViewModel @Inject constructor(
                     )
                 }
 
-                // Step 4: Generate Signal identity keys (placeholder)
-                // TODO: Generate identity key pair via KeyManager
-                // TODO: Upload pre-key bundle via KeyServiceClient
+                // Step 4: Generate Signal Protocol identity keys and upload key bundle
+                initializeSignalKeys()
 
                 onSuccess()
             } catch (e: Exception) {
@@ -96,5 +97,24 @@ class RegisterViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    /**
+     * Initializes the Signal Protocol key material after successful registration.
+     *
+     * This is a critical step that must complete before the user can send or
+     * receive encrypted messages. It:
+     * 1. Generates the identity key pair (long-lived Curve25519 key pair).
+     * 2. Generates the first signed pre-key (medium-term, rotated monthly).
+     * 3. Generates 100 one-time pre-keys (consumed during X3DH).
+     * 4. Uploads the complete key bundle to the server so other users can
+     *    establish encrypted sessions with this device.
+     */
+    private suspend fun initializeSignalKeys() {
+        // Generate identity key pair and registration ID
+        signalKeyManager.generateIdentity()
+
+        // Generate signed pre-key + one-time pre-keys and upload to server
+        signalKeyManager.uploadInitialKeyBundle()
     }
 }

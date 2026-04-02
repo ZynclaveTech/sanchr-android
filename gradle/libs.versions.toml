@@ -36,7 +36,7 @@ datetime = "0.6.1"
 
 # Security
 tink = "1.15.0"
-signal-protocol = "2.8.1"
+libsignal = "0.88.1"
 
 # WebRTC
 webrtc = "1.1.4"
@@ -112,7 +112,8 @@ kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime",
 
 # Security / Crypto
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
-signal-protocol = { group = "org.signal", name = "libsignal-client", version.ref = "signal-protocol" }
+libsignal-android = { group = "org.signal", name = "libsignal-android", version.ref = "libsignal" }
+libsignal-client = { group = "org.signal", name = "libsignal-client", version.ref = "libsignal" }
 
 # WebRTC
 webrtc = { group = "io.getstream", name = "stream-webrtc-android", version.ref = "webrtc" }

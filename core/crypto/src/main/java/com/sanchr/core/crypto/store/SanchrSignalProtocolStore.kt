@@ -1,0 +1,48 @@
+package com.sanchr.core.crypto.store
+
+import org.signal.libsignal.protocol.SignalProtocolAddress
+import org.signal.libsignal.protocol.groups.state.SenderKeyStore
+import org.signal.libsignal.protocol.state.IdentityKeyStore
+import org.signal.libsignal.protocol.state.PreKeyStore
+import org.signal.libsignal.protocol.state.SessionStore
+import org.signal.libsignal.protocol.state.SignalProtocolStore
+import org.signal.libsignal.protocol.state.SignedPreKeyStore
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Unified Signal Protocol store that delegates to purpose-specific stores.
+ *
+ * Implements [SignalProtocolStore] (which extends IdentityKeyStore, PreKeyStore,
+ * SignedPreKeyStore, and SessionStore) via Kotlin delegation, and additionally
+ * implements [SenderKeyStore] for group messaging.
+ *
+ * All sub-stores are singletons managed by Hilt and backed by encrypted
+ * persistent storage (EncryptedSharedPreferences or encrypted files).
+ */
+@Singleton
+class SanchrSignalProtocolStore @Inject constructor(
+    private val identityKeyStore: SanchrIdentityKeyStore,
+    private val preKeyStore: SanchrPreKeyStore,
+    private val signedPreKeyStore: SanchrSignedPreKeyStore,
+    private val sessionStore: SanchrSessionStore,
+    private val senderKeyStore: SanchrSenderKeyStore,
+) : SignalProtocolStore,
+    IdentityKeyStore by identityKeyStore,
+    PreKeyStore by preKeyStore,
+    SignedPreKeyStore by signedPreKeyStore,
+    SessionStore by sessionStore,
+    SenderKeyStore by senderKeyStore {
+
+    /**
+     * Wipes all cryptographic material across every sub-store.
+     * Called during account deletion to ensure zero residual key material.
+     */
+    fun wipeAll() {
+        identityKeyStore.wipeAll()
+        preKeyStore.wipeAll()
+        signedPreKeyStore.wipeAll()
+        sessionStore.wipeAll()
+        senderKeyStore.wipeAll()
+    }
+}

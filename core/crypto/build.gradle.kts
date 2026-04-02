@@ -25,11 +25,14 @@ android {
 
 dependencies {
     implementation(projects.core.common)
+    implementation(projects.core.datastore)
+    implementation(projects.proto)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
-    implementation(libs.signal.protocol)
+    implementation(libs.libsignal.android)
+    implementation(libs.libsignal.client)
     implementation(libs.tink.android)
     implementation(libs.kotlinx.coroutines.core)
 }

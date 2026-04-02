@@ -9,7 +9,7 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.SendMessageUseCase
-import com.sanchr.proto.messaging.ClientEvent
+import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +26,7 @@ class ChatDetailViewModel @Inject constructor(
     private val sendMessageUseCase: SendMessageUseCase,
     private val messagingServiceClient: MessagingServiceClient,
     private val sessionManager: SessionManager,
+    private val encryptionHelper: ChatEncryptionHelper,
 ) : ViewModel() {
 
     private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
@@ -76,7 +77,8 @@ class ChatDetailViewModel @Inject constructor(
         //             is ServerEvent.Typing -> _uiState.update { it.copy(peerTyping = event.indicator?.isTyping == true) }
         //             is ServerEvent.Receipt -> { /* update message statuses */ }
         //             is ServerEvent.Presence -> { /* update online status */ }
-        //             else -> { }
+        //             is ServerEvent.Message -> event.envelope?.let { decryptIncomingMessage(it) }
+        //             is ServerEvent.PreKeyCountLow -> replenishPreKeys()
         //         }
         //     }
         // }
@@ -96,6 +98,15 @@ class ChatDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Sends an encrypted message to the conversation.
+     *
+     * Flow:
+     * 1. Get recipient IDs from the conversation participants, excluding self.
+     * 2. For each recipient: check session -> establish via X3DH if needed -> encrypt.
+     * 3. Build list of DeviceMessage with per-device ciphertexts.
+     * 4. Send via MessagingService with encrypted DeviceMessages.
+     */
     fun sendMessage() {
         val content = _uiState.value.inputText.trim()
         if (content.isBlank()) return
@@ -103,21 +114,87 @@ class ChatDetailViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = "", isSending = true) }
 
         viewModelScope.launch {
-            when (val result = sendMessageUseCase(conversationId, content)) {
-                is Result.Success -> {
-                    _uiState.update { it.copy(isSending = false) }
+            try {
+                // Get recipient IDs from conversation participants, excluding self
+                val currentUserId = sessionManager.getUserId() ?: ""
+                val conversation = _uiState.value.conversation
+                val recipientIds = conversation?.participants
+                    ?.map { it.id }
+                    ?.filter { it != currentUserId }
+                    ?: emptyList()
+
+                if (recipientIds.isNotEmpty()) {
+                    // Encrypt for all recipient devices
+                    val deviceMessages = encryptionHelper.encryptMessage(
+                        plaintext = content,
+                        recipientIds = recipientIds,
+                    )
+
+                    // Send encrypted message via gRPC
+                    val request = com.sanchr.proto.messaging.SendMessageRequest(
+                        conversationId = conversationId,
+                        recipientUserId = recipientIds.firstOrNull() ?: "",
+                        contentType = "text",
+                        messages = deviceMessages,
+                        clientMessageId = java.util.UUID.randomUUID().toString(),
+                        timestamp = System.currentTimeMillis(),
+                    )
+                    messagingServiceClient.sendMessage(request)
                 }
 
-                is Result.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isSending = false,
-                            error = "Failed to send message",
-                        )
+                // Also persist locally via use case for optimistic UI
+                when (val result = sendMessageUseCase(conversationId, content)) {
+                    is Result.Success -> {
+                        _uiState.update { it.copy(isSending = false) }
                     }
+                    is Result.Error -> {
+                        _uiState.update {
+                            it.copy(
+                                isSending = false,
+                                error = "Failed to send message",
+                            )
+                        }
+                    }
+                    is Result.Loading -> { /* no-op */ }
                 }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isSending = false,
+                        error = e.message ?: "Encryption failed",
+                    )
+                }
+            }
+        }
+    }
 
-                is Result.Loading -> { /* no-op */ }
+    /**
+     * Decrypts an incoming encrypted envelope and processes the plaintext message.
+     * Called when the message stream delivers a new [ServerEvent.Message].
+     */
+    fun decryptIncomingMessage(envelope: EncryptedEnvelope) {
+        viewModelScope.launch {
+            try {
+                val decrypted = encryptionHelper.decryptEnvelope(envelope)
+                val plaintextString = String(decrypted.plaintext, Charsets.UTF_8)
+
+                // The decrypted message should be persisted via the repository.
+                // The observeMessages() flow will pick up the change automatically.
+                messageRepository.insertDecryptedMessage(
+                    conversationId = decrypted.conversationId,
+                    messageId = decrypted.messageId,
+                    senderId = decrypted.senderId,
+                    content = plaintextString,
+                    contentType = decrypted.contentType,
+                    timestamp = decrypted.serverTimestamp,
+                )
+
+                // Check if pre-keys need replenishment after receiving a PreKey message
+                encryptionHelper.checkPreKeyReplenishment()
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(error = "Failed to decrypt message: ${e.message}")
+                }
             }
         }
     }

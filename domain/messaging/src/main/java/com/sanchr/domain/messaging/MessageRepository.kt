@@ -36,4 +36,24 @@ interface MessageRepository {
 
     /** Archives or unarchives a conversation. */
     suspend fun setArchived(conversationId: String, archived: Boolean)
+
+    /**
+     * Inserts a decrypted incoming message into local storage.
+     * Called after successfully decrypting an [EncryptedEnvelope] from the server.
+     *
+     * @param conversationId The conversation this message belongs to.
+     * @param messageId The server-assigned message ID.
+     * @param senderId The sender's user ID.
+     * @param content The decrypted plaintext content.
+     * @param contentType The message content type (e.g., "text", "image").
+     * @param timestamp The server timestamp in epoch milliseconds.
+     */
+    suspend fun insertDecryptedMessage(
+        conversationId: String,
+        messageId: String,
+        senderId: String,
+        content: String,
+        contentType: String,
+        timestamp: Long,
+    )
 }
