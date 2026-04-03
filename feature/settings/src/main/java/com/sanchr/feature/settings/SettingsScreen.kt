@@ -1,6 +1,7 @@
 package com.sanchr.feature.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,25 +17,35 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.HelpCenter
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -50,7 +61,10 @@ fun SettingsScreen(
     onNavigateToHelp: () -> Unit,
     onNavigateToProfile: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     Scaffold(
         topBar = {
             SanchrTopBar(title = "Settings")
@@ -63,46 +77,82 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // Profile header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToProfile)
-                    .padding(SanchrTheme.spacing.default),
-                verticalAlignment = Alignment.CenterVertically,
+            // Profile header card
+            SanchrCard(
+                onClick = onNavigateToProfile,
+                modifier = Modifier.padding(
+                    horizontal = SanchrTheme.spacing.default,
+                    vertical = SanchrTheme.spacing.sm,
+                ),
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(56.dp),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(SanchrTheme.spacing.default),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // TODO: Show user avatar
-                }
+                    if (uiState.avatarUrl.isNotEmpty()) {
+                        AsyncImage(
+                            model = uiState.avatarUrl,
+                            contentDescription = "Profile avatar",
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop,
+                        )
+                    } else {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = uiState.displayName.take(1).uppercase().ifEmpty { "?" },
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                        }
+                    }
 
-                Spacer(modifier = Modifier.width(SanchrTheme.spacing.default))
+                    Spacer(modifier = Modifier.width(SanchrTheme.spacing.default))
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Your Name", // TODO: Load from session
-                        style = MaterialTheme.typography.titleMedium,
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = uiState.displayName.ifEmpty { "Set up your profile" },
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        if (uiState.bio.isNotEmpty()) {
+                            Text(
+                                text = uiState.bio,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        if (uiState.phoneNumber.isNotEmpty()) {
+                            Text(
+                                text = uiState.phoneNumber,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        text = "+1 234 567 8901", // TODO: Load from session
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
-
-                Icon(
-                    imageVector = Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
 
-            HorizontalDivider()
-
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+
+            // General group
+            SettingsGroupLabel(text = "General")
 
             SettingsItem(
                 icon = Icons.Filled.ColorLens,
@@ -119,38 +169,48 @@ fun SettingsScreen(
             )
 
             SettingsItem(
+                icon = Icons.AutoMirrored.Filled.Chat,
+                title = "Chat Settings",
+                subtitle = "Bubble style, media, enter to send",
+                onClick = onNavigateToChatSettings,
+            )
+
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+
+            // Privacy & Security group
+            SettingsGroupLabel(text = "Privacy & Security")
+
+            SettingsItem(
                 icon = Icons.Filled.VisibilityOff,
                 title = "Privacy",
-                subtitle = "Last seen, read receipts, blocked",
+                subtitle = "Read receipts, online status, typing",
                 onClick = onNavigateToPrivacy,
             )
 
             SettingsItem(
                 icon = Icons.Filled.Security,
                 title = "Security",
-                subtitle = "App lock, biometrics",
+                subtitle = "App lock, biometrics, VyncMode",
                 onClick = onNavigateToSecurity,
-            )
-
-            SettingsItem(
-                icon = Icons.Filled.Storage,
-                title = "Storage & Data",
-                subtitle = "Media auto-download, storage usage",
-                onClick = onNavigateToStorage,
-            )
-
-            SettingsItem(
-                icon = Icons.AutoMirrored.Filled.Chat,
-                title = "Chat Settings",
-                subtitle = "Wallpaper, font, bubbles",
-                onClick = onNavigateToChatSettings,
             )
 
             SettingsItem(
                 icon = Icons.Filled.VpnKey,
                 title = "Encryption Keys",
-                subtitle = "View and verify safety numbers",
+                subtitle = "Identity fingerprint, safety numbers",
                 onClick = onNavigateToEncryptionKeys,
+            )
+
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+
+            // Data group
+            SettingsGroupLabel(text = "Data")
+
+            SettingsItem(
+                icon = Icons.Filled.Storage,
+                title = "Storage & Data",
+                subtitle = "Storage usage, auto-download, cache",
+                onClick = onNavigateToStorage,
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.sm))
@@ -158,9 +218,36 @@ fun SettingsScreen(
             SettingsItem(
                 icon = Icons.AutoMirrored.Filled.HelpCenter,
                 title = "Help Center",
-                subtitle = "FAQ, contact support",
+                subtitle = "FAQ, contact support, documentation",
                 onClick = onNavigateToHelp,
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.sm))
+
+            // Logout button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = viewModel::logout)
+                    .padding(
+                        horizontal = SanchrTheme.spacing.default,
+                        vertical = SanchrTheme.spacing.md,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(SanchrTheme.spacing.default))
+                Text(
+                    text = "Log Out",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
@@ -174,6 +261,20 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
         }
     }
+}
+
+@Composable
+private fun SettingsGroupLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier.padding(
+            horizontal = SanchrTheme.spacing.default,
+            vertical = SanchrTheme.spacing.sm,
+        ),
+    )
 }
 
 @Composable
