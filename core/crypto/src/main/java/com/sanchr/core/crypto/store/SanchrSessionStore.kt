@@ -45,6 +45,20 @@ class SanchrSessionStore @Inject constructor(
         return record
     }
 
+    override fun loadExistingSessions(addresses: List<SignalProtocolAddress>): List<SessionRecord> {
+        return addresses.mapNotNull { address ->
+            val key = addressKey(address)
+            cache[key]?.let { return@mapNotNull it }
+
+            val file = sessionFile(address)
+            if (!file.exists()) return@mapNotNull null
+
+            val record = SessionRecord(file.readBytes())
+            cache[key] = record
+            record
+        }
+    }
+
     override fun getSubDeviceSessions(name: String): List<Int> {
         val prefix = "${name}_"
         val fromCache = cache.keys

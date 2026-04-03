@@ -34,12 +34,28 @@ data class OneTimePreKey(
 }
 
 @Serializable
+data class KyberPreKey(
+    @SerialName("key_id") val keyId: Int = 0,
+    @SerialName("public_key") val publicKey: ByteArray = ByteArray(0),
+    val signature: ByteArray = ByteArray(0),
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is KyberPreKey) return false
+        return keyId == other.keyId && publicKey.contentEquals(other.publicKey)
+    }
+
+    override fun hashCode(): Int = keyId
+}
+
+@Serializable
 data class KeyBundle(
     @SerialName("identity_key") val identityKey: ByteArray = ByteArray(0),
     @SerialName("signed_pre_key") val signedPreKey: SignedPreKey? = null,
     @SerialName("one_time_pre_keys") val oneTimePreKeys: List<OneTimePreKey> = emptyList(),
     @SerialName("registration_id") val registrationId: Int = 0,
     @SerialName("device_id") val deviceId: String = "",
+    @SerialName("kyber_pre_key") val kyberPreKey: KyberPreKey? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -68,6 +84,7 @@ data class PreKeyBundleResponse(
     @SerialName("one_time_pre_key") val oneTimePreKey: OneTimePreKey? = null,
     @SerialName("registration_id") val registrationId: Int = 0,
     @SerialName("device_id") val deviceId: String = "",
+    @SerialName("kyber_pre_key") val kyberPreKey: KyberPreKey? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

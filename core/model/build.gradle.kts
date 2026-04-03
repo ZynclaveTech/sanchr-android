@@ -24,5 +24,7 @@ android {
 
 dependencies {
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.kotlinx.datetime)
+    // Exposed as api because public model classes (Message, Conversation, etc.)
+    // use kotlinx.datetime.Instant in their public properties
+    api(libs.kotlinx.datetime)
 }

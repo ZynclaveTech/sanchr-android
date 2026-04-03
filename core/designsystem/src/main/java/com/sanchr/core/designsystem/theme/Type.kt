@@ -2,37 +2,41 @@ package com.sanchr.core.designsystem.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.sanchr.core.designsystem.R
 
 /**
- * Afacad: Primary display/heading font.
- * Inter: Secondary body/utility font.
+ * Sanchr typography scale.
+ *
+ * Design tokens call for two typefaces:
+ *   Afacad -- display / heading font
+ *   Inter  -- body / utility font
+ *
+ * TODO: Once the actual .ttf files are added to res/font/, replace the
+ *       default font families below with proper FontFamily declarations:
+ *
+ *   val AfacadFontFamily = FontFamily(
+ *       Font(R.font.afacad_regular, FontWeight.Normal),
+ *       Font(R.font.afacad_medium, FontWeight.Medium),
+ *       Font(R.font.afacad_semibold, FontWeight.SemiBold),
+ *       Font(R.font.afacad_bold, FontWeight.Bold),
+ *   )
+ *
+ *   val InterFontFamily = FontFamily(
+ *       Font(R.font.inter_regular, FontWeight.Normal),
+ *       Font(R.font.inter_medium, FontWeight.Medium),
+ *       Font(R.font.inter_semibold, FontWeight.SemiBold),
+ *       Font(R.font.inter_bold, FontWeight.Bold),
+ *   )
  *
  * Font files should be placed in res/font/ as:
  *   afacad_regular.ttf, afacad_medium.ttf, afacad_semibold.ttf, afacad_bold.ttf
  *   inter_regular.ttf, inter_medium.ttf, inter_semibold.ttf, inter_bold.ttf
  */
 
-// TODO: Add actual font files to res/font/ directory.
-// For now, using placeholder references that will resolve once fonts are added.
-
-val AfacadFontFamily = FontFamily(
-    Font(R.font.afacad_regular, FontWeight.Normal),
-    Font(R.font.afacad_medium, FontWeight.Medium),
-    Font(R.font.afacad_semibold, FontWeight.SemiBold),
-    Font(R.font.afacad_bold, FontWeight.Bold),
-)
-
-val InterFontFamily = FontFamily(
-    Font(R.font.inter_regular, FontWeight.Normal),
-    Font(R.font.inter_medium, FontWeight.Medium),
-    Font(R.font.inter_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_bold, FontWeight.Bold),
-)
+val AfacadFontFamily = FontFamily.SansSerif
+val InterFontFamily = FontFamily.SansSerif
 
 /**
  * Design token sizes: 10, 12, 14, 16, 18, 20, 24, 30, 48 sp

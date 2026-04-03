@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ConversationDao
@@ -36,12 +37,26 @@ abstract class SanchrDatabase : RoomDatabase() {
 
 /**
  * Type converters for Room. Handles serialization of complex types stored in columns.
+ *
+ * Currently entities use only primitive column types (String, Long, Int, Boolean).
+ * Add @TypeConverter methods here when complex types (e.g. List, Instant, enums)
+ * are introduced.
  */
 class Converters {
-    // TODO: Add @TypeConverter methods for:
-    //   - List<String> <-> String (JSON array)
-    //   - Instant <-> Long (epoch millis)
-    //   - MessageStatus <-> String (enum name)
+
+    /**
+     * Converts a comma-separated string to a list of strings.
+     * Used when participant lists or tag lists are stored as a single column.
+     */
+    @TypeConverter
+    fun fromStringList(value: String?): List<String> {
+        return value?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    }
+
+    @TypeConverter
+    fun toStringList(list: List<String>?): String {
+        return list?.joinToString(",") ?: ""
+    }
 }
 
 @Module

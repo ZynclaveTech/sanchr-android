@@ -33,4 +33,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.tink.android)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.security.crypto)
 }

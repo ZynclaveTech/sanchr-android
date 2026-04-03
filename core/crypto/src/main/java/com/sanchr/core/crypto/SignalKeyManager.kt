@@ -12,7 +12,9 @@ import com.sanchr.proto.keys.OneTimePreKey
 import com.sanchr.proto.keys.UploadOneTimePreKeysRequest
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
-import org.signal.libsignal.protocol.ecc.Curve
+import org.signal.libsignal.protocol.ecc.ECKeyPair
+import org.signal.libsignal.protocol.ecc.ECPublicKey
+import org.signal.libsignal.protocol.kem.KEMPublicKey
 import org.signal.libsignal.protocol.state.PreKeyBundle
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord
@@ -30,7 +32,7 @@ import javax.inject.Singleton
  *
  * All generated keys are persisted through the protocol stores and uploaded
  * to the server via [KeyServiceClient] so that other devices can establish
- * X3DH sessions with this device.
+ * PQXDH sessions with this device.
  */
 @Singleton
 class SignalKeyManager @Inject constructor(
@@ -82,9 +84,8 @@ class SignalKeyManager @Inject constructor(
      */
     fun generateSignedPreKey(identityKeyPair: IdentityKeyPair): SignedPreKeyRecord {
         val signedPreKeyId = signedPreKeyStore.getNextSignedPreKeyId()
-        val signedPreKeyPair = Curve.generateKeyPair()
-        val signature = Curve.calculateSignature(
-            identityKeyPair.privateKey,
+        val signedPreKeyPair = ECKeyPair.generate()
+        val signature = identityKeyPair.privateKey.calculateSignature(
             signedPreKeyPair.publicKey.serialize(),
         )
         val timestamp = System.currentTimeMillis()
@@ -116,7 +117,7 @@ class SignalKeyManager @Inject constructor(
         val records = mutableListOf<PreKeyRecord>()
         for (i in 0 until count) {
             val preKeyId = startId + i
-            val keyPair = Curve.generateKeyPair()
+            val keyPair = ECKeyPair.generate()
             val record = PreKeyRecord(preKeyId, keyPair)
             preKeyStore.storePreKey(preKeyId, record)
             records.add(record)
@@ -204,9 +205,10 @@ class SignalKeyManager @Inject constructor(
     // ------------------------------------------------------------------
 
     /**
-     * Fetches a recipient's pre-key bundle from the server for X3DH session
+     * Fetches a recipient's pre-key bundle from the server for PQXDH session
      * establishment. The returned [PreKeyBundle] contains the recipient's
-     * identity key, signed pre-key, and (optionally) a one-time pre-key.
+     * identity key, signed pre-key, (optionally) a one-time pre-key, and
+     * a Kyber post-quantum pre-key.
      *
      * @param userId The recipient's user ID.
      * @param deviceId The recipient's device ID (as an integer).
@@ -225,16 +227,21 @@ class SignalKeyManager @Inject constructor(
             ?: throw IllegalStateException("Server returned no signed pre-key for $userId:$deviceId")
 
         val oneTimePreKey = response.oneTimePreKey
+        val kyberPreKey = response.kyberPreKey
+            ?: throw IllegalStateException("Server returned no Kyber pre-key for $userId:$deviceId")
 
         return PreKeyBundle(
             response.registrationId,
             deviceId,
-            oneTimePreKey?.keyId ?: 0,
-            if (oneTimePreKey != null) Curve.decodePoint(oneTimePreKey.publicKey, 0) else null,
+            oneTimePreKey?.keyId ?: PreKeyBundle.NULL_PRE_KEY_ID,
+            if (oneTimePreKey != null) ECPublicKey(oneTimePreKey.publicKey) else null,
             signedPreKey.keyId,
-            Curve.decodePoint(signedPreKey.publicKey, 0),
+            ECPublicKey(signedPreKey.publicKey),
             signedPreKey.signature,
             identityKey,
+            kyberPreKey.keyId,
+            KEMPublicKey(kyberPreKey.publicKey),
+            kyberPreKey.signature,
         )
     }
 

@@ -100,16 +100,20 @@ class SanchrIdentityKeyStore @Inject constructor(
     override fun saveIdentity(
         address: SignalProtocolAddress,
         identityKey: IdentityKey,
-    ): Boolean {
+    ): IdentityKeyStore.IdentityChange {
         val key = addressKey(address)
         val existing = loadRemoteIdentity(key)
-        val replaced = existing != null && existing != identityKey
+        val changed = existing != null && existing != identityKey
 
         remoteIdentityCache[key] = identityKey
         val encoded = Base64.encodeToString(identityKey.serialize(), Base64.NO_WRAP)
         prefs.edit().putString(KEY_REMOTE_IDENTITY_PREFIX + key, encoded).apply()
 
-        return replaced
+        return if (changed) {
+            IdentityKeyStore.IdentityChange.REPLACED_EXISTING
+        } else {
+            IdentityKeyStore.IdentityChange.NEW_OR_UNCHANGED
+        }
     }
 
     override fun isTrustedIdentity(

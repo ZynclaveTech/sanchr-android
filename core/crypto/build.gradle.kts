@@ -14,6 +14,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -24,6 +25,8 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     implementation(projects.core.common)
     implementation(projects.core.datastore)
     implementation(projects.proto)
@@ -32,7 +35,10 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(libs.libsignal.android)
-    implementation(libs.libsignal.client)
+    // Exposed as api because public classes (SignalKeyManager, SignalSessionManager)
+    // return/accept libsignal types (IdentityKeyPair, PreKeyBundle, etc.)
+    api(libs.libsignal.client)
     implementation(libs.tink.android)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.androidx.security.crypto)
 }

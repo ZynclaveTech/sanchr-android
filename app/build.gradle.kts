@@ -38,6 +38,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -53,6 +54,8 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     // Core modules
     implementation(projects.core.common)
     implementation(projects.core.designsystem)
@@ -79,6 +82,9 @@ dependencies {
     implementation(projects.feature.settings)
     implementation(projects.feature.profile)
 
+    // Proto (gRPC service clients)
+    implementation(projects.proto)
+
     // Sync
     implementation(projects.sync)
 
@@ -103,6 +109,10 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+
+    // gRPC (needed by DI module to construct service clients)
+    implementation(libs.grpc.stub)
+    implementation(libs.grpc.okhttp)
 
     // Firebase
     implementation(platform(libs.firebase.bom))
