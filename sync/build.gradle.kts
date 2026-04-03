@@ -24,16 +24,29 @@ android {
 }
 
 dependencies {
+    // Project modules
     implementation(projects.core.common)
     implementation(projects.core.network)
     implementation(projects.core.database)
     implementation(projects.core.datastore)
+    implementation(projects.core.crypto)
+    implementation(projects.core.notifications)
+    implementation(projects.proto)
 
+    // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    // WorkManager + Hilt integration
     implementation(libs.work.runtime)
     implementation(libs.work.hilt)
 
+    // App Startup
+    implementation(libs.startup.runtime)
+
+    // Coroutines
     implementation(libs.kotlinx.coroutines.core)
+
+    // gRPC (for StatusException)
+    implementation(libs.grpc.stub)
 }

@@ -3,7 +3,9 @@ package com.sanchr.app
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import androidx.work.WorkManager
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -28,6 +30,12 @@ class SanchrApp : Application(), Configuration.Provider {
         // Create notification channels as early as possible so they are available
         // before any push notification arrives.
         notificationHandler.createNotificationChannels()
+
+        // Schedule periodic background sync (every 15 minutes).
+        // This is a fallback; SyncInitializer via App Startup also schedules
+        // periodic sync, but calling schedulePeriodic with KEEP policy is
+        // idempotent and harmless if already enqueued.
+        SyncWorker.schedulePeriodic(WorkManager.getInstance(this))
 
         // TODO: Initialize crash reporting (e.g., Firebase Crashlytics)
         // TODO: Initialize analytics

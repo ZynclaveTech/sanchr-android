@@ -13,8 +13,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.work.WorkManager
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.sync.SyncState
+import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -23,6 +26,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var notificationHandler: NotificationHandler
+
+    @Inject
+    lateinit var syncState: SyncState
 
     /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
@@ -50,6 +56,15 @@ class MainActivity : ComponentActivity() {
                     SanchrNavHost()
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Trigger a sync if data is stale (>5 min since last sync)
+        if (syncState.needsSync) {
+            SyncWorker.syncNow(WorkManager.getInstance(this))
         }
     }
 

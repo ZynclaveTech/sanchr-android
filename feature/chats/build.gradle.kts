@@ -37,10 +37,14 @@ dependencies {
     implementation(projects.core.notifications)
     implementation(projects.domain.messaging)
     implementation(projects.proto)
+    implementation(projects.sync)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+
+    // WorkManager (needed for WorkManager.getInstance in ViewModel)
+    implementation(libs.work.runtime)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
