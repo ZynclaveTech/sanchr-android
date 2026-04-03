@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.callengine.CallManager
 import com.sanchr.core.callengine.CallState
+import com.sanchr.core.callengine.WebRTCClient
 import com.sanchr.proto.calling.CallLogEntry
 import com.sanchr.proto.calling.CallSignalingServiceClient
 import com.sanchr.proto.calling.GetCallHistoryRequest
@@ -39,6 +40,7 @@ data class CallsListUiState(
 class CallsViewModel @Inject constructor(
     private val callSignalingServiceClient: CallSignalingServiceClient,
     private val callManager: CallManager,
+    val webRTCClient: WebRTCClient,
 ) : ViewModel() {
 
     companion object {
@@ -46,12 +48,55 @@ class CallsViewModel @Inject constructor(
         private const val PAGE_SIZE = 50
     }
 
+    // -----------------------------------------------------------------------
+    // Call state (from CallManager)
+    // -----------------------------------------------------------------------
+
     val callState: StateFlow<CallState> = callManager.callState
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = CallState.Idle,
         )
+
+    val isMuted: StateFlow<Boolean> = callManager.isMuted
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false,
+        )
+
+    val isSpeakerOn: StateFlow<Boolean> = callManager.isSpeakerOn
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = false,
+        )
+
+    val isVideoEnabled: StateFlow<Boolean> = callManager.isVideoEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = true,
+        )
+
+    val callDuration: StateFlow<Long> = callManager.callDuration
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = 0L,
+        )
+
+    val callType: StateFlow<String> = callManager.callType
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = "voice",
+        )
+
+    // -----------------------------------------------------------------------
+    // Call history list state
+    // -----------------------------------------------------------------------
 
     private val _allEntries = MutableStateFlow<List<CallLogEntry>>(emptyList())
     private val _filter = MutableStateFlow(CallFilter.ALL)
@@ -72,10 +117,10 @@ class CallsViewModel @Inject constructor(
             CallFilter.ALL -> entries
             CallFilter.MISSED -> entries.filter { it.status == "missed" }
             CallFilter.INCOMING -> entries.filter {
-                it.status != "missed" && it.callerId != "" // incoming
+                it.status != "missed" && it.callerId != ""
             }
             CallFilter.OUTGOING -> entries.filter {
-                it.status != "missed" && it.calleeId != "" // outgoing
+                it.status != "missed" && it.calleeId != ""
             }
         }
 
@@ -94,6 +139,10 @@ class CallsViewModel @Inject constructor(
     init {
         loadCallHistory()
     }
+
+    // -----------------------------------------------------------------------
+    // Call history actions
+    // -----------------------------------------------------------------------
 
     fun setFilter(filter: CallFilter) {
         _filter.value = filter
@@ -141,16 +190,38 @@ class CallsViewModel @Inject constructor(
         }
     }
 
-    fun startVoiceCall(userId: String) {
+    // -----------------------------------------------------------------------
+    // Call actions
+    // -----------------------------------------------------------------------
+
+    fun startVoiceCall(userId: String, userName: String = userId) {
         viewModelScope.launch {
-            callManager.startCall(userId, isVideo = false)
+            callManager.startCall(
+                recipientId = userId,
+                recipientName = userName,
+                isVideo = false,
+            )
         }
     }
 
-    fun startVideoCall(userId: String) {
+    fun startVideoCall(userId: String, userName: String = userId) {
         viewModelScope.launch {
-            callManager.startCall(userId, isVideo = true)
+            callManager.startCall(
+                recipientId = userId,
+                recipientName = userName,
+                isVideo = true,
+            )
         }
+    }
+
+    fun answerCall() {
+        viewModelScope.launch {
+            callManager.answerCall()
+        }
+    }
+
+    fun declineCall() {
+        callManager.declineCall()
     }
 
     fun endCall() {
@@ -162,6 +233,10 @@ class CallsViewModel @Inject constructor(
     fun toggleMute() = callManager.toggleMute()
 
     fun toggleSpeaker() = callManager.toggleSpeaker()
+
+    fun toggleVideo() = callManager.toggleVideo()
+
+    fun switchCamera() = callManager.switchCamera()
 }
 
 sealed interface CallsEvent {

@@ -26,10 +26,13 @@ android {
 dependencies {
     implementation(projects.core.common)
     implementation(projects.core.crypto)
+    implementation(projects.proto)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
     implementation(libs.webrtc)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.core.ktx)
 }

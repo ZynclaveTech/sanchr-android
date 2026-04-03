@@ -46,7 +46,11 @@ dependencies {
     implementation(libs.compose.material.icons)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.foundation)
+    implementation(libs.compose.animation)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
+
+    implementation(libs.webrtc)
+    implementation(libs.coil.compose)
 }
