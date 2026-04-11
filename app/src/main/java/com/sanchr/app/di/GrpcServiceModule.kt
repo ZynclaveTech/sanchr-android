@@ -3,6 +3,8 @@ package com.sanchr.app.di
 import com.sanchr.core.network.GrpcChannelProvider
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.AuthServiceGrpcClient
+import com.sanchr.proto.backup.BackupServiceClient
+import com.sanchr.proto.backup.BackupServiceGrpcClient
 import com.sanchr.proto.calling.CallSignalingServiceClient
 import com.sanchr.proto.calling.CallSignalingServiceGrpcClient
 import com.sanchr.proto.contacts.ContactServiceClient
@@ -37,53 +39,59 @@ object GrpcServiceModule {
     @Singleton
     fun provideAuthServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): AuthServiceClient = AuthServiceGrpcClient(channelProvider.getChannel())
+    ): AuthServiceClient = AuthServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideKeyServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): KeyServiceClient = KeyServiceGrpcClient(channelProvider.getChannel())
+    ): KeyServiceClient = KeyServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideContactServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): ContactServiceClient = ContactServiceGrpcClient(channelProvider.getChannel())
+    ): ContactServiceClient = ContactServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideSettingsServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): SettingsServiceClient = SettingsServiceGrpcClient(channelProvider.getChannel())
+    ): SettingsServiceClient = SettingsServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideMediaServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): MediaServiceClient = MediaServiceGrpcClient(channelProvider.getChannel())
+    ): MediaServiceClient = MediaServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideVaultServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): VaultServiceClient = VaultServiceGrpcClient(channelProvider.getChannel())
+    ): VaultServiceClient = VaultServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideMessagingServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): MessagingServiceClient = MessagingServiceGrpcClient(channelProvider.getChannel())
+    ): MessagingServiceClient = MessagingServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideNotificationServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): NotificationServiceClient = NotificationServiceGrpcClient(channelProvider.getChannel())
+    ): NotificationServiceClient = NotificationServiceGrpcClient(channelProvider.getCoreChannel())
+
+    @Provides
+    @Singleton
+    fun provideBackupServiceClient(
+        channelProvider: GrpcChannelProvider,
+    ): BackupServiceClient = BackupServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
     fun provideCallSignalingServiceClient(
         channelProvider: GrpcChannelProvider,
-    ): CallSignalingServiceClient = CallSignalingServiceGrpcClient(channelProvider.getChannel())
+    ): CallSignalingServiceClient = CallSignalingServiceGrpcClient(channelProvider.getCallChannel())
 }

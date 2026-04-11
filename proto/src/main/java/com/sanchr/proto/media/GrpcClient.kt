@@ -5,7 +5,7 @@ import io.grpc.Channel
 
 /**
  * gRPC client interface for the MediaService.
- * Generated stub equivalent for vync.media.MediaService.
+ * Generated stub equivalent for sanchr.media.MediaService.
  */
 interface MediaServiceClient {
 

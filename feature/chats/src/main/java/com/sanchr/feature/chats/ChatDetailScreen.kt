@@ -91,7 +91,12 @@ fun ChatDetailScreen(
         topBar = {
             ChatDetailTopBar(
                 title = uiState.conversation?.title ?: "Chat",
-                isOnline = true, // TODO: derive from presence
+                statusText = if (uiState.peerTyping) {
+                    "Typing..."
+                } else {
+                    uiState.peerPresenceText
+                },
+                isOnline = uiState.isPeerOnline,
                 onNavigateBack = onNavigateBack,
                 onVideoCall = { /* TODO */ },
                 onVoiceCall = { /* TODO */ },
@@ -271,6 +276,7 @@ fun ChatDetailScreen(
 @Composable
 private fun ChatDetailTopBar(
     title: String,
+    statusText: String?,
     isOnline: Boolean,
     onNavigateBack: () -> Unit,
     onVideoCall: () -> Unit,
@@ -316,11 +322,13 @@ private fun ChatDetailTopBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = if (isOnline) "Online" else "Offline",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isOnline) SanchrSuccess else SanchrGray400,
-                    )
+                    statusText?.let { subtitle ->
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isOnline) SanchrSuccess else SanchrGray400,
+                        )
+                    }
                 }
             }
         },

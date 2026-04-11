@@ -13,12 +13,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkManager
+import com.sanchr.core.crypto.SignalKeyManager
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -29,6 +33,12 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var syncState: SyncState
+
+    @Inject
+    lateinit var signalKeyManager: SignalKeyManager
+
+    @Inject
+    lateinit var sessionManager: SessionManager
 
     /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
@@ -49,11 +59,31 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         handleNotificationIntent(intent)
+        bootstrapSignalKeys()
 
         setContent {
             SanchrTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     SanchrNavHost()
+                }
+            }
+        }
+    }
+
+    private fun bootstrapSignalKeys() {
+        val userId = sessionManager.getUserId() ?: return
+        val deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: return
+
+        lifecycleScope.launch {
+            runCatching {
+                if (!signalKeyManager.hasIdentity()) {
+                    signalKeyManager.generateIdentity()
+                    signalKeyManager.uploadInitialKeyBundle()
+                } else if (!signalKeyManager.hasCompleteServerBundle(userId, deviceId)) {
+                    signalKeyManager.uploadInitialKeyBundle()
+                } else {
+                    signalKeyManager.checkAndReplenishPreKeys()
+                    signalKeyManager.rotateSignedPreKeyIfNeeded()
                 }
             }
         }

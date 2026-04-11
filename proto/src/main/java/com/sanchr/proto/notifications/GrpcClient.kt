@@ -5,7 +5,7 @@ import io.grpc.Channel
 
 /**
  * gRPC client interface for the NotificationService.
- * Generated stub equivalent for vync.notifications.NotificationService.
+ * Generated stub equivalent for sanchr.notifications.NotificationService.
  */
 interface NotificationServiceClient {
 

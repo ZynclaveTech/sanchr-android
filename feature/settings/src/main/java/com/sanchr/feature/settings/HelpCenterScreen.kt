@@ -79,8 +79,8 @@ fun HelpCenterScreen(
             val faqs = listOf(
                 "How does end-to-end encryption work?" to
                     "Sanchr uses the Signal Protocol for end-to-end encryption. Messages are encrypted on your device before sending and can only be decrypted by the intended recipient. Even Sanchr cannot read your messages.",
-                "How do I enable VyncMode?" to
-                    "Go to Settings > Security > VyncMode. Set a secondary PIN and toggle it on. Hidden conversations and vault items will only appear after entering the VyncMode PIN.",
+                "How do I enable Sanchr Mode?" to
+                    "Go to Settings > Security > Sanchr Mode and toggle it on. Hidden conversations and vault items will be hidden while it is enabled.",
                 "Can I use Sanchr on multiple devices?" to
                     "Currently Sanchr supports one device per account. Multi-device support with linked devices is planned for a future update.",
                 "How do I back up my messages?" to

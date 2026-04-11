@@ -3,6 +3,7 @@ package com.sanchr.feature.settings
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.crypto.RecoveryKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.PushTokenManager
@@ -12,10 +13,11 @@ import com.sanchr.proto.settings.GetSettingsRequest
 import com.sanchr.proto.settings.GetStorageUsageRequest
 import com.sanchr.proto.settings.SettingsServiceClient
 import com.sanchr.proto.settings.StorageUsageResponse
-import com.sanchr.proto.settings.ToggleVyncModeRequest
+import com.sanchr.proto.settings.ToggleSanchrModeRequest
 import com.sanchr.proto.settings.UpdateProfileRequest
 import com.sanchr.proto.settings.UpdateSettingsRequest
 import com.sanchr.proto.settings.UserSettings
+import com.sanchr.sync.backup.ChatBackupManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -47,19 +49,22 @@ data class SettingsUiState(
     val notificationVibrationEnabled: Boolean = true,
     val readReceiptsEnabled: Boolean = true,
     val typingIndicatorsEnabled: Boolean = true,
-    val lastActiveVisible: Boolean = true,
+    val onlineStatusVisible: Boolean = true,
     val profilePhotoVisible: Boolean = true,
     val biometricEnabled: Boolean = false,
     val screenLockEnabled: Boolean = false,
     val screenLockTimeout: String = "immediately",
     val screenshotProtection: Boolean = false,
-    val vyncModeEnabled: Boolean = false,
+    val sanchrModeEnabled: Boolean = false,
     val mediaAutoDownload: String = "wifi",
     val lowDataMode: Boolean = false,
     val storageUsage: StorageUsageResponse? = null,
     val enterSendsMessage: Boolean = false,
     val mediaAutoSave: Boolean = true,
     val bubbleStyle: String = "default",
+    val backupEnabled: Boolean = false,
+    val lastBackupAtMillis: Long? = null,
+    val isBackupBusy: Boolean = false,
     val disappearingMessagesDefault: String = "off",
     val isSyncingPrefs: Boolean = false,
     val isLoadingSettings: Boolean = true,
@@ -70,9 +75,11 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val sessionManager: SessionManager,
+    private val recoveryKeyManager: RecoveryKeyManager,
     private val notificationServiceClient: NotificationServiceClient,
     private val pushTokenManager: PushTokenManager,
     private val settingsServiceClient: SettingsServiceClient,
+    private val chatBackupManager: ChatBackupManager,
 ) : ViewModel() {
 
     companion object {
@@ -88,6 +95,9 @@ class SettingsViewModel @Inject constructor(
     private val _enterSendsMessage = MutableStateFlow(false)
     private val _mediaAutoSave = MutableStateFlow(true)
     private val _bubbleStyle = MutableStateFlow("default")
+    private val _backupConfiguration = MutableStateFlow(recoveryKeyManager.loadConfiguration())
+    private val _backupBusy = MutableStateFlow(false)
+    private val _pendingRecoveryKey = MutableStateFlow<String?>(null)
     private val _disappearingMessagesDefault = MutableStateFlow("off")
     private val _lowDataMode = MutableStateFlow(false)
 
@@ -110,13 +120,28 @@ class SettingsViewModel @Inject constructor(
         _storageUsage,
         _isLoadingSettings,
         combine(
-            _screenLockEnabled,
-            _screenshotProtection,
-            _enterSendsMessage,
-            _lowDataMode,
-            _disappearingMessagesDefault,
-        ) { lock, screenshot, enter, lowData, disappear ->
-            ExtrasGroup(lock, screenshot, enter, lowData, disappear)
+            combine(
+                _screenLockEnabled,
+                _screenshotProtection,
+                _enterSendsMessage,
+                _lowDataMode,
+                _disappearingMessagesDefault,
+            ) { lock, screenshot, enter, lowData, disappear ->
+                BasicExtrasGroup(lock, screenshot, enter, lowData, disappear)
+            },
+            combine(_backupConfiguration, _backupBusy) { backupConfiguration, backupBusy ->
+                BackupUiGroup(backupConfiguration, backupBusy)
+            },
+        ) { basic, backup ->
+            ExtrasGroup(
+                screenLockEnabled = basic.screenLockEnabled,
+                screenshotProtection = basic.screenshotProtection,
+                enterSendsMessage = basic.enterSendsMessage,
+                lowDataMode = basic.lowDataMode,
+                disappearingMessagesDefault = basic.disappearingMessagesDefault,
+                backupConfiguration = backup.configuration,
+                backupBusy = backup.isBusy,
+            )
         },
     ) { prefs, remote, storage, loading, extras ->
         SettingsUiState(
@@ -130,18 +155,21 @@ class SettingsViewModel @Inject constructor(
             notificationsEnabled = prefs.notificationsEnabled,
             readReceiptsEnabled = prefs.readReceiptsEnabled,
             typingIndicatorsEnabled = remote?.typingIndicatorsEnabled ?: true,
-            lastActiveVisible = remote?.lastSeenVisible ?: true,
+            onlineStatusVisible = remote?.onlineStatusVisible ?: true,
             profilePhotoVisible = remote?.profilePhotoVisible ?: true,
             biometricEnabled = prefs.biometricEnabled,
             screenLockEnabled = extras.screenLockEnabled,
             screenshotProtection = extras.screenshotProtection,
-            vyncModeEnabled = remote?.vyncModeEnabled ?: false,
+            sanchrModeEnabled = remote?.sanchrModeEnabled ?: false,
             mediaAutoDownload = remote?.autoDownloadMedia?.let { if (it) "always" else "wifi" } ?: "wifi",
             lowDataMode = extras.lowDataMode,
             storageUsage = storage,
             enterSendsMessage = extras.enterSendsMessage,
             mediaAutoSave = _mediaAutoSave.value,
             bubbleStyle = _bubbleStyle.value,
+            backupEnabled = extras.backupConfiguration?.isEnabled ?: false,
+            lastBackupAtMillis = extras.backupConfiguration?.lastBackupAtMillis,
+            isBackupBusy = extras.backupBusy,
             disappearingMessagesDefault = extras.disappearingMessagesDefault,
             isLoadingSettings = loading,
         )
@@ -293,10 +321,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setLastActiveVisible(visible: Boolean) {
+    fun setOnlineStatusVisible(visible: Boolean) {
         viewModelScope.launch {
-            userPreferences.setLastActiveVisible(visible)
-            _remoteSettings.update { it?.copy(lastSeenVisible = visible) }
+            userPreferences.setOnlineStatusVisible(visible)
+            _remoteSettings.update { it?.copy(onlineStatusVisible = visible) }
             triggerDebouncedSync()
         }
     }
@@ -328,16 +356,16 @@ class SettingsViewModel @Inject constructor(
         _screenshotProtection.value = enabled
     }
 
-    fun toggleVyncMode(enabled: Boolean, pin: String = "") {
+    fun toggleSanchrMode(enabled: Boolean) {
         viewModelScope.launch {
             try {
-                val updated = settingsServiceClient.toggleVyncMode(
-                    ToggleVyncModeRequest(enabled = enabled, pin = pin),
+                val updated = settingsServiceClient.toggleSanchrMode(
+                    ToggleSanchrModeRequest(enabled = enabled),
                 )
                 _remoteSettings.value = updated
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to toggle VyncMode", e)
-                _events.emit(SettingsEvent.Error("Failed to toggle VyncMode"))
+                Log.e(TAG, "Failed to toggle Sanchr Mode", e)
+                _events.emit(SettingsEvent.Error("Failed to toggle Sanchr Mode"))
             }
         }
     }
@@ -373,6 +401,79 @@ class SettingsViewModel @Inject constructor(
 
     fun setMediaAutoSave(enabled: Boolean) {
         _mediaAutoSave.value = enabled
+    }
+
+    fun beginBackupEnable() {
+        try {
+            _pendingRecoveryKey.value = recoveryKeyManager.generateRecoveryKey()
+        } catch (error: Exception) {
+            viewModelScope.launch {
+                _events.emit(SettingsEvent.Error("Failed to generate recovery key"))
+            }
+        }
+    }
+
+    fun pendingRecoveryKey(): String? = _pendingRecoveryKey.value
+
+    fun cancelPendingBackup() {
+        _pendingRecoveryKey.value = null
+    }
+
+    fun confirmPendingBackup() {
+        val recoveryKey = _pendingRecoveryKey.value ?: return
+        _backupConfiguration.value = recoveryKeyManager.enableBackups(recoveryKey)
+        _pendingRecoveryKey.value = null
+        viewModelScope.launch {
+            runBackupAction {
+                chatBackupManager.backupNow()
+                _backupConfiguration.value = recoveryKeyManager.loadConfiguration()
+            }
+        }
+    }
+
+    fun disableBackup() {
+        recoveryKeyManager.disableBackups()
+        _backupConfiguration.value = null
+    }
+
+    fun revealRecoveryKey() {
+        val recoveryKey = recoveryKeyManager.readRecoveryKey() ?: return
+        viewModelScope.launch {
+            _events.emit(SettingsEvent.RecoveryKeyRevealed(recoveryKey))
+        }
+    }
+
+    fun rotateRecoveryKey() {
+        beginBackupEnable()
+    }
+
+    fun backupNow() {
+        viewModelScope.launch {
+            runBackupAction {
+                chatBackupManager.backupNow()
+                _backupConfiguration.value = recoveryKeyManager.loadConfiguration()
+                _events.emit(SettingsEvent.BackupCompleted)
+            }
+        }
+    }
+
+    fun restoreBackup(recoveryKey: String?) {
+        viewModelScope.launch {
+            runBackupAction {
+                chatBackupManager.restoreLatestBackup(recoveryKey)
+                _backupConfiguration.value = recoveryKeyManager.loadConfiguration()
+                _events.emit(SettingsEvent.BackupRestored)
+            }
+        }
+    }
+
+    fun deleteRemoteBackups() {
+        viewModelScope.launch {
+            runBackupAction {
+                chatBackupManager.deleteRemoteBackups()
+                _backupConfiguration.value = recoveryKeyManager.loadConfiguration()
+            }
+        }
     }
 
     // --- Profile ---
@@ -436,11 +537,26 @@ class SettingsViewModel @Inject constructor(
             Log.e(TAG, "Failed to sync notification prefs to backend", e)
         }
     }
+
+    private suspend fun runBackupAction(block: suspend () -> Unit) {
+        _backupBusy.value = true
+        try {
+            block()
+        } catch (e: Exception) {
+            Log.e(TAG, "Backup action failed", e)
+            _events.emit(SettingsEvent.Error(e.message ?: "Backup action failed"))
+        } finally {
+            _backupBusy.value = false
+        }
+    }
 }
 
 sealed interface SettingsEvent {
     data object ProfileUpdated : SettingsEvent
     data object CacheCleared : SettingsEvent
+    data object BackupCompleted : SettingsEvent
+    data object BackupRestored : SettingsEvent
+    data class RecoveryKeyRevealed(val key: String) : SettingsEvent
     data class Error(val message: String) : SettingsEvent
 }
 
@@ -453,6 +569,21 @@ private data class PrefsGroup(
 )
 
 private data class ExtrasGroup(
+    val screenLockEnabled: Boolean,
+    val screenshotProtection: Boolean,
+    val enterSendsMessage: Boolean,
+    val lowDataMode: Boolean,
+    val disappearingMessagesDefault: String,
+    val backupConfiguration: com.sanchr.core.datastore.BackupConfiguration?,
+    val backupBusy: Boolean,
+)
+
+private data class BackupUiGroup(
+    val configuration: com.sanchr.core.datastore.BackupConfiguration?,
+    val isBusy: Boolean,
+)
+
+private data class BasicExtrasGroup(
     val screenLockEnabled: Boolean,
     val screenshotProtection: Boolean,
     val enterSendsMessage: Boolean,

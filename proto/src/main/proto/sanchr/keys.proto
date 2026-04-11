@@ -1,5 +1,5 @@
 syntax = "proto3";
-package vync.keys;
+package sanchr.keys;
 
 service KeyService {
   rpc UploadKeyBundle(KeyBundle) returns (UploadKeyBundleResponse);
@@ -25,33 +25,36 @@ message KyberPreKey {
   int32 key_id = 1;
   bytes public_key = 2;
   bytes signature = 3;
+  int64 timestamp = 4;
 }
 
 message KeyBundle {
-  bytes identity_key = 1;
+  bytes identity_public_key = 1;
   SignedPreKey signed_pre_key = 2;
   repeated OneTimePreKey one_time_pre_keys = 3;
   int32 registration_id = 4;
-  KyberPreKey kyber_pre_key = 5;
+  int32 device_id = 5;
+  KyberPreKey kyber_pre_key = 6;
 }
 
 message UploadKeyBundleResponse {}
 
 message GetPreKeyBundleRequest {
   string user_id = 1;
-  string device_id = 2;
+  int32 device_id = 2;
 }
 
 message PreKeyBundleResponse {
-  bytes identity_key = 1;
+  bytes identity_public_key = 1;
   SignedPreKey signed_pre_key = 2;
   OneTimePreKey one_time_pre_key = 3;
-  int32 registration_id = 4;
-  KyberPreKey kyber_pre_key = 5;
+  int32 device_id = 4;
+  int32 registration_id = 5;
+  KyberPreKey kyber_pre_key = 6;
 }
 
 message UploadOneTimePreKeysRequest {
-  repeated OneTimePreKey pre_keys = 1;
+  repeated OneTimePreKey keys = 1;
 }
 
 message PreKeyCountResponse {
@@ -65,5 +68,13 @@ message GetUserDevicesRequest {
 }
 
 message GetUserDevicesResponse {
-  repeated int32 device_ids = 1;
+  repeated DeviceInfo devices = 1;
+}
+
+message DeviceInfo {
+  int32 device_id = 1;
+  string platform = 2;
+  bool supports_delivery_ack = 3;
+  bool key_capable = 4;
+  int64 last_active_at = 5;
 }

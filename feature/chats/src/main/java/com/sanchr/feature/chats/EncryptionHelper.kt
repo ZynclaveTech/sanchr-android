@@ -50,10 +50,10 @@ class ChatEncryptionHelper @Inject constructor(
         for (recipientId in recipientIds) {
             val devices = keyServiceClient.getUserDevices(
                 GetUserDevicesRequest(userId = recipientId),
-            ).devices
+            ).devices.filter { it.keyCapable }
 
             for (device in devices) {
-                val deviceIdInt = device.deviceId.toIntOrNull() ?: 1
+                val deviceIdInt = device.deviceId
 
                 // Ensure session exists
                 if (!sessionManager.hasSession(recipientId, deviceIdInt)) {
@@ -68,10 +68,9 @@ class ChatEncryptionHelper @Inject constructor(
 
                 deviceMessages.add(
                     DeviceMessage(
+                        recipientId = recipientId,
                         deviceId = device.deviceId,
-                        registrationId = device.registrationId,
                         cipherText = encryptResult.ciphertext,
-                        messageType = encryptResult.messageType,
                     ),
                 )
             }
@@ -101,10 +100,10 @@ class ChatEncryptionHelper @Inject constructor(
         for (recipientId in recipientIds) {
             val devices = keyServiceClient.getUserDevices(
                 GetUserDevicesRequest(userId = recipientId),
-            ).devices
+            ).devices.filter { it.keyCapable }
 
             for (device in devices) {
-                val deviceIdInt = device.deviceId.toIntOrNull() ?: 1
+                val deviceIdInt = device.deviceId
                 if (!sessionManager.hasSession(recipientId, deviceIdInt)) {
                     sessionManager.establishSession(recipientId, deviceIdInt)
                 }

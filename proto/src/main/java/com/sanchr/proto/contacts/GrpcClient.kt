@@ -5,7 +5,7 @@ import io.grpc.Channel
 
 /**
  * gRPC client interface for the ContactService.
- * Generated stub equivalent for vync.contacts.ContactService.
+ * Generated stub equivalent for sanchr.contacts.ContactService.
  */
 interface ContactServiceClient {
 

@@ -12,8 +12,10 @@ android {
     defaultConfig {
         minSdk = 26
 
-        buildConfigField("String", "GRPC_HOST", "\"api.sanchr.com\"")
-        buildConfigField("int", "GRPC_PORT", "443")
+        buildConfigField("String", "GRPC_CORE_HOST", "\"api-dev.sanchr.com\"")
+        buildConfigField("int", "GRPC_CORE_PORT", "443")
+        buildConfigField("String", "GRPC_CALL_HOST", "\"call-dev.sanchr.com\"")
+        buildConfigField("int", "GRPC_CALL_PORT", "443")
     }
 
     compileOptions {

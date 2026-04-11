@@ -5,7 +5,7 @@ import io.grpc.Channel
 
 /**
  * gRPC client interface for the VaultService.
- * Generated stub equivalent for vync.vault.VaultService.
+ * Generated stub equivalent for sanchr.vault.VaultService.
  */
 interface VaultServiceClient {
 

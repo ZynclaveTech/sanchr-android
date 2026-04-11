@@ -13,6 +13,9 @@ interface MessageRepository {
     /** Observes all non-archived conversations, ordered by most recent. */
     fun observeConversations(): Flow<List<Conversation>>
 
+    /** Observes a single conversation and its lightweight participant metadata. */
+    fun observeConversation(conversationId: String): Flow<Conversation?>
+
     /** Observes messages in a specific conversation. */
     fun observeMessages(conversationId: String): Flow<List<Message>>
 

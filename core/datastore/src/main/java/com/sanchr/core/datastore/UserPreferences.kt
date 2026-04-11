@@ -35,7 +35,7 @@ class UserPreferences @Inject constructor(
         val NOTIFICATION_PREVIEW = stringPreferencesKey("notification_preview") // "always", "contacts", "never"
         val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
-        val LAST_ACTIVE_VISIBLE = booleanPreferencesKey("last_active_visible")
+        val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
         val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
         val TYPING_INDICATORS_ENABLED = booleanPreferencesKey("typing_indicators_enabled")
         val DISAPPEARING_DEFAULT_DURATION = intPreferencesKey("disappearing_default_duration_seconds")
@@ -82,10 +82,12 @@ class UserPreferences @Inject constructor(
         dataStore.edit { it[Keys.TYPING_INDICATORS_ENABLED] = enabled }
     }
 
-    val lastActiveVisible: Flow<Boolean> = dataStore.data.map { it[Keys.LAST_ACTIVE_VISIBLE] ?: true }
+    val onlineStatusVisible: Flow<Boolean> = dataStore.data.map {
+        it[Keys.ONLINE_STATUS_VISIBLE] ?: true
+    }
 
-    suspend fun setLastActiveVisible(visible: Boolean) {
-        dataStore.edit { it[Keys.LAST_ACTIVE_VISIBLE] = visible }
+    suspend fun setOnlineStatusVisible(visible: Boolean) {
+        dataStore.edit { it[Keys.ONLINE_STATUS_VISIBLE] = visible }
     }
 
     // --- Security ---

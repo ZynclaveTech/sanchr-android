@@ -1,21 +1,27 @@
 package com.sanchr.core.crypto
 
 import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
+import com.sanchr.core.crypto.store.SanchrKyberPreKeyStore
 import com.sanchr.core.crypto.store.SanchrPreKeyStore
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import com.sanchr.core.crypto.store.SanchrSignedPreKeyStore
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.proto.keys.GetPreKeyBundleRequest
 import com.sanchr.proto.keys.GetPreKeyCountRequest
 import com.sanchr.proto.keys.KeyBundle
 import com.sanchr.proto.keys.KeyServiceClient
+import com.sanchr.proto.keys.KyberPreKey
 import com.sanchr.proto.keys.OneTimePreKey
 import com.sanchr.proto.keys.UploadOneTimePreKeysRequest
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.ecc.ECPublicKey
+import org.signal.libsignal.protocol.kem.KEMKeyPair
+import org.signal.libsignal.protocol.kem.KEMKeyType
 import org.signal.libsignal.protocol.kem.KEMPublicKey
 import org.signal.libsignal.protocol.state.PreKeyBundle
+import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord
 import org.signal.libsignal.protocol.util.KeyHelper
@@ -40,6 +46,8 @@ class SignalKeyManager @Inject constructor(
     private val identityKeyStore: SanchrIdentityKeyStore,
     private val preKeyStore: SanchrPreKeyStore,
     private val signedPreKeyStore: SanchrSignedPreKeyStore,
+    private val kyberPreKeyStore: SanchrKyberPreKeyStore,
+    private val sessionManager: SessionManager,
     private val keyServiceClient: KeyServiceClient,
 ) {
 
@@ -125,6 +133,25 @@ class SignalKeyManager @Inject constructor(
         return records
     }
 
+    fun generateKyberPreKey(identityKeyPair: IdentityKeyPair): KyberPreKeyRecord {
+        val kyberPreKeyId = (System.currentTimeMillis() and 0x00FF_FFFFL).toInt()
+        val keyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
+        val signature = identityKeyPair.privateKey.calculateSignature(
+            keyPair.publicKey.serialize(),
+        )
+        val timestamp = System.currentTimeMillis()
+
+        val record = KyberPreKeyRecord(
+            kyberPreKeyId,
+            timestamp,
+            keyPair,
+            signature,
+        )
+
+        kyberPreKeyStore.storeKyberPreKey(kyberPreKeyId, record)
+        return record
+    }
+
     // ------------------------------------------------------------------
     // Server Sync
     // ------------------------------------------------------------------
@@ -141,6 +168,7 @@ class SignalKeyManager @Inject constructor(
         val registrationId = identityKeyStore.getLocalRegistrationId()
 
         val signedPreKey = generateSignedPreKey(identityKeyPair)
+        val kyberPreKey = generateKyberPreKey(identityKeyPair)
         val oneTimePreKeys = generateOneTimePreKeys(
             startId = preKeyStore.getNextPreKeyId(),
         )
@@ -160,10 +188,17 @@ class SignalKeyManager @Inject constructor(
         }
 
         val bundle = KeyBundle(
-            identityKey = identityKeyPair.publicKey.serialize(),
+            identityPublicKey = identityKeyPair.publicKey.serialize(),
             signedPreKey = signedPreKeyProto,
             oneTimePreKeys = oneTimePreKeyProtos,
             registrationId = registrationId,
+            deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
+            kyberPreKey = KyberPreKey(
+                keyId = kyberPreKey.id,
+                publicKey = kyberPreKey.keyPair.publicKey.serialize(),
+                signature = kyberPreKey.signature,
+                timestamp = kyberPreKey.timestamp,
+            ),
         )
 
         keyServiceClient.uploadKeyBundle(bundle)
@@ -185,7 +220,7 @@ class SignalKeyManager @Inject constructor(
         }
 
         keyServiceClient.uploadOneTimePreKeys(
-            UploadOneTimePreKeysRequest(preKeys = preKeyProtos),
+            UploadOneTimePreKeysRequest(keys = preKeyProtos),
         )
     }
 
@@ -218,11 +253,11 @@ class SignalKeyManager @Inject constructor(
         val response = keyServiceClient.getPreKeyBundle(
             GetPreKeyBundleRequest(
                 userId = userId,
-                deviceId = deviceId.toString(),
+                deviceId = deviceId,
             ),
         )
 
-        val identityKey = IdentityKey(response.identityKey)
+        val identityKey = IdentityKey(response.identityPublicKey)
         val signedPreKey = response.signedPreKey
             ?: throw IllegalStateException("Server returned no signed pre-key for $userId:$deviceId")
 
@@ -266,6 +301,7 @@ class SignalKeyManager @Inject constructor(
 
         val identityKeyPair = identityKeyStore.getIdentityKeyPair()
         val newSignedPreKey = generateSignedPreKey(identityKeyPair)
+        val newKyberPreKey = generateKyberPreKey(identityKeyPair)
 
         // Upload updated bundle with new signed pre-key
         val signedPreKeyProto = com.sanchr.proto.keys.SignedPreKey(
@@ -276,9 +312,16 @@ class SignalKeyManager @Inject constructor(
         )
 
         val bundle = KeyBundle(
-            identityKey = identityKeyPair.publicKey.serialize(),
+            identityPublicKey = identityKeyPair.publicKey.serialize(),
             signedPreKey = signedPreKeyProto,
             registrationId = identityKeyStore.getLocalRegistrationId(),
+            deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
+            kyberPreKey = KyberPreKey(
+                keyId = newKyberPreKey.id,
+                publicKey = newKyberPreKey.keyPair.publicKey.serialize(),
+                signature = newKyberPreKey.signature,
+                timestamp = newKyberPreKey.timestamp,
+            ),
         )
 
         keyServiceClient.uploadKeyBundle(bundle)
@@ -295,4 +338,10 @@ class SignalKeyManager @Inject constructor(
      * Returns true if the local identity key pair has been generated.
      */
     fun hasIdentity(): Boolean = identityKeyStore.hasIdentityKeyPair()
+
+    suspend fun hasCompleteServerBundle(userId: String, deviceId: Int): Boolean {
+        return keyServiceClient.getUserDevices(
+            com.sanchr.proto.keys.GetUserDevicesRequest(userId = userId),
+        ).devices.any { it.deviceId == deviceId && it.keyCapable }
+    }
 }

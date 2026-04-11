@@ -5,7 +5,7 @@ import io.grpc.Channel
 
 /**
  * gRPC client interface for the SettingsService.
- * Generated stub equivalent for vync.settings.SettingsService.
+ * Generated stub equivalent for sanchr.settings.SettingsService.
  */
 interface SettingsServiceClient {
 
@@ -15,7 +15,7 @@ interface SettingsServiceClient {
 
     suspend fun updateProfile(request: UpdateProfileRequest): ProfileResponse
 
-    suspend fun toggleVyncMode(request: ToggleVyncModeRequest): UserSettings
+    suspend fun toggleSanchrMode(request: ToggleSanchrModeRequest): UserSettings
 
     suspend fun getStorageUsage(request: GetStorageUsageRequest): StorageUsageResponse
 }
@@ -41,7 +41,7 @@ class SettingsServiceGrpcClient(
         throw NotImplementedError("Awaiting protobuf codegen")
     }
 
-    override suspend fun toggleVyncMode(request: ToggleVyncModeRequest): UserSettings {
+    override suspend fun toggleSanchrMode(request: ToggleSanchrModeRequest): UserSettings {
         throw NotImplementedError("Awaiting protobuf codegen")
     }
 

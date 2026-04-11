@@ -22,11 +22,10 @@ data class UserSettings(
     @SerialName("show_previews") val showPreviews: Boolean = true,
     @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean = true,
     @SerialName("typing_indicators_enabled") val typingIndicatorsEnabled: Boolean = true,
-    @SerialName("last_seen_visible") val lastSeenVisible: Boolean = true,
+    @SerialName("online_status_visible") val onlineStatusVisible: Boolean = true,
     @SerialName("profile_photo_visible") val profilePhotoVisible: Boolean = true,
     @SerialName("about_visible") val aboutVisible: Boolean = true,
-    @SerialName("vync_mode_enabled") val vyncModeEnabled: Boolean = false,
-    @SerialName("vync_mode_pin") val vyncModePin: String = "",
+    @SerialName("sanchr_mode_enabled") val sanchrModeEnabled: Boolean = false,
     @SerialName("auto_download_media") val autoDownloadMedia: Boolean = true,
     @SerialName("media_quality") val mediaQuality: String = "standard",
     val theme: String = "system",
@@ -54,9 +53,8 @@ data class ProfileResponse(
 )
 
 @Serializable
-data class ToggleVyncModeRequest(
+data class ToggleSanchrModeRequest(
     val enabled: Boolean = false,
-    val pin: String = "",
 )
 
 @Serializable

@@ -1,21 +1,25 @@
 package com.sanchr.feature.chats
 
+import android.text.format.DateUtils
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.SendMessageUseCase
-import com.sanchr.proto.messaging.EncryptedEnvelope
-import com.sanchr.proto.messaging.MessagingServiceClient
+import com.sanchr.proto.messaging.PresenceStatus
+import com.sanchr.proto.messaging.PresenceUpdate
+import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,13 +29,14 @@ class ChatDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val sendMessageUseCase: SendMessageUseCase,
-    private val messagingServiceClient: MessagingServiceClient,
     private val sessionManager: SessionManager,
-    private val encryptionHelper: ChatEncryptionHelper,
+    private val userPreferences: UserPreferences,
+    private val realtimeManager: RealtimeManager,
     private val notificationHandler: NotificationHandler,
 ) : ViewModel() {
 
     private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
+    private var trackedPeerId: String? = null
 
     private val _uiState = MutableStateFlow(
         ChatDetailUiState(
@@ -41,21 +46,68 @@ class ChatDetailViewModel @Inject constructor(
     val uiState: StateFlow<ChatDetailUiState> = _uiState.asStateFlow()
 
     init {
+        observeConversation()
         observeMessages()
+        observeTyping()
+        observePresence()
         markAsRead()
         clearNotificationsForConversation()
-        connectMessageStream()
+    }
+
+    private fun observeConversation() {
+        viewModelScope.launch {
+            messageRepository.observeConversation(conversationId).collect { conversation ->
+                val nextPeerId = conversation
+                    ?.participants
+                    ?.firstOrNull { it.id != _uiState.value.currentUserId }
+                    ?.id
+
+                if (trackedPeerId != nextPeerId) {
+                    trackedPeerId?.let(realtimeManager::untrackPeer)
+                    nextPeerId?.let(realtimeManager::trackPeer)
+                    trackedPeerId = nextPeerId
+                }
+
+                _uiState.update { state ->
+                    state.copy(conversation = conversation)
+                }
+            }
+        }
     }
 
     private fun observeMessages() {
         viewModelScope.launch {
             messageRepository.observeMessages(conversationId).collect { messages ->
-                _uiState.update {
-                    it.copy(
-                        messages = messages.map { msg -> msg.toUiModel() },
+                _uiState.update { state ->
+                    state.copy(
+                        messages = messages.map { message -> message.toUiModel() },
                         isLoading = false,
                     )
                 }
+            }
+        }
+    }
+
+    private fun observeTyping() {
+        viewModelScope.launch {
+            realtimeManager.typingCache.collect { cache ->
+                _uiState.update { state ->
+                    state.copy(peerTyping = cache[conversationId]?.isTyping == true)
+                }
+            }
+        }
+    }
+
+    private fun observePresence() {
+        viewModelScope.launch {
+            combine(
+                realtimeManager.presenceCache,
+                userPreferences.onlineStatusVisible,
+            ) { cache, onlineStatusVisible ->
+                cache to onlineStatusVisible
+            }.collect { (cache, onlineStatusVisible) ->
+                val peerUpdate = trackedPeerId?.let(cache::get)
+                applyPresence(peerUpdate, onlineStatusVisible)
             }
         }
     }
@@ -66,58 +118,15 @@ class ChatDetailViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Clears any pending system notifications for this conversation and
-     * updates the summary badge count. Called when the user opens the chat.
-     */
     private fun clearNotificationsForConversation() {
         notificationHandler.cancelNotificationsForConversation(conversationId)
     }
 
-    /**
-     * Placeholder for bidirectional streaming connection.
-     * Listens for incoming server events (typing indicators, receipts, presence).
-     */
-    private fun connectMessageStream() {
-        // TODO: Set up bidi stream with messagingServiceClient.messageStream()
-        // val clientEvents = MutableSharedFlow<ClientEvent>()
-        // val serverEvents = messagingServiceClient.messageStream(clientEvents)
-        // viewModelScope.launch {
-        //     serverEvents.collect { event ->
-        //         when (event) {
-        //             is ServerEvent.Typing -> _uiState.update { it.copy(peerTyping = event.indicator?.isTyping == true) }
-        //             is ServerEvent.Receipt -> { /* update message statuses */ }
-        //             is ServerEvent.Presence -> { /* update online status */ }
-        //             is ServerEvent.Message -> event.envelope?.let { decryptIncomingMessage(it) }
-        //             is ServerEvent.PreKeyCountLow -> replenishPreKeys()
-        //         }
-        //     }
-        // }
-    }
-
     fun onInputTextChanged(text: String) {
         _uiState.update { it.copy(inputText = text) }
-
-        // Send typing indicator
-        viewModelScope.launch {
-            try {
-                // TODO: Emit typing event through the bidi stream
-                // clientEvents.emit(ClientEvent.Typing(conversationId = conversationId, isTyping = text.isNotBlank()))
-            } catch (_: Exception) {
-                // Typing indicator failure is non-critical
-            }
-        }
+        realtimeManager.sendTypingIndicator(conversationId, text.isNotBlank())
     }
 
-    /**
-     * Sends an encrypted message to the conversation.
-     *
-     * Flow:
-     * 1. Get recipient IDs from the conversation participants, excluding self.
-     * 2. For each recipient: check session -> establish via X3DH if needed -> encrypt.
-     * 3. Build list of DeviceMessage with per-device ciphertexts.
-     * 4. Send via MessagingService with encrypted DeviceMessages.
-     */
     fun sendMessage() {
         val content = _uiState.value.inputText.trim()
         if (content.isBlank()) return
@@ -125,87 +134,19 @@ class ChatDetailViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = "", isSending = true) }
 
         viewModelScope.launch {
-            try {
-                // Get recipient IDs from conversation participants, excluding self
-                val currentUserId = sessionManager.getUserId() ?: ""
-                val conversation = _uiState.value.conversation
-                val recipientIds = conversation?.participants
-                    ?.map { it.id }
-                    ?.filter { it != currentUserId }
-                    ?: emptyList()
-
-                if (recipientIds.isNotEmpty()) {
-                    // Encrypt for all recipient devices
-                    val deviceMessages = encryptionHelper.encryptMessage(
-                        plaintext = content,
-                        recipientIds = recipientIds,
-                    )
-
-                    // Send encrypted message via gRPC
-                    val request = com.sanchr.proto.messaging.SendMessageRequest(
-                        conversationId = conversationId,
-                        recipientUserId = recipientIds.firstOrNull() ?: "",
-                        contentType = "text",
-                        messages = deviceMessages,
-                        clientMessageId = java.util.UUID.randomUUID().toString(),
-                        timestamp = System.currentTimeMillis(),
-                    )
-                    messagingServiceClient.sendMessage(request)
+            when (val result = sendMessageUseCase(conversationId, content)) {
+                is Result.Success -> {
+                    _uiState.update { it.copy(isSending = false) }
                 }
-
-                // Also persist locally via use case for optimistic UI
-                when (val result = sendMessageUseCase(conversationId, content)) {
-                    is Result.Success -> {
-                        _uiState.update { it.copy(isSending = false) }
+                is Result.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isSending = false,
+                            error = result.exception.message ?: "Failed to send message",
+                        )
                     }
-                    is Result.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isSending = false,
-                                error = "Failed to send message",
-                            )
-                        }
-                    }
-                    is Result.Loading -> { /* no-op */ }
                 }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isSending = false,
-                        error = e.message ?: "Encryption failed",
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * Decrypts an incoming encrypted envelope and processes the plaintext message.
-     * Called when the message stream delivers a new [ServerEvent.Message].
-     */
-    fun decryptIncomingMessage(envelope: EncryptedEnvelope) {
-        viewModelScope.launch {
-            try {
-                val decrypted = encryptionHelper.decryptEnvelope(envelope)
-                val plaintextString = String(decrypted.plaintext, Charsets.UTF_8)
-
-                // The decrypted message should be persisted via the repository.
-                // The observeMessages() flow will pick up the change automatically.
-                messageRepository.insertDecryptedMessage(
-                    conversationId = decrypted.conversationId,
-                    messageId = decrypted.messageId,
-                    senderId = decrypted.senderId,
-                    content = plaintextString,
-                    contentType = decrypted.contentType,
-                    timestamp = decrypted.serverTimestamp,
-                )
-
-                // Check if pre-keys need replenishment after receiving a PreKey message
-                encryptionHelper.checkPreKeyReplenishment()
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = "Failed to decrypt message: ${e.message}")
-                }
+                is Result.Loading -> Unit
             }
         }
     }
@@ -233,6 +174,68 @@ class ChatDetailViewModel @Inject constructor(
 
     fun dismissError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    override fun onCleared() {
+        trackedPeerId?.let(realtimeManager::untrackPeer)
+        super.onCleared()
+    }
+
+    private fun applyPresence(update: PresenceUpdate?, onlineStatusVisible: Boolean) {
+        if (!onlineStatusVisible) {
+            _uiState.update { state ->
+                state.copy(
+                    isPeerOnline = false,
+                    peerPresenceHidden = true,
+                    peerPresenceText = null,
+                )
+            }
+            return
+        }
+
+        when (update?.statusCode ?: PresenceStatus.PRESENCE_STATUS_UNSPECIFIED) {
+            PresenceStatus.ONLINE -> {
+                _uiState.update { state ->
+                    state.copy(
+                        isPeerOnline = true,
+                        peerPresenceHidden = false,
+                        peerPresenceText = "Online",
+                    )
+                }
+            }
+            PresenceStatus.HIDDEN -> {
+                _uiState.update { state ->
+                    state.copy(
+                        isPeerOnline = false,
+                        peerPresenceHidden = true,
+                        peerPresenceText = null,
+                    )
+                }
+            }
+            PresenceStatus.OFFLINE,
+            PresenceStatus.PRESENCE_STATUS_UNSPECIFIED -> {
+                val label = update
+                    ?.lastSeen
+                    ?.takeIf { it > 0L }
+                    ?.let(::formatLastSeen)
+                _uiState.update { state ->
+                    state.copy(
+                        isPeerOnline = false,
+                        peerPresenceHidden = false,
+                        peerPresenceText = label,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun formatLastSeen(lastSeenMillis: Long): String {
+        val relative = DateUtils.getRelativeTimeSpanString(
+            lastSeenMillis,
+            System.currentTimeMillis(),
+            DateUtils.MINUTE_IN_MILLIS,
+        )
+        return "Last seen $relative"
     }
 
     private fun Message.toUiModel(): MessageUiModel {

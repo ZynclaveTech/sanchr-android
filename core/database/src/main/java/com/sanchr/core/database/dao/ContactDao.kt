@@ -44,6 +44,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE phone_number = :phoneNumber")
     suspend fun getContactByPhoneNumber(phoneNumber: String): ContactEntity?
 
+    @Query("SELECT * FROM contacts ORDER BY display_name ASC")
+    suspend fun getAllContacts(): List<ContactEntity>
+
     @Query(
         """
         SELECT * FROM contacts
@@ -68,4 +71,7 @@ interface ContactDao {
 
     @Query("DELETE FROM contacts WHERE id = :contactId")
     suspend fun deleteContact(contactId: String)
+
+    @Query("DELETE FROM contacts")
+    suspend fun deleteAllContacts()
 }

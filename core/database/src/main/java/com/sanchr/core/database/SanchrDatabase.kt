@@ -2,16 +2,20 @@ package com.sanchr.core.database
 
 import android.content.Context
 import androidx.room.Database
+import androidx.room.migration.Migration
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.database.entity.PendingMessageAckEntity
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,8 +28,9 @@ import javax.inject.Singleton
         MessageEntity::class,
         ConversationEntity::class,
         ContactEntity::class,
+        PendingMessageAckEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -33,6 +38,7 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun conversationDao(): ConversationDao
     abstract fun contactDao(): ContactDao
+    abstract fun pendingMessageAckDao(): PendingMessageAckDao
 }
 
 /**
@@ -62,6 +68,26 @@ class Converters {
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
+    private val migration1To2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `pending_message_acks` (
+                    `conversation_id` TEXT NOT NULL,
+                    `message_id` TEXT NOT NULL,
+                    `created_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`conversation_id`, `message_id`)
+                )
+                """.trimIndent(),
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS `index_pending_message_acks_created_at`
+                ON `pending_message_acks` (`created_at`)
+                """.trimIndent(),
+            )
+        }
+    }
 
     @Provides
     @Singleton
@@ -75,7 +101,7 @@ object DatabaseModule {
         )
             // TODO: Add SQLCipher for encrypted database storage
             // .openHelperFactory(SupportFactory(passphrase))
-            .fallbackToDestructiveMigration()
+            .addMigrations(migration1To2)
             .build()
     }
 
@@ -87,4 +113,8 @@ object DatabaseModule {
 
     @Provides
     fun provideContactDao(database: SanchrDatabase): ContactDao = database.contactDao()
+
+    @Provides
+    fun providePendingMessageAckDao(database: SanchrDatabase): PendingMessageAckDao =
+        database.pendingMessageAckDao()
 }

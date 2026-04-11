@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
 }
@@ -31,6 +32,7 @@ dependencies {
     implementation(projects.core.datastore)
     implementation(projects.core.crypto)
     implementation(projects.core.notifications)
+    implementation(projects.domain.messaging)
     implementation(projects.proto)
 
     // Hilt
@@ -43,10 +45,13 @@ dependencies {
 
     // App Startup
     implementation(libs.startup.runtime)
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
 
     // gRPC (for StatusException)
     implementation(libs.grpc.stub)
+    implementation(libs.room.ktx)
 }

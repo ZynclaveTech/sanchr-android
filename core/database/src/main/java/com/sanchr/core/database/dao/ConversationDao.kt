@@ -35,6 +35,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :conversationId")
     fun observeConversation(conversationId: String): Flow<ConversationEntity?>
 
+    @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
+    suspend fun getAllConversations(): List<ConversationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: ConversationEntity)
 
@@ -58,4 +61,7 @@ interface ConversationDao {
 
     @Query("DELETE FROM conversations WHERE id = :conversationId")
     suspend fun deleteConversation(conversationId: String)
+
+    @Query("DELETE FROM conversations")
+    suspend fun deleteAllConversations()
 }

@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.sync.SyncWorker
+import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -17,6 +18,9 @@ class SanchrApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var notificationHandler: NotificationHandler
+
+    @Inject
+    lateinit var realtimeManager: RealtimeManager
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -30,6 +34,7 @@ class SanchrApp : Application(), Configuration.Provider {
         // Create notification channels as early as possible so they are available
         // before any push notification arrives.
         notificationHandler.createNotificationChannels()
+        realtimeManager.initialize()
 
         // Schedule periodic background sync (every 15 minutes).
         // This is a fallback; SyncInitializer via App Startup also schedules

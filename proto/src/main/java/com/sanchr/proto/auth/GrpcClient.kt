@@ -5,7 +5,7 @@ import io.grpc.Channel
 
 /**
  * gRPC client interface for the AuthService.
- * Generated stub equivalent for vync.auth.AuthService.
+ * Generated stub equivalent for sanchr.auth.AuthService.
  */
 interface AuthServiceClient {
 
@@ -18,8 +18,6 @@ interface AuthServiceClient {
     suspend fun refreshToken(request: RefreshTokenRequest): AuthResponse
 
     suspend fun logout(request: LogoutRequest): LogoutResponse
-
-    suspend fun changePassword(request: ChangePasswordRequest): ChangePasswordResponse
 }
 
 /**
@@ -49,10 +47,6 @@ class AuthServiceGrpcClient(
     }
 
     override suspend fun logout(request: LogoutRequest): LogoutResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
-
-    override suspend fun changePassword(request: ChangePasswordRequest): ChangePasswordResponse {
         throw NotImplementedError("Awaiting protobuf codegen")
     }
 }

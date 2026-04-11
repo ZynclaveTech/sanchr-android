@@ -1,5 +1,6 @@
 package com.sanchr.feature.auth
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.datastore.SessionManager
@@ -116,8 +117,10 @@ class LoginViewModel @Inject constructor(
                 val request = RegisterRequest(
                     phoneNumber = fullNumber,
                     device = DeviceInfo(
-                        deviceId = deviceId,
-                        platform = "ANDROID",
+                        deviceName = Build.MODEL ?: deviceId.ifEmpty { "Android" },
+                        platform = "android",
+                        installationId = sessionManager.getOrCreateInstallationId(),
+                        supportsDeliveryAck = true,
                     ),
                 )
                 val response = authServiceClient.register(request)
@@ -130,6 +133,9 @@ class LoginViewModel @Inject constructor(
                         userId = response.user?.id ?: "",
                         expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1000),
                     )
+                    if (response.deviceId > 0) {
+                        sessionManager.saveDeviceId(response.deviceId.toString())
+                    }
 
                     // Upload FCM token to backend now that we have a valid session
                     uploadPushToken()

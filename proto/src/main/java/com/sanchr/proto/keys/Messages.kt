@@ -38,6 +38,7 @@ data class KyberPreKey(
     @SerialName("key_id") val keyId: Int = 0,
     @SerialName("public_key") val publicKey: ByteArray = ByteArray(0),
     val signature: ByteArray = ByteArray(0),
+    val timestamp: Long = 0L,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -50,40 +51,38 @@ data class KyberPreKey(
 
 @Serializable
 data class KeyBundle(
-    @SerialName("identity_key") val identityKey: ByteArray = ByteArray(0),
+    @SerialName("identity_public_key") val identityPublicKey: ByteArray = ByteArray(0),
     @SerialName("signed_pre_key") val signedPreKey: SignedPreKey? = null,
     @SerialName("one_time_pre_keys") val oneTimePreKeys: List<OneTimePreKey> = emptyList(),
     @SerialName("registration_id") val registrationId: Int = 0,
-    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("device_id") val deviceId: Int = 0,
     @SerialName("kyber_pre_key") val kyberPreKey: KyberPreKey? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is KeyBundle) return false
-        return deviceId == other.deviceId && identityKey.contentEquals(other.identityKey)
+        return deviceId == other.deviceId && identityPublicKey.contentEquals(other.identityPublicKey)
     }
 
     override fun hashCode(): Int = deviceId.hashCode()
 }
 
 @Serializable
-data class UploadKeyBundleResponse(
-    val success: Boolean = false,
-)
+class UploadKeyBundleResponse
 
 @Serializable
 data class GetPreKeyBundleRequest(
     @SerialName("user_id") val userId: String = "",
-    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("device_id") val deviceId: Int = 0,
 )
 
 @Serializable
 data class PreKeyBundleResponse(
-    @SerialName("identity_key") val identityKey: ByteArray = ByteArray(0),
+    @SerialName("identity_public_key") val identityPublicKey: ByteArray = ByteArray(0),
     @SerialName("signed_pre_key") val signedPreKey: SignedPreKey? = null,
     @SerialName("one_time_pre_key") val oneTimePreKey: OneTimePreKey? = null,
     @SerialName("registration_id") val registrationId: Int = 0,
-    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("device_id") val deviceId: Int = 0,
     @SerialName("kyber_pre_key") val kyberPreKey: KyberPreKey? = null,
 ) {
     override fun equals(other: Any?): Boolean {
@@ -97,8 +96,7 @@ data class PreKeyBundleResponse(
 
 @Serializable
 data class UploadOneTimePreKeysRequest(
-    @SerialName("pre_keys") val preKeys: List<OneTimePreKey> = emptyList(),
-    @SerialName("device_id") val deviceId: String = "",
+    @SerialName("keys") val keys: List<OneTimePreKey> = emptyList(),
 )
 
 @Serializable
@@ -107,9 +105,7 @@ data class PreKeyCountResponse(
 )
 
 @Serializable
-data class GetPreKeyCountRequest(
-    @SerialName("device_id") val deviceId: String = "",
-)
+class GetPreKeyCountRequest
 
 @Serializable
 data class GetUserDevicesRequest(
@@ -123,8 +119,9 @@ data class GetUserDevicesResponse(
 
 @Serializable
 data class DeviceInfo(
-    @SerialName("device_id") val deviceId: String = "",
-    @SerialName("registration_id") val registrationId: Int = 0,
+    @SerialName("device_id") val deviceId: Int = 0,
     val platform: String = "",
-    @SerialName("last_active") val lastActive: Long = 0L,
+    @SerialName("supports_delivery_ack") val supportsDeliveryAck: Boolean = false,
+    @SerialName("key_capable") val keyCapable: Boolean = false,
+    @SerialName("last_active_at") val lastActiveAt: Long = 0L,
 )

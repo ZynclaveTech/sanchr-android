@@ -174,21 +174,21 @@ class SignalSessionManager @Inject constructor(
      * @return A [DecryptedMessage] containing plaintext and metadata.
      */
     suspend fun decryptEnvelope(envelope: EncryptedEnvelope): DecryptedMessage {
-        val senderDeviceId = envelope.sourceDeviceId.toIntOrNull() ?: 1
+        val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
         val plaintext = decrypt(
             ciphertext = envelope.cipherText,
-            senderId = envelope.sourceUserId,
+            senderId = envelope.senderId,
             senderDevice = senderDeviceId,
         )
 
         return DecryptedMessage(
             conversationId = envelope.conversationId,
-            messageId = envelope.serverMessageId,
-            senderId = envelope.sourceUserId,
+            messageId = envelope.messageId,
+            senderId = envelope.senderId,
             senderDevice = senderDeviceId,
             plaintext = plaintext,
             contentType = envelope.contentType,
-            serverTimestamp = envelope.timestamp,
+            serverTimestamp = envelope.serverTimestamp,
         )
     }
 

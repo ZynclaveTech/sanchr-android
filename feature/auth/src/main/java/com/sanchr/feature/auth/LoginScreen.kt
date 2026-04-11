@@ -93,7 +93,7 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
 
-            // --- VyncChat logo: purple chat bubble + shield icon ---
+            // --- Sanchr logo: purple chat bubble + shield icon ---
             Box(
                 modifier = Modifier
                     .size(80.dp)
@@ -113,7 +113,7 @@ fun LoginScreen(
                 )
                 Icon(
                     imageVector = Icons.Filled.Shield,
-                    contentDescription = "VyncChat logo",
+                    contentDescription = "Sanchr logo",
                     tint = SanchrWhite.copy(alpha = 0.6f),
                     modifier = Modifier
                         .size(20.dp)
@@ -126,7 +126,7 @@ fun LoginScreen(
 
             // --- Title ---
             Text(
-                text = "Welcome to VyncChat",
+                text = "Welcome to Sanchr",
                 style = MaterialTheme.typography.headlineMedium,
                 color = SanchrGray900,
                 fontWeight = FontWeight.Bold,
@@ -225,7 +225,7 @@ fun LoginScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Your messages and calls are secured with Signal Protocol encryption. Not even VyncChat can read them.",
+                            text = "Your messages and calls are secured with Signal Protocol encryption. Not even Sanchr can read them.",
                             style = MaterialTheme.typography.bodySmall,
                             color = SanchrIndigo500,
                         )

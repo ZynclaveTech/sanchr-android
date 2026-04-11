@@ -190,7 +190,7 @@ fun SettingsScreen(
             SettingsItem(
                 icon = Icons.Filled.Security,
                 title = "Security",
-                subtitle = "App lock, biometrics, VyncMode",
+                subtitle = "App lock, biometrics, Sanchr Mode",
                 onClick = onNavigateToSecurity,
             )
 

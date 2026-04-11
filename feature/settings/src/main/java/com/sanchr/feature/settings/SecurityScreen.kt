@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -150,9 +149,9 @@ fun SecurityScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))
 
-            // VyncMode
+            // Sanchr Mode
             Text(
-                text = "VyncMode",
+                text = "Sanchr Mode",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -167,39 +166,21 @@ fun SecurityScreen(
                         .padding(SanchrTheme.spacing.default),
                 ) {
                     Text(
-                        text = "VyncMode hides sensitive conversations and vault items behind a secondary PIN. When enabled, certain content will only be visible after entering the VyncMode PIN.",
+                        text = "Sanchr Mode hides sensitive conversations and vault items when enabled.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
                     SettingsToggleRow(
-                        title = "Enable VyncMode",
+                        title = "Enable Sanchr Mode",
                         subtitle = null,
-                        checked = uiState.vyncModeEnabled,
+                        checked = uiState.sanchrModeEnabled,
                         onCheckedChange = { enabled ->
-                            viewModel.toggleVyncMode(enabled)
+                            viewModel.toggleSanchrMode(enabled)
                         },
                     )
                 }
             }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))
-
-            // Change Password
-            Text(
-                text = "Account Security",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-
-            SanchrButton(
-                text = "Change Password",
-                onClick = { /* Navigate to change password flow */ },
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
         }

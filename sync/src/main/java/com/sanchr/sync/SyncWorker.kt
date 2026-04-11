@@ -14,22 +14,30 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.sanchr.core.crypto.SignalKeyManager
+import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ConversationEntity
+import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.RefreshTokenRequest
 import com.sanchr.proto.messaging.GetConversationsRequest
+import com.sanchr.proto.messaging.AckMessagesRequest
+import com.sanchr.proto.messaging.AckedMessageRef
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
+import com.sanchr.sync.backup.ChatBackupManager
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import io.grpc.StatusException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.toList
+import org.json.JSONArray
 import java.util.concurrent.TimeUnit
 
 /**
@@ -52,10 +60,13 @@ class SyncWorker @AssistedInject constructor(
     private val messagingClient: MessagingServiceClient,
     private val authClient: AuthServiceClient,
     private val keyManager: SignalKeyManager,
+    private val signalSessionManager: SignalSessionManager,
     private val sessionManager: SessionManager,
     private val notificationHandler: NotificationHandler,
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
+    private val pendingMessageAckDao: PendingMessageAckDao,
+    private val chatBackupManager: ChatBackupManager,
     private val syncState: SyncState,
 ) : CoroutineWorker(appContext, params) {
 
@@ -170,6 +181,8 @@ class SyncWorker @AssistedInject constructor(
                 cleanupDeferred.await()
             }
 
+            chatBackupManager.performScheduledBackupIfNeeded()
+
             // Phase 6: Update notification badge
             updateBadge(newMessageCount)
 
@@ -261,19 +274,71 @@ class SyncWorker @AssistedInject constructor(
 
         val envelopes = messagingClient.syncMessages(
             SyncRequest(
-                lastSyncTimestamp = lastSync,
-                limit = 500,
+                sinceTimestamp = lastSync,
             ),
         ).toList()
 
-        if (envelopes.isEmpty()) return 0
+        if (envelopes.isEmpty()) {
+            flushPendingAcks()
+            return 0
+        }
 
-        // Each envelope is an encrypted message that should be decrypted and
-        // stored. For now we record the raw envelopes as message entities.
-        // Full decryption pipeline is handled by the domain layer; this worker
-        // simply triggers the server fetch so data is available locally.
-        Log.d(TAG, "Synced ${envelopes.size} message envelope(s)")
-        return envelopes.size
+        var persistedCount = 0
+        for (envelope in envelopes) {
+            try {
+                val decrypted = signalSessionManager.decryptEnvelope(envelope)
+                val plaintext = String(decrypted.plaintext, Charsets.UTF_8)
+
+                messageDao.insertMessage(
+                    MessageEntity(
+                        id = decrypted.messageId,
+                        conversationId = decrypted.conversationId,
+                        senderId = decrypted.senderId,
+                        contentType = decrypted.contentType,
+                        contentBody = plaintext,
+                        status = "DELIVERED",
+                        timestamp = decrypted.serverTimestamp,
+                    ),
+                )
+                pendingMessageAckDao.insertAck(
+                    PendingMessageAckEntity(
+                        conversationId = decrypted.conversationId,
+                        messageId = decrypted.messageId,
+                        createdAt = System.currentTimeMillis(),
+                    ),
+                )
+                persistedCount += 1
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to decrypt synced envelope", e)
+            }
+        }
+
+        flushPendingAcks()
+        Log.d(TAG, "Synced and persisted $persistedCount message envelope(s)")
+        return persistedCount
+    }
+
+    private suspend fun flushPendingAcks() {
+        val pendingAcks = pendingMessageAckDao.getPendingAcks(limit = 100)
+        if (pendingAcks.isEmpty()) return
+
+        messagingClient.ackMessages(
+            AckMessagesRequest(
+                messages = pendingAcks.map { ack ->
+                    AckedMessageRef(
+                        conversationId = ack.conversationId,
+                        messageId = ack.messageId,
+                    )
+                },
+            ),
+        )
+
+        pendingAcks.forEach { ack ->
+            pendingMessageAckDao.deleteAck(
+                conversationId = ack.conversationId,
+                messageId = ack.messageId,
+            )
+        }
     }
 
     // ------------------------------------------------------------------
@@ -286,7 +351,7 @@ class SyncWorker @AssistedInject constructor(
      */
     private suspend fun refreshConversations() {
         val response = messagingClient.getConversations(
-            GetConversationsRequest(pageSize = 100),
+            GetConversationsRequest(),
         )
 
         val entities = response.conversations.map { conv ->
@@ -295,7 +360,7 @@ class SyncWorker @AssistedInject constructor(
                 type = conv.type.uppercase(),
                 title = conv.title.ifEmpty { null },
                 avatarUrl = conv.avatarUrl.ifEmpty { null },
-                participantIds = conv.participantIds.joinToString(","),
+                participantIds = JSONArray(conv.participantIds.toTypedArray()).toString(),
                 lastMessagePreview = conv.lastMessagePreview.ifEmpty { null },
                 lastMessageTimestamp = conv.lastMessageTimestamp.takeIf { it > 0 },
                 unreadCount = conv.unreadCount,
@@ -322,8 +387,15 @@ class SyncWorker @AssistedInject constructor(
      */
     private suspend fun replenishPreKeys() {
         try {
-            keyManager.checkAndReplenishPreKeys()
-            keyManager.rotateSignedPreKeyIfNeeded()
+            val userId = sessionManager.getUserId()
+            val deviceId = sessionManager.getDeviceId()?.toIntOrNull()
+
+            if (userId != null && deviceId != null && !keyManager.hasCompleteServerBundle(userId, deviceId)) {
+                keyManager.uploadInitialKeyBundle()
+            } else {
+                keyManager.checkAndReplenishPreKeys()
+                keyManager.rotateSignedPreKeyIfNeeded()
+            }
         } catch (e: Exception) {
             // Pre-key replenishment is best-effort; do not fail the entire sync
             Log.w(TAG, "Pre-key replenishment failed (non-fatal)", e)

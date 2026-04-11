@@ -20,14 +20,23 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +51,18 @@ fun ChatSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val clipboardManager = LocalClipboardManager.current
+    val revealedRecoveryKey = remember { mutableStateOf<String?>(null) }
+    val showRestoreDialog = remember { mutableStateOf(false) }
+    val restoreRecoveryKey = remember { mutableStateOf("") }
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            if (event is SettingsEvent.RecoveryKeyRevealed) {
+                revealedRecoveryKey.value = event.key
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -138,7 +159,148 @@ fun ChatSettingsScreen(
                 onCheckedChange = viewModel::setMediaAutoSave,
             )
 
+            HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.xl))
+
+            SettingsToggleRow(
+                title = "Chat Backup",
+                subtitle = "Encrypted remote backups protected by your recovery key",
+                checked = uiState.backupEnabled,
+                onCheckedChange = { enabled ->
+                    if (enabled) {
+                        viewModel.beginBackupEnable()
+                    } else {
+                        viewModel.disableBackup()
+                    }
+                },
+            )
+
+            if (uiState.backupEnabled) {
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+                Text(
+                    text = "Last backup: " + (uiState.lastBackupAtMillis?.let {
+                        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))
+                    } ?: "Never"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+                Row(horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
+                    Button(
+                        onClick = viewModel::backupNow,
+                        enabled = !uiState.isBackupBusy,
+                    ) {
+                        Text("Back Up Now")
+                    }
+                    Button(onClick = viewModel::revealRecoveryKey) {
+                        Text("Reveal recovery key")
+                    }
+                    TextButton(onClick = viewModel::rotateRecoveryKey) {
+                        Text("Rotate key")
+                    }
+                }
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+                TextButton(
+                    onClick = viewModel::deleteRemoteBackups,
+                    enabled = !uiState.isBackupBusy,
+                ) {
+                    Text("Delete Remote Backups")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+            Button(
+                onClick = { showRestoreDialog.value = true },
+                enabled = !uiState.isBackupBusy,
+            ) {
+                Text("Restore from Backup")
+            }
+
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
         }
+    }
+
+    if (showRestoreDialog.value) {
+        AlertDialog(
+            onDismissRequest = { showRestoreDialog.value = false },
+            title = { Text("Restore Backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
+                    Text("Restore your encrypted chat history after sign-in using your recovery key. Leave the field blank if this device already stores it.")
+                    OutlinedTextField(
+                        value = restoreRecoveryKey.value,
+                        onValueChange = { restoreRecoveryKey.value = it },
+                        label = { Text("Recovery key") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val providedKey = restoreRecoveryKey.value.trim().takeIf { it.isNotEmpty() }
+                        viewModel.restoreBackup(providedKey)
+                        showRestoreDialog.value = false
+                    },
+                    enabled = !uiState.isBackupBusy,
+                ) {
+                    Text("Restore")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreDialog.value = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    viewModel.pendingRecoveryKey()?.let { recoveryKey ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelPendingBackup,
+            title = { Text("Recovery Key") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
+                    Text("Save this recovery key somewhere secure before continuing.")
+                    Text(
+                        text = recoveryKey,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = viewModel::confirmPendingBackup) {
+                    Text("I saved it")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelPendingBackup) {
+                    Text("Not now")
+                }
+            },
+        )
+    }
+
+    revealedRecoveryKey.value?.let { recoveryKey ->
+        AlertDialog(
+            onDismissRequest = { revealedRecoveryKey.value = null },
+            title = { Text("Recovery Key") },
+            text = { Text(recoveryKey) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(recoveryKey))
+                        revealedRecoveryKey.value = null
+                    },
+                ) {
+                    Text("Copy")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { revealedRecoveryKey.value = null }) {
+                    Text("Close")
+                }
+            },
+        )
     }
 }

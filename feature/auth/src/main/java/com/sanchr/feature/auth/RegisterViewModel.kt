@@ -1,11 +1,13 @@
 package com.sanchr.feature.auth
 
 import android.net.Uri
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.proto.auth.AuthServiceClient
+import com.sanchr.proto.auth.DeviceInfo
 import com.sanchr.proto.auth.RegisterRequest
 import com.sanchr.proto.media.MediaServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +74,12 @@ class RegisterViewModel @Inject constructor(
                 val request = RegisterRequest(
                     phoneNumber = phoneNumber,
                     displayName = state.displayName,
+                    device = DeviceInfo(
+                        deviceName = Build.MODEL ?: "Android",
+                        platform = "android",
+                        installationId = sessionManager.getOrCreateInstallationId(),
+                        supportsDeliveryAck = true,
+                    ),
                 )
                 val response = authServiceClient.register(request)
 
@@ -83,6 +91,9 @@ class RegisterViewModel @Inject constructor(
                         userId = response.user?.id ?: "",
                         expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1000),
                     )
+                    if (response.deviceId > 0) {
+                        sessionManager.saveDeviceId(response.deviceId.toString())
+                    }
                 }
 
                 // Step 4: Generate Signal Protocol identity keys and upload key bundle

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * gRPC client interface for the CallSignalingService.
- * Generated stub equivalent for vync.calling.CallSignalingService.
+ * Generated stub equivalent for sanchr.calling.CallSignalingService.
  */
 interface CallSignalingServiceClient {
 

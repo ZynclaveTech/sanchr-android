@@ -5,11 +5,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class DeviceInfo(
-    @SerialName("device_id") val deviceId: String = "",
-    val platform: String = "ANDROID",
-    @SerialName("os_version") val osVersion: String = "",
-    @SerialName("app_version") val appVersion: String = "",
-    @SerialName("push_token") val pushToken: String = "",
+    @SerialName("device_name") val deviceName: String = "",
+    val platform: String = "android",
+    @SerialName("installation_id") val installationId: String = "",
+    @SerialName("supports_delivery_ack") val supportsDeliveryAck: Boolean = false,
 )
 
 @Serializable
@@ -54,23 +53,12 @@ data class AuthResponse(
     @SerialName("expires_in") val expiresIn: Long = 0L,
     val user: User? = null,
     @SerialName("is_new_user") val isNewUser: Boolean = false,
+    @SerialName("device_id") val deviceId: Int = 0,
 )
 
 @Serializable
 data class LogoutResponse(
     val success: Boolean = false,
-)
-
-@Serializable
-data class ChangePasswordRequest(
-    @SerialName("current_password") val currentPassword: String = "",
-    @SerialName("new_password") val newPassword: String = "",
-)
-
-@Serializable
-data class ChangePasswordResponse(
-    val success: Boolean = false,
-    val message: String = "",
 )
 
 @Serializable

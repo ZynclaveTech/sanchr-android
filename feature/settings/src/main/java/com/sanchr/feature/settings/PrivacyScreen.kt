@@ -73,8 +73,8 @@ fun PrivacyScreen(
             SettingsToggleRow(
                 title = "Online Status",
                 subtitle = "Show when you are currently online",
-                checked = uiState.lastActiveVisible,
-                onCheckedChange = viewModel::setLastActiveVisible,
+                checked = uiState.onlineStatusVisible,
+                onCheckedChange = viewModel::setOnlineStatusVisible,
             )
 
             SettingsToggleRow(
