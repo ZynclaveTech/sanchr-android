@@ -19,7 +19,9 @@ data class Message(
 @Serializable
 sealed interface MessageContent {
     @Serializable
-    data class Text(val body: String) : MessageContent
+    data class Text(
+        val body: String,
+    ) : MessageContent
 
     @Serializable
     data class Image(

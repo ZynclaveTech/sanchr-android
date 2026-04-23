@@ -21,8 +21,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,11 +58,12 @@ fun HelpCenterScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // FAQ expandable sections
             Text(
@@ -76,18 +75,19 @@ fun HelpCenterScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
-            val faqs = listOf(
-                "How does end-to-end encryption work?" to
-                    "Sanchr uses the Signal Protocol for end-to-end encryption. Messages are encrypted on your device before sending and can only be decrypted by the intended recipient. Even Sanchr cannot read your messages.",
-                "How do I enable Sanchr Mode?" to
-                    "Go to Settings > Security > Sanchr Mode and toggle it on. Hidden conversations and vault items will be hidden while it is enabled.",
-                "Can I use Sanchr on multiple devices?" to
-                    "Currently Sanchr supports one device per account. Multi-device support with linked devices is planned for a future update.",
-                "How do I back up my messages?" to
-                    "Message backups are encrypted end-to-end and can be stored in your Vault. Go to Settings > Storage > Back Up Messages to create an encrypted backup.",
-                "What happens when I delete a message?" to
-                    "Deleted messages are removed from your device. If you delete for everyone, a deletion request is sent to all recipients. Disappearing messages are automatically deleted after the timer expires.",
-            )
+            val faqs =
+                listOf(
+                    "How does end-to-end encryption work?" to
+                        "Sanchr uses the Signal Protocol for end-to-end encryption. Messages are encrypted on your device before sending and can only be decrypted by the intended recipient. Even Sanchr cannot read your messages.",
+                    "How do I enable Sanchr Mode?" to
+                        "Go to Settings > Security > Sanchr Mode and toggle it on. Hidden conversations and vault items will be hidden while it is enabled.",
+                    "Can I use Sanchr on multiple devices?" to
+                        "Currently Sanchr supports one device per account. Multi-device support with linked devices is planned for a future update.",
+                    "How do I back up my messages?" to
+                        "Message backups are encrypted end-to-end and can be stored in your Vault. Go to Settings > Storage > Back Up Messages to create an encrypted backup.",
+                    "What happens when I delete a message?" to
+                        "Deleted messages are removed from your device. If you delete for everyone, a deletion request is sent to all recipients. Disappearing messages are automatically deleted after the timer expires.",
+                )
 
             faqs.forEach { (question, answer) ->
                 FaqItem(question = question, answer = answer)
@@ -157,9 +157,10 @@ fun HelpCenterScreen(
             // Emergency support card
             SanchrCard {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -222,10 +223,11 @@ fun HelpCenterScreen(
                     text = item,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { /* open link */ }
-                        .padding(vertical = SanchrTheme.spacing.sm),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { /* open link */ }
+                            .padding(vertical = SanchrTheme.spacing.sm),
                 )
             }
 
@@ -244,10 +246,11 @@ private fun FaqItem(
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .padding(vertical = SanchrTheme.spacing.md),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = SanchrTheme.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

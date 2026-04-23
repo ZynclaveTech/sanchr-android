@@ -8,7 +8,6 @@ import io.grpc.Channel
  * Generated stub equivalent for sanchr.contacts.ContactService.
  */
 interface ContactServiceClient {
-
     suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse
 
     suspend fun getContacts(request: GetContactsRequest): GetContactsResponse
@@ -28,24 +27,18 @@ class ContactServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : ContactServiceClient {
-
-    override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse {
+    override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse {
+    override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse {
+    override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse {
+    override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse {
+    override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 }

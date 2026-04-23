@@ -8,7 +8,6 @@ import io.grpc.Channel
  * Generated stub equivalent for sanchr.auth.AuthService.
  */
 interface AuthServiceClient {
-
     suspend fun register(request: RegisterRequest): AuthResponse
 
     suspend fun verifyOtp(request: VerifyOTPRequest): AuthResponse
@@ -28,25 +27,16 @@ class AuthServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : AuthServiceClient {
-
     override suspend fun register(request: RegisterRequest): AuthResponse {
         // TODO: Delegate to generated AuthServiceGrpcKt.AuthServiceCoroutineStub
         throw NotImplementedError("Awaiting protobuf codegen")
     }
 
-    override suspend fun verifyOtp(request: VerifyOTPRequest): AuthResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    override suspend fun verifyOtp(request: VerifyOTPRequest): AuthResponse = throw NotImplementedError("Awaiting protobuf codegen")
 
-    override suspend fun login(request: LoginRequest): AuthResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    override suspend fun login(request: LoginRequest): AuthResponse = throw NotImplementedError("Awaiting protobuf codegen")
 
-    override suspend fun refreshToken(request: RefreshTokenRequest): AuthResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    override suspend fun refreshToken(request: RefreshTokenRequest): AuthResponse = throw NotImplementedError("Awaiting protobuf codegen")
 
-    override suspend fun logout(request: LogoutRequest): LogoutResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    override suspend fun logout(request: LogoutRequest): LogoutResponse = throw NotImplementedError("Awaiting protobuf codegen")
 }

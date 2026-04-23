@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
@@ -73,9 +72,7 @@ enum class TopLevelDestination(
 }
 
 @Composable
-fun SanchrNavHost(
-    modifier: Modifier = Modifier,
-) {
+fun SanchrNavHost(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -90,9 +87,10 @@ fun SanchrNavHost(
         modifier = modifier,
         bottomBar = {
             // Only show bottom bar when on a top-level destination
-            val showBottomBar = topLevelDestinations.any { dest ->
-                currentDestination?.hierarchy?.any { it.route == dest.route } == true
-            }
+            val showBottomBar =
+                topLevelDestinations.any { dest ->
+                    currentDestination?.hierarchy?.any { it.route == dest.route } == true
+                }
             if (showBottomBar) {
                 SanchrBottomBar(
                     destinations = topLevelDestinations,
@@ -161,9 +159,10 @@ private fun SanchrBottomBar(
 ) {
     NavigationBar(modifier = modifier) {
         destinations.forEach { destination ->
-            val selected = currentDestination?.hierarchy?.any {
-                it.route == destination.route
-            } == true
+            val selected =
+                currentDestination?.hierarchy?.any {
+                    it.route == destination.route
+                } == true
 
             NavigationBarItem(
                 selected = selected,

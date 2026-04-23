@@ -110,9 +110,10 @@ fun ProfileScreen(
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator()
@@ -121,10 +122,11 @@ fun ProfileScreen(
         }
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
@@ -138,9 +140,10 @@ fun ProfileScreen(
                     AsyncImage(
                         model = uiState.avatarUrl,
                         contentDescription = "${uiState.displayName} avatar",
-                        modifier = Modifier
-                            .size(120.dp)
-                            .clip(CircleShape),
+                        modifier =
+                            Modifier
+                                .size(120.dp)
+                                .clip(CircleShape),
                         contentScale = ContentScale.Crop,
                     )
                 } else {
@@ -151,7 +154,11 @@ fun ProfileScreen(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = uiState.displayName.take(1).uppercase().ifEmpty { "?" },
+                                text =
+                                    uiState.displayName
+                                        .take(1)
+                                        .uppercase()
+                                        .ifEmpty { "?" },
                                 style = MaterialTheme.typography.displaySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -163,16 +170,16 @@ fun ProfileScreen(
                 // Camera overlay for own profile
                 if (uiState.isOwnProfile) {
                     Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .align(Alignment.BottomEnd)
-                            .background(
-                                MaterialTheme.colorScheme.primary,
-                                CircleShape,
-                            )
-                            .clickable {
-                                viewModel.uploadAvatar("avatar.jpg", "image/jpeg", 0)
-                            },
+                        modifier =
+                            Modifier
+                                .size(36.dp)
+                                .align(Alignment.BottomEnd)
+                                .background(
+                                    MaterialTheme.colorScheme.primary,
+                                    CircleShape,
+                                ).clickable {
+                                    viewModel.uploadAvatar("avatar.jpg", "image/jpeg", 0)
+                                },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -193,9 +200,10 @@ fun ProfileScreen(
                     value = uiState.editDisplayName,
                     onValueChange = viewModel::onEditDisplayNameChanged,
                     label = "Display Name",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = SanchrTheme.spacing.xxl),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SanchrTheme.spacing.xxl),
                 )
 
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
@@ -206,9 +214,10 @@ fun ProfileScreen(
                     label = "Status / Bio",
                     singleLine = false,
                     maxLines = 3,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = SanchrTheme.spacing.xxl),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SanchrTheme.spacing.xxl),
                 )
             } else {
                 // Display mode
@@ -294,9 +303,10 @@ fun ProfileScreen(
                     modifier = Modifier.padding(horizontal = SanchrTheme.spacing.default),
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(SanchrTheme.spacing.default),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(SanchrTheme.spacing.default),
                     ) {
                         if (uiState.phoneNumber.isNotEmpty()) {
                             ProfileInfoRow(label = "Phone", value = uiState.phoneNumber)

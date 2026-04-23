@@ -8,12 +8,9 @@ import io.grpc.Channel
  * Generated stub equivalent for sanchr.notifications.NotificationService.
  */
 interface NotificationServiceClient {
-
     suspend fun registerPushToken(request: RegisterPushTokenRequest): RegisterPushTokenResponse
 
-    suspend fun updateNotificationPrefs(
-        request: UpdateNotificationPrefsRequest,
-    ): UpdateNotificationPrefsResponse
+    suspend fun updateNotificationPrefs(request: UpdateNotificationPrefsRequest): UpdateNotificationPrefsResponse
 }
 
 /**
@@ -24,16 +21,9 @@ class NotificationServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : NotificationServiceClient {
-
-    override suspend fun registerPushToken(
-        request: RegisterPushTokenRequest,
-    ): RegisterPushTokenResponse {
+    override suspend fun registerPushToken(request: RegisterPushTokenRequest): RegisterPushTokenResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun updateNotificationPrefs(
-        request: UpdateNotificationPrefsRequest,
-    ): UpdateNotificationPrefsResponse {
+    override suspend fun updateNotificationPrefs(request: UpdateNotificationPrefsRequest): UpdateNotificationPrefsResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 }

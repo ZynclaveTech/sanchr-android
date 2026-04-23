@@ -13,7 +13,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class BackupBindingsModule {
-
     @Binds
     @Singleton
     abstract fun bindBackupKeyDeriver(impl: SignalBackupKeyDeriver): BackupKeyDeriver

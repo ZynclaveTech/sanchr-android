@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.Flow
  * Implemented by the data layer; consumed by use cases.
  */
 interface MessageRepository {
-
     /** Observes all non-archived conversations, ordered by most recent. */
     fun observeConversations(): Flow<List<Conversation>>
 
@@ -20,25 +19,41 @@ interface MessageRepository {
     fun observeMessages(conversationId: String): Flow<List<Message>>
 
     /** Sends an encrypted message to a conversation. */
-    suspend fun sendMessage(conversationId: String, content: String): Message
+    suspend fun sendMessage(
+        conversationId: String,
+        content: String,
+    ): Message
 
     /** Marks all messages in a conversation as read. */
     suspend fun markAsRead(conversationId: String)
 
     /** Deletes a message locally (and requests remote deletion if own message). */
-    suspend fun deleteMessage(messageId: String, forEveryone: Boolean)
+    suspend fun deleteMessage(
+        messageId: String,
+        forEveryone: Boolean,
+    )
 
     /** Fetches older messages for pagination. */
-    suspend fun loadMoreMessages(conversationId: String, beforeTimestamp: Long, limit: Int): List<Message>
+    suspend fun loadMoreMessages(
+        conversationId: String,
+        beforeTimestamp: Long,
+        limit: Int,
+    ): List<Message>
 
     /** Creates a new direct conversation with a user. */
     suspend fun createConversation(participantId: String): Conversation
 
     /** Pins or unpins a conversation. */
-    suspend fun setPinned(conversationId: String, pinned: Boolean)
+    suspend fun setPinned(
+        conversationId: String,
+        pinned: Boolean,
+    )
 
     /** Archives or unarchives a conversation. */
-    suspend fun setArchived(conversationId: String, archived: Boolean)
+    suspend fun setArchived(
+        conversationId: String,
+        archived: Boolean,
+    )
 
     /**
      * Inserts a decrypted incoming message into local storage.

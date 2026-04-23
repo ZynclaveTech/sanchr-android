@@ -61,12 +61,13 @@ fun RegisterScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SanchrTheme.spacing.xl)
-                .imePadding(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SanchrTheme.spacing.xl)
+                    .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
@@ -77,9 +78,10 @@ fun RegisterScreen(
                 modifier = Modifier.size(112.dp),
             ) {
                 Surface(
-                    modifier = Modifier
-                        .size(96.dp)
-                        .clip(CircleShape),
+                    modifier =
+                        Modifier
+                            .size(96.dp)
+                            .clip(CircleShape),
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -97,16 +99,18 @@ fun RegisterScreen(
                     onClick = {
                         // TODO: Launch image picker for avatar
                     },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .align(Alignment.BottomEnd)
-                        .offset(x = (-2).dp, y = (-2).dp)
-                        .clip(CircleShape)
-                        .background(SanchrIndigo500),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = SanchrIndigo500,
-                        contentColor = SanchrWhite,
-                    ),
+                    modifier =
+                        Modifier
+                            .size(36.dp)
+                            .align(Alignment.BottomEnd)
+                            .offset(x = (-2).dp, y = (-2).dp)
+                            .clip(CircleShape)
+                            .background(SanchrIndigo500),
+                    colors =
+                        IconButtonDefaults.iconButtonColors(
+                            containerColor = SanchrIndigo500,
+                            contentColor = SanchrWhite,
+                        ),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.CameraAlt,
@@ -146,24 +150,28 @@ fun RegisterScreen(
 
             // --- Create your account gradient button ---
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .clip(
-                        com.sanchr.core.designsystem.theme.SanchrShapeTokens.CornerFull,
-                    )
-                    .background(
-                        brush = if (!uiState.isLoading && uiState.displayName.isNotBlank()) {
-                            SanchrGradients.Primary
-                        } else {
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    com.sanchr.core.designsystem.theme.SanchrGray400.copy(alpha = 0.5f),
-                                    com.sanchr.core.designsystem.theme.SanchrGray400.copy(alpha = 0.5f),
-                                ),
-                            )
-                        },
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .clip(
+                            com.sanchr.core.designsystem.theme.SanchrShapeTokens.CornerFull,
+                        ).background(
+                            brush =
+                                if (!uiState.isLoading && uiState.displayName.isNotBlank()) {
+                                    SanchrGradients.Primary
+                                } else {
+                                    Brush.linearGradient(
+                                        colors =
+                                            listOf(
+                                                com.sanchr.core.designsystem.theme.SanchrGray400
+                                                    .copy(alpha = 0.5f),
+                                                com.sanchr.core.designsystem.theme.SanchrGray400
+                                                    .copy(alpha = 0.5f),
+                                            ),
+                                    )
+                                },
+                        ),
             ) {
                 SanchrButton(
                     onClick = { viewModel.register(onRegistered) },

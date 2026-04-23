@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.Flow
  * Generated stub equivalent for sanchr.calling.CallSignalingService.
  */
 interface CallSignalingServiceClient {
-
     suspend fun initiateCall(request: CallOffer): CallResponse
 
     /**
@@ -32,24 +31,15 @@ class CallSignalingServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : CallSignalingServiceClient {
+    override suspend fun initiateCall(request: CallOffer): CallResponse = throw NotImplementedError("Awaiting protobuf codegen")
 
-    override suspend fun initiateCall(request: CallOffer): CallResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    override fun callStream(requests: Flow<CallSignal>): Flow<CallSignal> = throw NotImplementedError("Awaiting protobuf codegen")
 
-    override fun callStream(requests: Flow<CallSignal>): Flow<CallSignal> {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    override suspend fun endCall(request: EndCallRequest): EndCallResponse = throw NotImplementedError("Awaiting protobuf codegen")
 
-    override suspend fun endCall(request: EndCallRequest): EndCallResponse {
+    override suspend fun getCallHistory(request: GetCallHistoryRequest): GetCallHistoryResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun getCallHistory(request: GetCallHistoryRequest): GetCallHistoryResponse {
+    override suspend fun getTurnCredentials(request: GetTurnCredentialsRequest): TurnCredentials =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
-
-    override suspend fun getTurnCredentials(request: GetTurnCredentialsRequest): TurnCredentials {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
 }

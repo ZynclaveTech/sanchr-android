@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.Flow
  * Repository interface for contact operations.
  */
 interface ContactRepository {
-
     /** Observes all contacts that are registered on Sanchr. */
     fun observeRegisteredContacts(): Flow<List<User>>
 
@@ -21,8 +20,14 @@ interface ContactRepository {
     suspend fun syncContacts()
 
     /** Blocks or unblocks a contact. */
-    suspend fun setBlocked(userId: String, blocked: Boolean)
+    suspend fun setBlocked(
+        userId: String,
+        blocked: Boolean,
+    )
 
     /** Adds a contact to favorites. */
-    suspend fun setFavorite(userId: String, favorite: Boolean)
+    suspend fun setFavorite(
+        userId: String,
+        favorite: Boolean,
+    )
 }

@@ -34,11 +34,12 @@ fun NavGraphBuilder.chatsGraph(navController: NavController) {
 
         composable(
             route = CHAT_DETAIL_ROUTE,
-            arguments = listOf(
-                navArgument("conversationId") {
-                    type = NavType.StringType
-                },
-            ),
+            arguments =
+                listOf(
+                    navArgument("conversationId") {
+                        type = NavType.StringType
+                    },
+                ),
         ) { backStackEntry ->
             val conversationId = backStackEntry.arguments?.getString("conversationId") ?: ""
             ChatDetailScreen(

@@ -15,34 +15,42 @@ data class DerivedBackupMaterial(
 )
 
 interface BackupKeyDeriver {
-    fun deriveMaterial(recoveryKey: String, userId: String?): DerivedBackupMaterial
+    fun deriveMaterial(
+        recoveryKey: String,
+        userId: String?,
+    ): DerivedBackupMaterial
 }
 
 @Singleton
-class SignalBackupKeyDeriver @Inject constructor() : BackupKeyDeriver {
-    override fun deriveMaterial(recoveryKey: String, userId: String?): DerivedBackupMaterial {
-        require(AccountEntropyPool.isValid(recoveryKey)) { "Recovery key is invalid" }
+class SignalBackupKeyDeriver
+    @Inject
+    constructor() : BackupKeyDeriver {
+        override fun deriveMaterial(
+            recoveryKey: String,
+            userId: String?,
+        ): DerivedBackupMaterial {
+            require(AccountEntropyPool.isValid(recoveryKey)) { "Recovery key is invalid" }
 
-        val backupKey = AccountEntropyPool.deriveBackupKey(recoveryKey)
-        val metadataKey = backupKey.deriveLocalBackupMetadataKey()
+            val backupKey = AccountEntropyPool.deriveBackupKey(recoveryKey)
+            val metadataKey = backupKey.deriveLocalBackupMetadataKey()
 
-        val uuid = userId?.let(UUID::fromString)
-        if (uuid == null) {
+            val uuid = userId?.let(UUID::fromString)
+            if (uuid == null) {
+                return DerivedBackupMaterial(
+                    metadataKey = metadataKey,
+                    aesKey = null,
+                    hmacKey = null,
+                    backupId = null,
+                )
+            }
+
+            val aci = ServiceId.Aci(uuid)
+            val messageBackupKey = MessageBackupKey(recoveryKey, aci, null)
             return DerivedBackupMaterial(
                 metadataKey = metadataKey,
-                aesKey = null,
-                hmacKey = null,
-                backupId = null,
+                aesKey = messageBackupKey.aesKey,
+                hmacKey = messageBackupKey.hmacKey,
+                backupId = backupKey.deriveBackupId(aci),
             )
         }
-
-        val aci = ServiceId.Aci(uuid)
-        val messageBackupKey = MessageBackupKey(recoveryKey, aci, null)
-        return DerivedBackupMaterial(
-            metadataKey = metadataKey,
-            aesKey = messageBackupKey.aesKey,
-            hmacKey = messageBackupKey.hmacKey,
-            backupId = backupKey.deriveBackupId(aci),
-        )
     }
-}

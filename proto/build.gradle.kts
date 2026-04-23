@@ -25,7 +25,10 @@ android {
 
 protobuf {
     protoc {
-        artifact = libs.protobuf.protoc.get().toString()
+        artifact =
+            libs.protobuf.protoc
+                .get()
+                .toString()
     }
     plugins {
         create("grpc") {
@@ -80,4 +83,3 @@ tasks.matching { it.name.startsWith("generateProto") }.configureEach {
 tasks.matching { it.name == "check" }.configureEach {
     dependsOn(syncProtos)
 }
-

@@ -10,13 +10,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MessageDao {
-
     @Query(
         """
         SELECT * FROM messages
         WHERE conversation_id = :conversationId AND is_deleted = 0
         ORDER BY timestamp ASC
-        """
+        """,
     )
     fun observeMessages(conversationId: String): Flow<List<MessageEntity>>
 
@@ -26,7 +25,7 @@ interface MessageDao {
         WHERE conversation_id = :conversationId AND is_deleted = 0
         ORDER BY timestamp DESC
         LIMIT :limit OFFSET :offset
-        """
+        """,
     )
     suspend fun getMessagesPaginated(
         conversationId: String,
@@ -50,7 +49,10 @@ interface MessageDao {
     suspend fun updateMessage(message: MessageEntity)
 
     @Query("UPDATE messages SET status = :status WHERE id = :messageId")
-    suspend fun updateMessageStatus(messageId: String, status: String)
+    suspend fun updateMessageStatus(
+        messageId: String,
+        status: String,
+    )
 
     @Query("UPDATE messages SET is_deleted = 1 WHERE id = :messageId")
     suspend fun softDeleteMessage(messageId: String)
@@ -65,7 +67,7 @@ interface MessageDao {
         """
         DELETE FROM messages
         WHERE expires_at IS NOT NULL AND expires_at < :currentTimeMillis
-        """
+        """,
     )
     suspend fun deleteExpiredMessages(currentTimeMillis: Long): Int
 

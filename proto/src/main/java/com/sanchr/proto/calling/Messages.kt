@@ -22,7 +22,6 @@ data class CallResponse(
 
 @Serializable
 sealed interface CallSignal {
-
     @Serializable
     @SerialName("sdp_answer")
     data class SdpAnswer(

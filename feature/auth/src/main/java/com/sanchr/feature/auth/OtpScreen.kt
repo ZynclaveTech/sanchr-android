@@ -98,11 +98,12 @@ fun OtpScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = SanchrTheme.spacing.xl)
-                .imePadding(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = SanchrTheme.spacing.xl)
+                    .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
@@ -220,23 +221,26 @@ private fun OtpDigitBox(
     isError: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = when {
-        isError -> MaterialTheme.colorScheme.error
-        isFocused -> SanchrIndigo500
-        digit.isNotEmpty() -> MaterialTheme.colorScheme.outline
-        else -> MaterialTheme.colorScheme.outlineVariant
-    }
+    val borderColor =
+        when {
+            isError -> MaterialTheme.colorScheme.error
+            isFocused -> SanchrIndigo500
+            digit.isNotEmpty() -> MaterialTheme.colorScheme.outline
+            else -> MaterialTheme.colorScheme.outlineVariant
+        }
 
     Surface(
-        modifier = modifier
-            .width(48.dp)
-            .height(56.dp),
+        modifier =
+            modifier
+                .width(48.dp)
+                .height(56.dp),
         shape = SanchrShapeTokens.CornerMedium,
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            width = if (isFocused) 2.dp else 1.dp,
-            color = borderColor,
-        ),
+        border =
+            BorderStroke(
+                width = if (isFocused) 2.dp else 1.dp,
+                color = borderColor,
+            ),
     ) {
         Box(
             contentAlignment = Alignment.Center,

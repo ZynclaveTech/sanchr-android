@@ -25,20 +25,20 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.RefreshTokenRequest
-import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.AckMessagesRequest
 import com.sanchr.proto.messaging.AckedMessageRef
+import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
 import com.sanchr.sync.backup.ChatBackupManager
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import io.grpc.StatusException
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.toList
 import org.json.JSONArray
-import java.util.concurrent.TimeUnit
 
 /**
  * Background worker that periodically syncs messages, conversations, keys, and
@@ -54,381 +54,390 @@ import java.util.concurrent.TimeUnit
  * 6. Update notification badge count
  */
 @HiltWorker
-class SyncWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
-    @Assisted params: WorkerParameters,
-    private val messagingClient: MessagingServiceClient,
-    private val authClient: AuthServiceClient,
-    private val keyManager: SignalKeyManager,
-    private val signalSessionManager: SignalSessionManager,
-    private val sessionManager: SessionManager,
-    private val notificationHandler: NotificationHandler,
-    private val conversationDao: ConversationDao,
-    private val messageDao: MessageDao,
-    private val pendingMessageAckDao: PendingMessageAckDao,
-    private val chatBackupManager: ChatBackupManager,
-    private val syncState: SyncState,
-) : CoroutineWorker(appContext, params) {
+class SyncWorker
+    @AssistedInject
+    constructor(
+        @Assisted appContext: Context,
+        @Assisted params: WorkerParameters,
+        private val messagingClient: MessagingServiceClient,
+        private val authClient: AuthServiceClient,
+        private val keyManager: SignalKeyManager,
+        private val signalSessionManager: SignalSessionManager,
+        private val sessionManager: SessionManager,
+        private val notificationHandler: NotificationHandler,
+        private val conversationDao: ConversationDao,
+        private val messageDao: MessageDao,
+        private val pendingMessageAckDao: PendingMessageAckDao,
+        private val chatBackupManager: ChatBackupManager,
+        private val syncState: SyncState,
+    ) : CoroutineWorker(appContext, params) {
+        companion object {
+            private const val TAG = "SyncWorker"
+            const val WORK_NAME = "sanchr_sync"
+            const val ONE_TIME_WORK = "sanchr_sync_once"
+            private const val MAX_RETRIES = 3
 
-    companion object {
-        private const val TAG = "SyncWorker"
-        const val WORK_NAME = "sanchr_sync"
-        const val ONE_TIME_WORK = "sanchr_sync_once"
-        private const val MAX_RETRIES = 3
+            /** Token refresh buffer: refresh if expiring within 5 minutes. */
+            private const val TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000L
 
-        /** Token refresh buffer: refresh if expiring within 5 minutes. */
-        private const val TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000L
+            /**
+             * Schedule periodic sync every 15 minutes, requiring network connectivity.
+             * Uses [ExistingPeriodicWorkPolicy.KEEP] so that re-scheduling does not
+             * reset the existing timer.
+             */
+            fun schedulePeriodic(workManager: WorkManager) {
+                val constraints =
+                    Constraints
+                        .Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
 
-        /**
-         * Schedule periodic sync every 15 minutes, requiring network connectivity.
-         * Uses [ExistingPeriodicWorkPolicy.KEEP] so that re-scheduling does not
-         * reset the existing timer.
-         */
-        fun schedulePeriodic(workManager: WorkManager) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+                val request =
+                    PeriodicWorkRequestBuilder<SyncWorker>(
+                        repeatInterval = 15,
+                        repeatIntervalTimeUnit = TimeUnit.MINUTES,
+                    ).setConstraints(constraints)
+                        .setBackoffCriteria(
+                            BackoffPolicy.EXPONENTIAL,
+                            30,
+                            TimeUnit.SECONDS,
+                        ).build()
 
-            val request = PeriodicWorkRequestBuilder<SyncWorker>(
-                repeatInterval = 15,
-                repeatIntervalTimeUnit = TimeUnit.MINUTES,
-            )
-                .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.EXPONENTIAL,
-                    30,
-                    TimeUnit.SECONDS,
+                workManager.enqueueUniquePeriodicWork(
+                    WORK_NAME,
+                    ExistingPeriodicWorkPolicy.KEEP,
+                    request,
                 )
-                .build()
+                Log.i(TAG, "Periodic sync scheduled (every 15 min)")
+            }
 
-            workManager.enqueueUniquePeriodicWork(
-                WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                request,
-            )
-            Log.i(TAG, "Periodic sync scheduled (every 15 min)")
-        }
+            /**
+             * Trigger an immediate one-time sync. Uses [ExistingWorkPolicy.REPLACE]
+             * so that rapid successive calls do not queue redundant work.
+             */
+            fun syncNow(workManager: WorkManager) {
+                val constraints =
+                    Constraints
+                        .Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
 
-        /**
-         * Trigger an immediate one-time sync. Uses [ExistingWorkPolicy.REPLACE]
-         * so that rapid successive calls do not queue redundant work.
-         */
-        fun syncNow(workManager: WorkManager) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+                val request =
+                    OneTimeWorkRequestBuilder<SyncWorker>()
+                        .setConstraints(constraints)
+                        .setBackoffCriteria(
+                            BackoffPolicy.EXPONENTIAL,
+                            15,
+                            TimeUnit.SECONDS,
+                        ).build()
 
-            val request = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setConstraints(constraints)
-                .setBackoffCriteria(
-                    BackoffPolicy.EXPONENTIAL,
-                    15,
-                    TimeUnit.SECONDS,
+                workManager.enqueueUniqueWork(
+                    ONE_TIME_WORK,
+                    ExistingWorkPolicy.REPLACE,
+                    request,
                 )
-                .build()
+                Log.i(TAG, "One-time sync enqueued")
+            }
 
-            workManager.enqueueUniqueWork(
-                ONE_TIME_WORK,
-                ExistingWorkPolicy.REPLACE,
-                request,
-            )
-            Log.i(TAG, "One-time sync enqueued")
+            /**
+             * Cancel all sync work -- both periodic and one-time.
+             */
+            fun cancelAll(workManager: WorkManager) {
+                workManager.cancelUniqueWork(WORK_NAME)
+                workManager.cancelUniqueWork(ONE_TIME_WORK)
+                Log.i(TAG, "All sync work cancelled")
+            }
+        }
+
+        override suspend fun doWork(): Result {
+            // Do not sync if user is not authenticated
+            if (sessionManager.getAccessToken() == null) {
+                Log.w(TAG, "Skipping sync: no access token")
+                return Result.success()
+            }
+
+            syncState.markSyncStarted()
+
+            return try {
+                // Phase 1: Refresh auth token if expiring
+                val tokenValid = refreshTokenIfNeeded()
+                if (!tokenValid) {
+                    syncState.markSyncFailed("Authentication expired")
+                    return Result.failure()
+                }
+
+                // Phase 2 & 3 can run concurrently
+                val newMessageCount: Int
+                coroutineScope {
+                    val messagesDeferred = async { syncPendingMessages() }
+                    val conversationsDeferred = async { refreshConversations() }
+
+                    newMessageCount = messagesDeferred.await()
+                    conversationsDeferred.await()
+                }
+
+                // Phase 4 & 5 can run concurrently
+                coroutineScope {
+                    val preKeysDeferred = async { replenishPreKeys() }
+                    val cleanupDeferred = async { cleanExpiredVaultItems() }
+
+                    preKeysDeferred.await()
+                    cleanupDeferred.await()
+                }
+
+                chatBackupManager.performScheduledBackupIfNeeded()
+
+                // Phase 6: Update notification badge
+                updateBadge(newMessageCount)
+
+                syncState.markSyncCompleted(newMessageCount)
+                Log.i(TAG, "Sync completed successfully (newMessages=$newMessageCount)")
+                Result.success()
+            } catch (e: StatusException) {
+                val code = e.status.code
+                Log.e(TAG, "Sync failed with gRPC status: $code", e)
+
+                // UNAUTHENTICATED or PERMISSION_DENIED are not retryable
+                if (code == io.grpc.Status.Code.UNAUTHENTICATED ||
+                    code == io.grpc.Status.Code.PERMISSION_DENIED
+                ) {
+                    syncState.markSyncFailed("Authentication error: ${code.name}")
+                    return Result.failure()
+                }
+
+                retryOrFail(e.message ?: "gRPC error")
+            } catch (e: Exception) {
+                Log.e(TAG, "Sync failed", e)
+                retryOrFail(e.message ?: "Unknown error")
+            }
         }
 
         /**
-         * Cancel all sync work -- both periodic and one-time.
+         * Returns [Result.retry] if under the retry limit, otherwise [Result.failure].
          */
-        fun cancelAll(workManager: WorkManager) {
-            workManager.cancelUniqueWork(WORK_NAME)
-            workManager.cancelUniqueWork(ONE_TIME_WORK)
-            Log.i(TAG, "All sync work cancelled")
-        }
-    }
-
-    override suspend fun doWork(): Result {
-        // Do not sync if user is not authenticated
-        if (sessionManager.getAccessToken() == null) {
-            Log.w(TAG, "Skipping sync: no access token")
-            return Result.success()
-        }
-
-        syncState.markSyncStarted()
-
-        return try {
-            // Phase 1: Refresh auth token if expiring
-            val tokenValid = refreshTokenIfNeeded()
-            if (!tokenValid) {
-                syncState.markSyncFailed("Authentication expired")
-                return Result.failure()
+        private fun retryOrFail(errorMessage: String): Result =
+            if (runAttemptCount < MAX_RETRIES) {
+                syncState.markSyncFailed("$errorMessage (retrying)")
+                Result.retry()
+            } else {
+                syncState.markSyncFailed(errorMessage)
+                Result.failure()
             }
 
-            // Phase 2 & 3 can run concurrently
-            val newMessageCount: Int
-            coroutineScope {
-                val messagesDeferred = async { syncPendingMessages() }
-                val conversationsDeferred = async { refreshConversations() }
+        // ------------------------------------------------------------------
+        // Phase 1: Token refresh
+        // ------------------------------------------------------------------
 
-                newMessageCount = messagesDeferred.await()
-                conversationsDeferred.await()
+        /**
+         * Refreshes the access token if it is expired or about to expire.
+         *
+         * @return `true` if a valid token is available after this call, `false` if
+         *         the refresh failed (e.g., refresh token revoked).
+         */
+        private suspend fun refreshTokenIfNeeded(): Boolean {
+            val expiry = sessionManager.getTokenExpiry()
+            val now = System.currentTimeMillis()
+
+            // Token is still valid and not close to expiry
+            if (expiry > 0 && (expiry - now) > TOKEN_REFRESH_BUFFER_MS) {
+                return true
             }
 
-            // Phase 4 & 5 can run concurrently
-            coroutineScope {
-                val preKeysDeferred = async { replenishPreKeys() }
-                val cleanupDeferred = async { cleanExpiredVaultItems() }
+            val refreshToken = sessionManager.getRefreshToken() ?: return false
+            val deviceId = sessionManager.getDeviceId() ?: ""
 
-                preKeysDeferred.await()
-                cleanupDeferred.await()
+            return try {
+                val response =
+                    authClient.refreshToken(
+                        RefreshTokenRequest(
+                            refreshToken = refreshToken,
+                            deviceId = deviceId,
+                        ),
+                    )
+
+                val newExpiry = now + (response.expiresIn * 1000L)
+                sessionManager.updateAccessToken(response.accessToken, newExpiry)
+                Log.d(TAG, "Token refreshed, expires in ${response.expiresIn}s")
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Token refresh failed", e)
+                false
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 2: Sync messages
+        // ------------------------------------------------------------------
+
+        /**
+         * Fetches messages from the server that arrived since the last sync
+         * timestamp. Stores them locally and returns the count of new messages.
+         */
+        private suspend fun syncPendingMessages(): Int {
+            val lastSync = syncState.lastSyncTimestamp.value ?: 0L
+
+            val envelopes =
+                messagingClient
+                    .syncMessages(
+                        SyncRequest(
+                            sinceTimestamp = lastSync,
+                        ),
+                    ).toList()
+
+            if (envelopes.isEmpty()) {
+                flushPendingAcks()
+                return 0
             }
 
-            chatBackupManager.performScheduledBackupIfNeeded()
+            var persistedCount = 0
+            for (envelope in envelopes) {
+                try {
+                    val decrypted = signalSessionManager.decryptEnvelope(envelope)
+                    val plaintext = String(decrypted.plaintext, Charsets.UTF_8)
 
-            // Phase 6: Update notification badge
-            updateBadge(newMessageCount)
-
-            syncState.markSyncCompleted(newMessageCount)
-            Log.i(TAG, "Sync completed successfully (newMessages=$newMessageCount)")
-            Result.success()
-        } catch (e: StatusException) {
-            val code = e.status.code
-            Log.e(TAG, "Sync failed with gRPC status: $code", e)
-
-            // UNAUTHENTICATED or PERMISSION_DENIED are not retryable
-            if (code == io.grpc.Status.Code.UNAUTHENTICATED ||
-                code == io.grpc.Status.Code.PERMISSION_DENIED
-            ) {
-                syncState.markSyncFailed("Authentication error: ${code.name}")
-                return Result.failure()
+                    messageDao.insertMessage(
+                        MessageEntity(
+                            id = decrypted.messageId,
+                            conversationId = decrypted.conversationId,
+                            senderId = decrypted.senderId,
+                            contentType = decrypted.contentType,
+                            contentBody = plaintext,
+                            status = "DELIVERED",
+                            timestamp = decrypted.serverTimestamp,
+                        ),
+                    )
+                    pendingMessageAckDao.insertAck(
+                        PendingMessageAckEntity(
+                            conversationId = decrypted.conversationId,
+                            messageId = decrypted.messageId,
+                            createdAt = System.currentTimeMillis(),
+                        ),
+                    )
+                    persistedCount += 1
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to decrypt synced envelope", e)
+                }
             }
 
-            retryOrFail(e.message ?: "gRPC error")
-        } catch (e: Exception) {
-            Log.e(TAG, "Sync failed", e)
-            retryOrFail(e.message ?: "Unknown error")
-        }
-    }
-
-    /**
-     * Returns [Result.retry] if under the retry limit, otherwise [Result.failure].
-     */
-    private fun retryOrFail(errorMessage: String): Result {
-        return if (runAttemptCount < MAX_RETRIES) {
-            syncState.markSyncFailed("$errorMessage (retrying)")
-            Result.retry()
-        } else {
-            syncState.markSyncFailed(errorMessage)
-            Result.failure()
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 1: Token refresh
-    // ------------------------------------------------------------------
-
-    /**
-     * Refreshes the access token if it is expired or about to expire.
-     *
-     * @return `true` if a valid token is available after this call, `false` if
-     *         the refresh failed (e.g., refresh token revoked).
-     */
-    private suspend fun refreshTokenIfNeeded(): Boolean {
-        val expiry = sessionManager.getTokenExpiry()
-        val now = System.currentTimeMillis()
-
-        // Token is still valid and not close to expiry
-        if (expiry > 0 && (expiry - now) > TOKEN_REFRESH_BUFFER_MS) {
-            return true
+            flushPendingAcks()
+            Log.d(TAG, "Synced and persisted $persistedCount message envelope(s)")
+            return persistedCount
         }
 
-        val refreshToken = sessionManager.getRefreshToken() ?: return false
-        val deviceId = sessionManager.getDeviceId() ?: ""
+        private suspend fun flushPendingAcks() {
+            val pendingAcks = pendingMessageAckDao.getPendingAcks(limit = 100)
+            if (pendingAcks.isEmpty()) return
 
-        return try {
-            val response = authClient.refreshToken(
-                RefreshTokenRequest(
-                    refreshToken = refreshToken,
-                    deviceId = deviceId,
+            messagingClient.ackMessages(
+                AckMessagesRequest(
+                    messages =
+                        pendingAcks.map { ack ->
+                            AckedMessageRef(
+                                conversationId = ack.conversationId,
+                                messageId = ack.messageId,
+                            )
+                        },
                 ),
             )
 
-            val newExpiry = now + (response.expiresIn * 1000L)
-            sessionManager.updateAccessToken(response.accessToken, newExpiry)
-            Log.d(TAG, "Token refreshed, expires in ${response.expiresIn}s")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Token refresh failed", e)
-            false
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 2: Sync messages
-    // ------------------------------------------------------------------
-
-    /**
-     * Fetches messages from the server that arrived since the last sync
-     * timestamp. Stores them locally and returns the count of new messages.
-     */
-    private suspend fun syncPendingMessages(): Int {
-        val lastSync = syncState.lastSyncTimestamp.value ?: 0L
-
-        val envelopes = messagingClient.syncMessages(
-            SyncRequest(
-                sinceTimestamp = lastSync,
-            ),
-        ).toList()
-
-        if (envelopes.isEmpty()) {
-            flushPendingAcks()
-            return 0
-        }
-
-        var persistedCount = 0
-        for (envelope in envelopes) {
-            try {
-                val decrypted = signalSessionManager.decryptEnvelope(envelope)
-                val plaintext = String(decrypted.plaintext, Charsets.UTF_8)
-
-                messageDao.insertMessage(
-                    MessageEntity(
-                        id = decrypted.messageId,
-                        conversationId = decrypted.conversationId,
-                        senderId = decrypted.senderId,
-                        contentType = decrypted.contentType,
-                        contentBody = plaintext,
-                        status = "DELIVERED",
-                        timestamp = decrypted.serverTimestamp,
-                    ),
+            pendingAcks.forEach { ack ->
+                pendingMessageAckDao.deleteAck(
+                    conversationId = ack.conversationId,
+                    messageId = ack.messageId,
                 )
-                pendingMessageAckDao.insertAck(
-                    PendingMessageAckEntity(
-                        conversationId = decrypted.conversationId,
-                        messageId = decrypted.messageId,
-                        createdAt = System.currentTimeMillis(),
-                    ),
-                )
-                persistedCount += 1
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to decrypt synced envelope", e)
             }
         }
 
-        flushPendingAcks()
-        Log.d(TAG, "Synced and persisted $persistedCount message envelope(s)")
-        return persistedCount
-    }
+        // ------------------------------------------------------------------
+        // Phase 3: Refresh conversations
+        // ------------------------------------------------------------------
 
-    private suspend fun flushPendingAcks() {
-        val pendingAcks = pendingMessageAckDao.getPendingAcks(limit = 100)
-        if (pendingAcks.isEmpty()) return
+        /**
+         * Fetches the latest conversation list from the server and upserts them
+         * into the local database.
+         */
+        private suspend fun refreshConversations() {
+            val response =
+                messagingClient.getConversations(
+                    GetConversationsRequest(),
+                )
 
-        messagingClient.ackMessages(
-            AckMessagesRequest(
-                messages = pendingAcks.map { ack ->
-                    AckedMessageRef(
-                        conversationId = ack.conversationId,
-                        messageId = ack.messageId,
+            val entities =
+                response.conversations.map { conv ->
+                    ConversationEntity(
+                        id = conv.id,
+                        type = conv.type.uppercase(),
+                        title = conv.title.ifEmpty { null },
+                        avatarUrl = conv.avatarUrl.ifEmpty { null },
+                        participantIds = JSONArray(conv.participantIds.toTypedArray()).toString(),
+                        lastMessagePreview = conv.lastMessagePreview.ifEmpty { null },
+                        lastMessageTimestamp = conv.lastMessageTimestamp.takeIf { it > 0 },
+                        unreadCount = conv.unreadCount,
+                        isPinned = conv.isPinned,
+                        isMuted = conv.isMuted,
+                        updatedAt = conv.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                        createdAt = conv.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
                     )
-                },
-            ),
-        )
+                }
 
-        pendingAcks.forEach { ack ->
-            pendingMessageAckDao.deleteAck(
-                conversationId = ack.conversationId,
-                messageId = ack.messageId,
-            )
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 3: Refresh conversations
-    // ------------------------------------------------------------------
-
-    /**
-     * Fetches the latest conversation list from the server and upserts them
-     * into the local database.
-     */
-    private suspend fun refreshConversations() {
-        val response = messagingClient.getConversations(
-            GetConversationsRequest(),
-        )
-
-        val entities = response.conversations.map { conv ->
-            ConversationEntity(
-                id = conv.id,
-                type = conv.type.uppercase(),
-                title = conv.title.ifEmpty { null },
-                avatarUrl = conv.avatarUrl.ifEmpty { null },
-                participantIds = JSONArray(conv.participantIds.toTypedArray()).toString(),
-                lastMessagePreview = conv.lastMessagePreview.ifEmpty { null },
-                lastMessageTimestamp = conv.lastMessageTimestamp.takeIf { it > 0 },
-                unreadCount = conv.unreadCount,
-                isPinned = conv.isPinned,
-                isMuted = conv.isMuted,
-                updatedAt = conv.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
-                createdAt = conv.createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
-            )
-        }
-
-        if (entities.isNotEmpty()) {
-            conversationDao.insertConversations(entities)
-            Log.d(TAG, "Refreshed ${entities.size} conversation(s)")
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 4: Replenish pre-keys
-    // ------------------------------------------------------------------
-
-    /**
-     * Checks the server-side pre-key count and uploads a new batch if the
-     * count has fallen below the configured threshold.
-     */
-    private suspend fun replenishPreKeys() {
-        try {
-            val userId = sessionManager.getUserId()
-            val deviceId = sessionManager.getDeviceId()?.toIntOrNull()
-
-            if (userId != null && deviceId != null && !keyManager.hasCompleteServerBundle(userId, deviceId)) {
-                keyManager.uploadInitialKeyBundle()
-            } else {
-                keyManager.checkAndReplenishPreKeys()
-                keyManager.rotateSignedPreKeyIfNeeded()
+            if (entities.isNotEmpty()) {
+                conversationDao.insertConversations(entities)
+                Log.d(TAG, "Refreshed ${entities.size} conversation(s)")
             }
-        } catch (e: Exception) {
-            // Pre-key replenishment is best-effort; do not fail the entire sync
-            Log.w(TAG, "Pre-key replenishment failed (non-fatal)", e)
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4: Replenish pre-keys
+        // ------------------------------------------------------------------
+
+        /**
+         * Checks the server-side pre-key count and uploads a new batch if the
+         * count has fallen below the configured threshold.
+         */
+        private suspend fun replenishPreKeys() {
+            try {
+                val userId = sessionManager.getUserId()
+                val deviceId = sessionManager.getDeviceId()?.toIntOrNull()
+
+                if (userId != null && deviceId != null && !keyManager.hasCompleteServerBundle(userId, deviceId)) {
+                    keyManager.uploadInitialKeyBundle()
+                } else {
+                    keyManager.checkAndReplenishPreKeys()
+                    keyManager.rotateSignedPreKeyIfNeeded()
+                }
+            } catch (e: Exception) {
+                // Pre-key replenishment is best-effort; do not fail the entire sync
+                Log.w(TAG, "Pre-key replenishment failed (non-fatal)", e)
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 5: Clean expired items
+        // ------------------------------------------------------------------
+
+        /**
+         * Removes locally-cached messages and vault items whose expiry timestamp
+         * has passed.
+         */
+        private suspend fun cleanExpiredVaultItems() {
+            val now = System.currentTimeMillis()
+            val deletedCount = messageDao.deleteExpiredMessages(now)
+            if (deletedCount > 0) {
+                Log.d(TAG, "Cleaned $deletedCount expired message(s)")
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 6: Badge update
+        // ------------------------------------------------------------------
+
+        /**
+         * Updates the notification summary badge with the count of newly synced
+         * messages.
+         */
+        private suspend fun updateBadge(newMessageCount: Int) {
+            if (newMessageCount > 0) {
+                notificationHandler.updateSummaryNotification(newMessageCount)
+            }
         }
     }
-
-    // ------------------------------------------------------------------
-    // Phase 5: Clean expired items
-    // ------------------------------------------------------------------
-
-    /**
-     * Removes locally-cached messages and vault items whose expiry timestamp
-     * has passed.
-     */
-    private suspend fun cleanExpiredVaultItems() {
-        val now = System.currentTimeMillis()
-        val deletedCount = messageDao.deleteExpiredMessages(now)
-        if (deletedCount > 0) {
-            Log.d(TAG, "Cleaned $deletedCount expired message(s)")
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Phase 6: Badge update
-    // ------------------------------------------------------------------
-
-    /**
-     * Updates the notification summary badge with the count of newly synced
-     * messages.
-     */
-    private suspend fun updateBadge(newMessageCount: Int) {
-        if (newMessageCount > 0) {
-            notificationHandler.updateSummaryNotification(newMessageCount)
-        }
-    }
-}

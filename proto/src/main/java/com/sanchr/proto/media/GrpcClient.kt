@@ -8,7 +8,6 @@ import io.grpc.Channel
  * Generated stub equivalent for sanchr.media.MediaService.
  */
 interface MediaServiceClient {
-
     suspend fun getUploadUrl(request: GetUploadUrlRequest): PresignedUrlResponse
 
     suspend fun getDownloadUrl(request: GetDownloadUrlRequest): PresignedUrlResponse
@@ -24,16 +23,12 @@ class MediaServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : MediaServiceClient {
-
-    override suspend fun getUploadUrl(request: GetUploadUrlRequest): PresignedUrlResponse {
+    override suspend fun getUploadUrl(request: GetUploadUrlRequest): PresignedUrlResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun getDownloadUrl(request: GetDownloadUrlRequest): PresignedUrlResponse {
+    override suspend fun getDownloadUrl(request: GetDownloadUrlRequest): PresignedUrlResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 
-    override suspend fun confirmUpload(request: ConfirmUploadRequest): ConfirmUploadResponse {
+    override suspend fun confirmUpload(request: ConfirmUploadRequest): ConfirmUploadResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
-    }
 }

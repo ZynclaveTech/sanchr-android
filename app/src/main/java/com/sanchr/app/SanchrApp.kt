@@ -11,8 +11,9 @@ import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
 @HiltAndroidApp
-class SanchrApp : Application(), Configuration.Provider {
-
+class SanchrApp :
+    Application(),
+    Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
@@ -23,10 +24,12 @@ class SanchrApp : Application(), Configuration.Provider {
     lateinit var realtimeManager: RealtimeManager
 
     override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .setMinimumLoggingLevel(android.util.Log.INFO)
-            .build()
+        get() =
+            Configuration
+                .Builder()
+                .setWorkerFactory(workerFactory)
+                .setMinimumLoggingLevel(android.util.Log.INFO)
+                .build()
 
     override fun onCreate() {
         super.onCreate()

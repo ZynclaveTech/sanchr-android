@@ -10,13 +10,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ContactDao {
-
     @Query(
         """
         SELECT * FROM contacts
         WHERE is_blocked = 0
         ORDER BY display_name ASC
-        """
+        """,
     )
     fun observeContacts(): Flow<List<ContactEntity>>
 
@@ -25,7 +24,7 @@ interface ContactDao {
         SELECT * FROM contacts
         WHERE is_registered = 1 AND is_blocked = 0
         ORDER BY display_name ASC
-        """
+        """,
     )
     fun observeRegisteredContacts(): Flow<List<ContactEntity>>
 
@@ -34,7 +33,7 @@ interface ContactDao {
         SELECT * FROM contacts
         WHERE is_favorite = 1 AND is_blocked = 0
         ORDER BY display_name ASC
-        """
+        """,
     )
     fun observeFavoriteContacts(): Flow<List<ContactEntity>>
 
@@ -53,7 +52,7 @@ interface ContactDao {
         WHERE display_name LIKE '%' || :query || '%'
            OR phone_number LIKE '%' || :query || '%'
         ORDER BY display_name ASC
-        """
+        """,
     )
     fun searchContacts(query: String): Flow<List<ContactEntity>>
 
@@ -64,10 +63,16 @@ interface ContactDao {
     suspend fun updateContact(contact: ContactEntity)
 
     @Query("UPDATE contacts SET is_blocked = :isBlocked WHERE id = :contactId")
-    suspend fun setBlocked(contactId: String, isBlocked: Boolean)
+    suspend fun setBlocked(
+        contactId: String,
+        isBlocked: Boolean,
+    )
 
     @Query("UPDATE contacts SET is_favorite = :isFavorite WHERE id = :contactId")
-    suspend fun setFavorite(contactId: String, isFavorite: Boolean)
+    suspend fun setFavorite(
+        contactId: String,
+        isFavorite: Boolean,
+    )
 
     @Query("DELETE FROM contacts WHERE id = :contactId")
     suspend fun deleteContact(contactId: String)

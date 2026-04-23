@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallMade
 import androidx.compose.material.icons.filled.CallMissed
 import androidx.compose.material.icons.filled.CallReceived
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,11 +31,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -70,18 +66,20 @@ fun CallsListScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
         ) {
             // Filter tabs
             LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = SanchrTheme.spacing.sm,
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = SanchrTheme.spacing.default,
+                            vertical = SanchrTheme.spacing.sm,
+                        ),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
             ) {
                 items(CallFilter.entries.toList()) { filter ->
@@ -94,10 +92,11 @@ fun CallsListScreen(
                                 style = MaterialTheme.typography.labelMedium,
                             )
                         },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
+                        colors =
+                            FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
                     )
                 }
             }
@@ -133,19 +132,21 @@ fun CallsListScreen(
                                     entry = entry,
                                     onClick = {
                                         // Call back the person
-                                        val targetUserId = if (entry.callerId.isNotEmpty()) {
-                                            entry.callerId
-                                        } else {
-                                            entry.calleeId
-                                        }
+                                        val targetUserId =
+                                            if (entry.callerId.isNotEmpty()) {
+                                                entry.callerId
+                                            } else {
+                                                entry.calleeId
+                                            }
                                         onCallClick(targetUserId)
                                     },
                                     onCallBack = {
-                                        val targetUserId = if (entry.callerId.isNotEmpty()) {
-                                            entry.callerId
-                                        } else {
-                                            entry.calleeId
-                                        }
+                                        val targetUserId =
+                                            if (entry.callerId.isNotEmpty()) {
+                                                entry.callerId
+                                            } else {
+                                                entry.calleeId
+                                            }
                                         if (entry.callType == "video") {
                                             viewModel.startVideoCall(targetUserId)
                                         } else {
@@ -206,13 +207,14 @@ private fun CallEntryRow(
     val displayName = if (isOutgoing) entry.calleeId else entry.callerId
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = SanchrTheme.spacing.default,
-                vertical = SanchrTheme.spacing.md,
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(
+                    horizontal = SanchrTheme.spacing.default,
+                    vertical = SanchrTheme.spacing.md,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Avatar
@@ -246,11 +248,12 @@ private fun CallEntryRow(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Direction icon
-                val (dirIcon, dirColor) = when {
-                    isMissed -> Icons.Filled.CallMissed to SanchrError
-                    isOutgoing -> Icons.Filled.CallMade to SanchrSuccess
-                    else -> Icons.Filled.CallReceived to SanchrSuccess
-                }
+                val (dirIcon, dirColor) =
+                    when {
+                        isMissed -> Icons.Filled.CallMissed to SanchrError
+                        isOutgoing -> Icons.Filled.CallMade to SanchrSuccess
+                        else -> Icons.Filled.CallReceived to SanchrSuccess
+                    }
 
                 Icon(
                     imageVector = dirIcon,

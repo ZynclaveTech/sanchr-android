@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -90,9 +89,10 @@ fun ContactsScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
         ) {
             // Search bar
             SanchrTextField(
@@ -106,12 +106,13 @@ fun ContactsScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = SanchrTheme.spacing.sm,
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = SanchrTheme.spacing.default,
+                            vertical = SanchrTheme.spacing.sm,
+                        ),
             )
 
             when (val state = uiState) {
@@ -230,33 +231,38 @@ private fun ContactsList(
                     backgroundContent = {
                         val direction = dismissState.dismissDirection
                         val color by animateColorAsState(
-                            targetValue = when (direction) {
-                                SwipeToDismissBoxValue.StartToEnd -> SanchrIndigo500
-                                SwipeToDismissBoxValue.EndToStart -> SanchrError
-                                else -> MaterialTheme.colorScheme.surface
-                            },
+                            targetValue =
+                                when (direction) {
+                                    SwipeToDismissBoxValue.StartToEnd -> SanchrIndigo500
+                                    SwipeToDismissBoxValue.EndToStart -> SanchrError
+                                    else -> MaterialTheme.colorScheme.surface
+                                },
                             label = "swipe_bg_color",
                         )
-                        val icon = when (direction) {
-                            SwipeToDismissBoxValue.StartToEnd -> Icons.AutoMirrored.Filled.Chat
-                            SwipeToDismissBoxValue.EndToStart -> Icons.Filled.Block
-                            else -> Icons.AutoMirrored.Filled.Chat
-                        }
-                        val label = when (direction) {
-                            SwipeToDismissBoxValue.StartToEnd -> "Message"
-                            SwipeToDismissBoxValue.EndToStart -> "Block"
-                            else -> ""
-                        }
-                        val alignment = when (direction) {
-                            SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-                            else -> Alignment.CenterEnd
-                        }
+                        val icon =
+                            when (direction) {
+                                SwipeToDismissBoxValue.StartToEnd -> Icons.AutoMirrored.Filled.Chat
+                                SwipeToDismissBoxValue.EndToStart -> Icons.Filled.Block
+                                else -> Icons.AutoMirrored.Filled.Chat
+                            }
+                        val label =
+                            when (direction) {
+                                SwipeToDismissBoxValue.StartToEnd -> "Message"
+                                SwipeToDismissBoxValue.EndToStart -> "Block"
+                                else -> ""
+                            }
+                        val alignment =
+                            when (direction) {
+                                SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
+                                else -> Alignment.CenterEnd
+                            }
 
                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(color)
-                                .padding(horizontal = SanchrTheme.spacing.xl),
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(color)
+                                    .padding(horizontal = SanchrTheme.spacing.xl),
                             contentAlignment = alignment,
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -294,13 +300,14 @@ private fun ContactsList(
 @Composable
 private fun SectionHeader(letter: Char) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(
-                horizontal = SanchrTheme.spacing.default,
-                vertical = SanchrTheme.spacing.xs,
-            ),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(
+                    horizontal = SanchrTheme.spacing.default,
+                    vertical = SanchrTheme.spacing.xs,
+                ),
     ) {
         Text(
             text = letter.toString(),
@@ -326,17 +333,17 @@ private fun ContactRow(
     var showContextMenu by remember { mutableStateOf(false) }
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { showContextMenu = true },
-            )
-            .padding(
-                horizontal = SanchrTheme.spacing.default,
-                vertical = SanchrTheme.spacing.md,
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = { showContextMenu = true },
+                ).padding(
+                    horizontal = SanchrTheme.spacing.default,
+                    vertical = SanchrTheme.spacing.md,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Avatar with online indicator
@@ -345,9 +352,10 @@ private fun ContactRow(
                 AsyncImage(
                     model = contact.avatarUrl,
                     contentDescription = "${contact.displayName} avatar",
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape),
+                    modifier =
+                        Modifier
+                            .size(48.dp)
+                            .clip(CircleShape),
                     contentScale = ContentScale.Crop,
                 )
             } else {
@@ -370,13 +378,14 @@ private fun ContactRow(
             // Online dot
             if (isOnline) {
                 Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .align(Alignment.BottomEnd)
-                        .offset(x = 2.dp, y = 2.dp)
-                        .background(MaterialTheme.colorScheme.surface, CircleShape)
-                        .padding(2.dp)
-                        .background(SanchrSuccess, CircleShape),
+                    modifier =
+                        Modifier
+                            .size(14.dp)
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 2.dp, y = 2.dp)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
+                            .padding(2.dp)
+                            .background(SanchrSuccess, CircleShape),
                 )
             }
         }

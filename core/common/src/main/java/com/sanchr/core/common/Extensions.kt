@@ -21,11 +21,18 @@ fun Long.toRelativeTimeString(): String {
         duration.inWholeDays < 2 -> "Yesterday"
         duration.inWholeDays < 7 -> {
             val dayOfWeek = instant.toLocalDateTime(TimeZone.currentSystemDefault()).dayOfWeek
-            dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+            dayOfWeek.name
+                .take(3)
+                .lowercase()
+                .replaceFirstChar { it.uppercase() }
         }
         else -> {
             val localDate = instant.toLocalDateTime(TimeZone.currentSystemDefault())
-            val month = localDate.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+            val month =
+                localDate.month.name
+                    .take(3)
+                    .lowercase()
+                    .replaceFirstChar { it.uppercase() }
             "$month ${localDate.dayOfMonth}"
         }
     }
@@ -49,10 +56,12 @@ fun Long.toCallDurationString(): String {
 /**
  * Truncates a string to the given max length, appending an ellipsis if truncated.
  */
-fun String.ellipsize(maxLength: Int): String {
-    return if (length <= maxLength) this
-    else take(maxLength - 1) + "\u2026"
-}
+fun String.ellipsize(maxLength: Int): String =
+    if (length <= maxLength) {
+        this
+    } else {
+        take(maxLength - 1) + "\u2026"
+    }
 
 /**
  * Returns a masked phone number for display (e.g., "+1 *** *** 1234").

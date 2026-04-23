@@ -55,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -91,11 +90,12 @@ fun ChatDetailScreen(
         topBar = {
             ChatDetailTopBar(
                 title = uiState.conversation?.title ?: "Chat",
-                statusText = if (uiState.peerTyping) {
-                    "Typing..."
-                } else {
-                    uiState.peerPresenceText
-                },
+                statusText =
+                    if (uiState.peerTyping) {
+                        "Typing..."
+                    } else {
+                        uiState.peerPresenceText
+                    },
                 isOnline = uiState.isPeerOnline,
                 onNavigateBack = onNavigateBack,
                 onVideoCall = { /* TODO */ },
@@ -107,9 +107,10 @@ fun ChatDetailScreen(
             Column {
                 // --- Bottom action bar: Voice + Vault ---
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = SanchrTheme.spacing.default, vertical = 2.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = SanchrTheme.spacing.default, vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     Surface(
@@ -174,10 +175,11 @@ fun ChatDetailScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .imePadding(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .imePadding(),
         ) {
             // --- E2EE banner ---
             Surface(
@@ -185,12 +187,13 @@ fun ChatDetailScreen(
                 color = SanchrCyan50,
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = SanchrTheme.spacing.default,
-                            vertical = SanchrTheme.spacing.sm,
-                        ),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = SanchrTheme.spacing.default,
+                                vertical = SanchrTheme.spacing.sm,
+                            ),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
@@ -211,9 +214,10 @@ fun ChatDetailScreen(
 
             // --- "Today" date chip ---
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = SanchrTheme.spacing.sm),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = SanchrTheme.spacing.sm),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
@@ -235,19 +239,21 @@ fun ChatDetailScreen(
                     text = "typing...",
                     style = MaterialTheme.typography.labelSmall,
                     color = SanchrGray400,
-                    modifier = Modifier.padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = 2.dp,
-                    ),
+                    modifier =
+                        Modifier.padding(
+                            horizontal = SanchrTheme.spacing.default,
+                            vertical = 2.dp,
+                        ),
                 )
             }
 
             // --- Messages list ---
             LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = SanchrTheme.spacing.default),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = SanchrTheme.spacing.default),
                 state = listState,
                 reverseLayout = true,
                 verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
@@ -257,13 +263,15 @@ fun ChatDetailScreen(
                     key = { it.id },
                 ) { message ->
                     when (message.contentType) {
-                        "image" -> ImageMessageBubble(
-                            message = message,
-                        )
+                        "image" ->
+                            ImageMessageBubble(
+                                message = message,
+                            )
 
-                        else -> MessageBubble(
-                            message = message,
-                        )
+                        else ->
+                            MessageBubble(
+                                message = message,
+                            )
                     }
                 }
             }
@@ -298,9 +306,10 @@ private fun ChatDetailTopBar(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Avatar 36dp circle
                 Surface(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape),
+                    modifier =
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape),
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -352,9 +361,10 @@ private fun ChatDetailTopBar(
                 )
             }
         },
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
     )
 }
 
@@ -366,21 +376,22 @@ private fun MessageBubble(
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
 
-    val bubbleShape = if (message.isFromMe) {
-        RoundedCornerShape(
-            topStart = 16.dp,
-            topEnd = 16.dp,
-            bottomStart = 16.dp,
-            bottomEnd = 4.dp,
-        )
-    } else {
-        RoundedCornerShape(
-            topStart = 4.dp,
-            topEnd = 16.dp,
-            bottomStart = 16.dp,
-            bottomEnd = 16.dp,
-        )
-    }
+    val bubbleShape =
+        if (message.isFromMe) {
+            RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 4.dp,
+            )
+        } else {
+            RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp,
+            )
+        }
 
     Box(
         modifier = modifier.fillMaxWidth(),
@@ -395,21 +406,24 @@ private fun MessageBubble(
                 modifier = Modifier.widthIn(max = 280.dp),
             ) {
                 Box(
-                    modifier = if (message.isFromMe) {
-                        Modifier.background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(SanchrIndigo500, SanchrIndigo900),
-                            ),
-                        )
-                    } else {
-                        Modifier.background(SanchrGray100)
-                    },
+                    modifier =
+                        if (message.isFromMe) {
+                            Modifier.background(
+                                brush =
+                                    Brush.linearGradient(
+                                        colors = listOf(SanchrIndigo500, SanchrIndigo900),
+                                    ),
+                            )
+                        } else {
+                            Modifier.background(SanchrGray100)
+                        },
                 ) {
                     Column(
-                        modifier = Modifier.padding(
-                            horizontal = SanchrTheme.spacing.md,
-                            vertical = SanchrTheme.spacing.sm,
-                        ),
+                        modifier =
+                            Modifier.padding(
+                                horizontal = SanchrTheme.spacing.md,
+                                vertical = SanchrTheme.spacing.sm,
+                            ),
                     ) {
                         Text(
                             text = message.text,
@@ -435,19 +449,21 @@ private fun MessageBubble(
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Filled.DoneAll,
-                        contentDescription = when (message.status) {
-                            MessageStatus.READ -> "Read"
-                            MessageStatus.DELIVERED -> "Delivered"
-                            else -> "Sent"
-                        },
+                        contentDescription =
+                            when (message.status) {
+                                MessageStatus.READ -> "Read"
+                                MessageStatus.DELIVERED -> "Delivered"
+                                else -> "Sent"
+                            },
                         modifier = Modifier.size(14.dp),
-                        tint = when (message.status) {
-                            MessageStatus.READ -> SanchrIndigo500
-                            MessageStatus.DELIVERED -> SanchrGray400
-                            MessageStatus.SENT -> SanchrGray400
-                            MessageStatus.SENDING -> SanchrGray400.copy(alpha = 0.5f)
-                            MessageStatus.FAILED -> MaterialTheme.colorScheme.error
-                        },
+                        tint =
+                            when (message.status) {
+                                MessageStatus.READ -> SanchrIndigo500
+                                MessageStatus.DELIVERED -> SanchrGray400
+                                MessageStatus.SENT -> SanchrGray400
+                                MessageStatus.SENDING -> SanchrGray400.copy(alpha = 0.5f)
+                                MessageStatus.FAILED -> MaterialTheme.colorScheme.error
+                            },
                     )
                 }
             }
@@ -473,16 +489,18 @@ private fun ImageMessageBubble(
             Card(
                 modifier = Modifier.widthIn(max = 200.dp),
                 shape = SanchrShapeTokens.CornerLarge,
-                colors = CardDefaults.cardColors(
-                    containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
-                ),
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
+                    ),
             ) {
                 // TODO: Load image with AsyncImage/Coil
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                        .background(SanchrGray100),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .background(SanchrGray100),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -540,12 +558,12 @@ private fun MessageInputBar(
         tonalElevation = 2.dp,
     ) {
         Row(
-            modifier = Modifier
-                .padding(
-                    horizontal = SanchrTheme.spacing.sm,
-                    vertical = SanchrTheme.spacing.xs,
-                )
-                .imePadding(),
+            modifier =
+                Modifier
+                    .padding(
+                        horizontal = SanchrTheme.spacing.sm,
+                        vertical = SanchrTheme.spacing.xs,
+                    ).imePadding(),
             verticalAlignment = Alignment.Bottom,
         ) {
             // "+" attach button
@@ -582,10 +600,11 @@ private fun MessageInputBar(
                 },
                 maxLines = 4,
                 shape = SanchrShapeTokens.CornerFull,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SanchrIndigo500,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                ),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SanchrIndigo500,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    ),
             )
 
             Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
@@ -607,12 +626,13 @@ private fun MessageInputBar(
                 onClick = onSend,
                 enabled = value.isNotBlank() && !isSending,
                 modifier = Modifier.size(40.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = SanchrIndigo500,
-                    contentColor = SanchrWhite,
-                    disabledContainerColor = SanchrGray400.copy(alpha = 0.3f),
-                    disabledContentColor = SanchrWhite.copy(alpha = 0.5f),
-                ),
+                colors =
+                    IconButtonDefaults.filledIconButtonColors(
+                        containerColor = SanchrIndigo500,
+                        contentColor = SanchrWhite,
+                        disabledContainerColor = SanchrGray400.copy(alpha = 0.3f),
+                        disabledContentColor = SanchrWhite.copy(alpha = 0.5f),
+                    ),
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,

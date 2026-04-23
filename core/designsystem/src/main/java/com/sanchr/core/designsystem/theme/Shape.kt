@@ -15,28 +15,31 @@ object SanchrShapeTokens {
     val CornerFull = RoundedCornerShape(9999.dp)
 
     /** Commonly used for message bubbles: rounded on three corners, sharp on one. */
-    val BubbleSent = RoundedCornerShape(
-        topStart = 16.dp,
-        topEnd = 16.dp,
-        bottomStart = 16.dp,
-        bottomEnd = 4.dp,
-    )
+    val BubbleSent =
+        RoundedCornerShape(
+            topStart = 16.dp,
+            topEnd = 16.dp,
+            bottomStart = 16.dp,
+            bottomEnd = 4.dp,
+        )
 
-    val BubbleReceived = RoundedCornerShape(
-        topStart = 4.dp,
-        topEnd = 16.dp,
-        bottomStart = 16.dp,
-        bottomEnd = 16.dp,
-    )
+    val BubbleReceived =
+        RoundedCornerShape(
+            topStart = 4.dp,
+            topEnd = 16.dp,
+            bottomStart = 16.dp,
+            bottomEnd = 16.dp,
+        )
 }
 
 /**
  * Material3 Shapes mapped to Sanchr design tokens.
  */
-val SanchrShapes = Shapes(
-    extraSmall = SanchrShapeTokens.CornerSmall,
-    small = SanchrShapeTokens.CornerSmall,
-    medium = SanchrShapeTokens.CornerMedium,
-    large = SanchrShapeTokens.CornerLarge,
-    extraLarge = SanchrShapeTokens.CornerExtraLarge,
-)
+val SanchrShapes =
+    Shapes(
+        extraSmall = SanchrShapeTokens.CornerSmall,
+        small = SanchrShapeTokens.CornerSmall,
+        medium = SanchrShapeTokens.CornerMedium,
+        large = SanchrShapeTokens.CornerLarge,
+        extraLarge = SanchrShapeTokens.CornerExtraLarge,
+    )

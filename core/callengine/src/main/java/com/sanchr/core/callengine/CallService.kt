@@ -7,17 +7,16 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class CallService : Service() {
-
     companion object {
         private const val TAG = "CallService"
 
@@ -37,6 +36,7 @@ class CallService : Service() {
     }
 
     @Inject lateinit var callManager: CallManager
+
     @Inject lateinit var callNotificationManager: CallNotificationManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -49,7 +49,11 @@ class CallService : Service() {
         observeCallState()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         when (intent?.action) {
             ACTION_START_CALL -> handleStartCall(intent)
             ACTION_INCOMING_CALL -> handleIncomingCall(intent)
@@ -83,11 +87,12 @@ class CallService : Service() {
         val sdpOffer = intent.getStringExtra(EXTRA_SDP_OFFER) ?: return
         val isVideo = intent.getBooleanExtra(EXTRA_IS_VIDEO, false)
 
-        val notification = callNotificationManager.showIncomingCallNotification(
-            callerName = callerName,
-            isVideo = isVideo,
-            callId = callId,
-        )
+        val notification =
+            callNotificationManager.showIncomingCallNotification(
+                callerName = callerName,
+                isVideo = isVideo,
+                callId = callId,
+            )
 
         startForegroundService(notification)
 
@@ -118,12 +123,16 @@ class CallService : Service() {
         }
     }
 
-    private fun startForegroundWithNotification(callerName: String, callType: String) {
-        val notification = callNotificationManager.showOngoingCallNotification(
-            callerName = callerName,
-            callType = callType,
-            isIncoming = false,
-        )
+    private fun startForegroundWithNotification(
+        callerName: String,
+        callType: String,
+    ) {
+        val notification =
+            callNotificationManager.showOngoingCallNotification(
+                callerName = callerName,
+                callType = callType,
+                isIncoming = false,
+            )
         startForegroundService(notification)
     }
 
@@ -152,14 +161,16 @@ class CallService : Service() {
                     is CallState.Active -> {
                         val name = state.remoteUserName
                         val callType = callManager.callType.value
-                        val notification = callNotificationManager.showOngoingCallNotification(
-                            callerName = name,
-                            callType = callType,
-                            isIncoming = false,
-                        )
+                        val notification =
+                            callNotificationManager.showOngoingCallNotification(
+                                callerName = name,
+                                callType = callType,
+                                isIncoming = false,
+                            )
                         if (isServiceStarted) {
-                            val nm = getSystemService(NOTIFICATION_SERVICE)
-                                as android.app.NotificationManager
+                            val nm =
+                                getSystemService(NOTIFICATION_SERVICE)
+                                    as android.app.NotificationManager
                             nm.notify(
                                 CallNotificationManager.NOTIFICATION_ID_ONGOING,
                                 notification,

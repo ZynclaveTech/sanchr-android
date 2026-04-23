@@ -7,9 +7,13 @@ import sanchr.backup.BackupServiceGrpcKt
 
 interface BackupServiceClient {
     suspend fun createBackupUpload(request: CreateBackupUploadRequest): CreateBackupUploadResponse
+
     suspend fun commitBackup(request: CommitBackupRequest): CommitBackupResponse
+
     suspend fun listBackups(request: ListBackupsRequest = ListBackupsRequest): ListBackupsResponse
+
     suspend fun getBackupDownload(request: GetBackupDownloadRequest): GetBackupDownloadResponse
+
     suspend fun deleteBackup(request: DeleteBackupRequest): DeleteBackupResponse
 }
 
@@ -19,21 +23,16 @@ class BackupServiceGrpcClient(
 ) : BackupServiceClient {
     private val stub = BackupServiceGrpcKt.BackupServiceCoroutineStub(channel, callOptions)
 
-    override suspend fun createBackupUpload(request: CreateBackupUploadRequest): CreateBackupUploadResponse {
-        return stub.createBackupUpload(request.toProto()).toManual()
-    }
+    override suspend fun createBackupUpload(request: CreateBackupUploadRequest): CreateBackupUploadResponse =
+        stub.createBackupUpload(request.toProto()).toManual()
 
-    override suspend fun commitBackup(request: CommitBackupRequest): CommitBackupResponse {
-        return stub.commitBackup(request.toProto()).toManual()
-    }
+    override suspend fun commitBackup(request: CommitBackupRequest): CommitBackupResponse = stub.commitBackup(request.toProto()).toManual()
 
-    override suspend fun listBackups(request: ListBackupsRequest): ListBackupsResponse {
-        return stub.listBackups(Backup.ListBackupsRequest.getDefaultInstance()).toManual()
-    }
+    override suspend fun listBackups(request: ListBackupsRequest): ListBackupsResponse =
+        stub.listBackups(Backup.ListBackupsRequest.getDefaultInstance()).toManual()
 
-    override suspend fun getBackupDownload(request: GetBackupDownloadRequest): GetBackupDownloadResponse {
-        return stub.getBackupDownload(request.toProto()).toManual()
-    }
+    override suspend fun getBackupDownload(request: GetBackupDownloadRequest): GetBackupDownloadResponse =
+        stub.getBackupDownload(request.toProto()).toManual()
 
     override suspend fun deleteBackup(request: DeleteBackupRequest): DeleteBackupResponse {
         stub.deleteBackup(request.toProto())
@@ -42,31 +41,37 @@ class BackupServiceGrpcClient(
 }
 
 private fun CreateBackupUploadRequest.toProto(): Backup.CreateBackupUploadRequest =
-    Backup.CreateBackupUploadRequest.newBuilder()
+    Backup.CreateBackupUploadRequest
+        .newBuilder()
         .setByteSize(byteSize)
         .setSha256Hash(sha256Hash)
-        .setOpaqueMetadata(com.google.protobuf.ByteString.copyFrom(opaqueMetadata))
-        .setReservedForwardSecrecyMetadata(
-            com.google.protobuf.ByteString.copyFrom(reservedForwardSecrecyMetadata),
-        )
-        .setLineageId(lineageId)
+        .setOpaqueMetadata(
+            com.google.protobuf.ByteString
+                .copyFrom(opaqueMetadata),
+        ).setReservedForwardSecrecyMetadata(
+            com.google.protobuf.ByteString
+                .copyFrom(reservedForwardSecrecyMetadata),
+        ).setLineageId(lineageId)
         .setFormatVersion(formatVersion)
         .build()
 
 private fun CommitBackupRequest.toProto(): Backup.CommitBackupRequest =
-    Backup.CommitBackupRequest.newBuilder()
+    Backup.CommitBackupRequest
+        .newBuilder()
         .setBackupId(backupId)
         .setByteSize(byteSize)
         .setSha256Hash(sha256Hash)
         .build()
 
 private fun GetBackupDownloadRequest.toProto(): Backup.GetBackupDownloadRequest =
-    Backup.GetBackupDownloadRequest.newBuilder()
+    Backup.GetBackupDownloadRequest
+        .newBuilder()
         .setBackupId(backupId)
         .build()
 
 private fun DeleteBackupRequest.toProto(): Backup.DeleteBackupRequest =
-    Backup.DeleteBackupRequest.newBuilder()
+    Backup.DeleteBackupRequest
+        .newBuilder()
         .setBackupId(backupId)
         .build()
 

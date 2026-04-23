@@ -84,18 +84,20 @@ fun ChatsListScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
         ) {
             // --- E2EE indicator ---
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = SanchrTheme.spacing.xs,
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = SanchrTheme.spacing.default,
+                            vertical = SanchrTheme.spacing.xs,
+                        ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -120,12 +122,13 @@ fun ChatsListScreen(
                     searchQuery = query
                     viewModel.onSearchQueryChanged(query)
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = SanchrTheme.spacing.sm,
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = SanchrTheme.spacing.default,
+                            vertical = SanchrTheme.spacing.sm,
+                        ),
                 placeholder = {
                     Text(
                         text = "Search conversations...",
@@ -142,12 +145,13 @@ fun ChatsListScreen(
                 singleLine = true,
                 shape = SanchrShapeTokens.CornerFull,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SanchrIndigo500,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                ),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SanchrIndigo500,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    ),
             )
 
             when (val state = uiState) {
@@ -237,20 +241,22 @@ private fun ConversationItem(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = SanchrTheme.spacing.default,
-                vertical = SanchrTheme.spacing.md,
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(
+                    horizontal = SanchrTheme.spacing.default,
+                    vertical = SanchrTheme.spacing.md,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // --- Avatar: 48dp circle, AsyncImage or initials fallback ---
         Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape),
+            modifier =
+                Modifier
+                    .size(48.dp)
+                    .clip(CircleShape),
         ) {
             if (conversation.avatarUrl != null) {
                 AsyncImage(
@@ -309,11 +315,12 @@ private fun ConversationItem(
             Text(
                 text = "Now", // TODO: Format conversation.updatedAt to relative time string
                 style = MaterialTheme.typography.labelSmall,
-                color = if (conversation.unreadCount > 0) {
-                    SanchrIndigo500
-                } else {
-                    SanchrGray400
-                },
+                color =
+                    if (conversation.unreadCount > 0) {
+                        SanchrIndigo500
+                    } else {
+                        SanchrGray400
+                    },
             )
 
             if (conversation.unreadCount > 0) {

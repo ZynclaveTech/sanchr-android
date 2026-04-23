@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.Flow
  * Repository interface for call history and signaling operations.
  */
 interface CallRepository {
-
     /** Observes the call history log. */
     fun observeCallHistory(): Flow<List<CallRecord>>
 
@@ -17,7 +16,11 @@ interface CallRepository {
     suspend fun endCall(callId: String)
 
     /** Sends an SDP offer/answer via signaling. */
-    suspend fun sendSignal(callId: String, type: String, payload: String)
+    suspend fun sendSignal(
+        callId: String,
+        type: String,
+        payload: String,
+    )
 
     /** Observes incoming signals for a call. */
     fun observeSignals(callId: String): Flow<CallSignal>

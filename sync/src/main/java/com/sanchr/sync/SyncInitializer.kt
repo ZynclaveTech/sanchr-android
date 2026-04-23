@@ -17,7 +17,6 @@ import androidx.work.WorkManagerInitializer
  * before we attempt to enqueue work.
  */
 class SyncInitializer : Initializer<Unit> {
-
     companion object {
         private const val TAG = "SyncInitializer"
     }
@@ -27,7 +26,8 @@ class SyncInitializer : Initializer<Unit> {
         Log.i(TAG, "Periodic sync initialized via App Startup")
     }
 
-    override fun dependencies(): List<Class<out Initializer<*>>> = listOf(
-        WorkManagerInitializer::class.java,
-    )
+    override fun dependencies(): List<Class<out Initializer<*>>> =
+        listOf(
+            WorkManagerInitializer::class.java,
+        )
 }

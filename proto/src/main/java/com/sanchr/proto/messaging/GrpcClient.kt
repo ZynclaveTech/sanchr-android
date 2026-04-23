@@ -9,7 +9,6 @@ import sanchr.messaging.Messaging
 import sanchr.messaging.MessagingServiceGrpcKt
 
 interface MessagingServiceClient {
-
     suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse
 
     suspend fun startDirectConversation(request: StartDirectConversationRequest): Conversation
@@ -33,23 +32,16 @@ class MessagingServiceGrpcClient(
 ) : MessagingServiceClient {
     private val stub = MessagingServiceGrpcKt.MessagingServiceCoroutineStub(channel, callOptions)
 
-    override suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse {
-        return stub.sendMessage(request.toProto()).toManual()
-    }
+    override suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse = stub.sendMessage(request.toProto()).toManual()
 
-    override suspend fun startDirectConversation(
-        request: StartDirectConversationRequest,
-    ): Conversation {
-        return stub.startDirectConversation(request.toProto()).toManual()
-    }
+    override suspend fun startDirectConversation(request: StartDirectConversationRequest): Conversation =
+        stub.startDirectConversation(request.toProto()).toManual()
 
-    override fun messageStream(requests: Flow<ClientEvent>): Flow<ServerEvent> {
-        return stub.messageStream(requests.map(ClientEvent::toProto)).map(Messaging.ServerEvent::toManual)
-    }
+    override fun messageStream(requests: Flow<ClientEvent>): Flow<ServerEvent> =
+        stub.messageStream(requests.map(ClientEvent::toProto)).map(Messaging.ServerEvent::toManual)
 
-    override fun syncMessages(request: SyncRequest): Flow<EncryptedEnvelope> {
-        return stub.syncMessages(request.toProto()).map(Messaging.EncryptedEnvelope::toManual)
-    }
+    override fun syncMessages(request: SyncRequest): Flow<EncryptedEnvelope> =
+        stub.syncMessages(request.toProto()).map(Messaging.EncryptedEnvelope::toManual)
 
     override suspend fun ackMessages(request: AckMessagesRequest): AckMessagesResponse {
         stub.ackMessages(request.toProto())
@@ -66,27 +58,27 @@ class MessagingServiceGrpcClient(
         return ReceiptResponse()
     }
 
-    override suspend fun getConversations(
-        request: GetConversationsRequest,
-    ): GetConversationsResponse {
-        return stub.getConversations(Messaging.GetConversationsRequest.getDefaultInstance()).toManual()
-    }
+    override suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse =
+        stub.getConversations(Messaging.GetConversationsRequest.getDefaultInstance()).toManual()
 }
 
 private fun StartDirectConversationRequest.toProto(): Messaging.StartDirectConversationRequest =
-    Messaging.StartDirectConversationRequest.newBuilder()
+    Messaging.StartDirectConversationRequest
+        .newBuilder()
         .setRecipientId(recipientId)
         .build()
 
 private fun DeviceMessage.toProto(): Messaging.DeviceMessage =
-    Messaging.DeviceMessage.newBuilder()
+    Messaging.DeviceMessage
+        .newBuilder()
         .setRecipientId(recipientId)
         .setDeviceId(deviceId)
         .setCiphertext(ByteString.copyFrom(cipherText))
         .build()
 
 private fun SendMessageRequest.toProto(): Messaging.SendMessageRequest =
-    Messaging.SendMessageRequest.newBuilder()
+    Messaging.SendMessageRequest
+        .newBuilder()
         .setConversationId(conversationId)
         .addAllDeviceMessages(deviceMessages.map(DeviceMessage::toProto))
         .setContentType(contentType)
@@ -96,39 +88,49 @@ private fun SendMessageRequest.toProto(): Messaging.SendMessageRequest =
 private fun ClientEvent.toProto(): Messaging.ClientEvent =
     when (this) {
         is ClientEvent.Typing -> {
-            val typing = Messaging.TypingIndicator.newBuilder()
-                .setConversationId(conversationId)
-                .setUserId(userId)
-                .setIsTyping(isTyping)
+            val typing =
+                Messaging.TypingIndicator
+                    .newBuilder()
+                    .setConversationId(conversationId)
+                    .setUserId(userId)
+                    .setIsTyping(isTyping)
+                    .build()
+            Messaging.ClientEvent
+                .newBuilder()
+                .setTyping(typing)
                 .build()
-            Messaging.ClientEvent.newBuilder().setTyping(typing).build()
         }
     }
 
 private fun SyncRequest.toProto(): Messaging.SyncRequest =
-    Messaging.SyncRequest.newBuilder()
+    Messaging.SyncRequest
+        .newBuilder()
         .setSinceTimestamp(sinceTimestamp)
         .build()
 
 private fun AckedMessageRef.toProto(): Messaging.AckedMessageRef =
-    Messaging.AckedMessageRef.newBuilder()
+    Messaging.AckedMessageRef
+        .newBuilder()
         .setConversationId(conversationId)
         .setMessageId(messageId)
         .build()
 
 private fun AckMessagesRequest.toProto(): Messaging.AckMessagesRequest =
-    Messaging.AckMessagesRequest.newBuilder()
+    Messaging.AckMessagesRequest
+        .newBuilder()
         .addAllMessages(messages.map(AckedMessageRef::toProto))
         .build()
 
 private fun DeleteMessageRequest.toProto(): Messaging.DeleteMessageRequest =
-    Messaging.DeleteMessageRequest.newBuilder()
+    Messaging.DeleteMessageRequest
+        .newBuilder()
         .setConversationId(conversationId)
         .setMessageId(messageId)
         .build()
 
 private fun ReceiptRequest.toProto(): Messaging.ReceiptRequest =
-    Messaging.ReceiptRequest.newBuilder()
+    Messaging.ReceiptRequest
+        .newBuilder()
         .setConversationId(conversationId)
         .setMessageId(messageId)
         .setStatus(status)
@@ -226,6 +228,7 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent =
         Messaging.ServerEvent.EventCase.REACTION,
         Messaging.ServerEvent.EventCase.SEALED_MESSAGE,
         Messaging.ServerEvent.EventCase.MESSAGE_EDITED,
-        Messaging.ServerEvent.EventCase.EVENT_NOT_SET ->
+        Messaging.ServerEvent.EventCase.EVENT_NOT_SET,
+        ->
             throw IllegalStateException("Unhandled ServerEvent case: $eventCase")
     }

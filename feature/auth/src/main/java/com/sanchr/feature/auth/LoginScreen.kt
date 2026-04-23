@@ -17,11 +17,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,20 +40,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextButton
 import com.sanchr.core.designsystem.theme.SanchrGradients
+import com.sanchr.core.designsystem.theme.SanchrGray400
+import com.sanchr.core.designsystem.theme.SanchrGray500
+import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo100
 import com.sanchr.core.designsystem.theme.SanchrIndigo400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
-import com.sanchr.core.designsystem.theme.SanchrGray400
-import com.sanchr.core.designsystem.theme.SanchrGray500
-import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWhite
@@ -67,42 +65,46 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val phoneNumber = when (uiState) {
-        is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).phoneNumber
-        is LoginUiState.Error -> (uiState as LoginUiState.Error).phoneNumber
-        else -> ""
-    }
-    val countryCode = when (uiState) {
-        is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).countryCode
-        is LoginUiState.Error -> (uiState as LoginUiState.Error).countryCode
-        else -> "+1"
-    }
+    val phoneNumber =
+        when (uiState) {
+            is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).phoneNumber
+            is LoginUiState.Error -> (uiState as LoginUiState.Error).phoneNumber
+            else -> ""
+        }
+    val countryCode =
+        when (uiState) {
+            is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).countryCode
+            is LoginUiState.Error -> (uiState as LoginUiState.Error).countryCode
+            else -> "+1"
+        }
     val errorMessage = (uiState as? LoginUiState.Error)?.message
     val isLoading = uiState is LoginUiState.Loading
     val isValid = (uiState as? LoginUiState.PhoneInput)?.isValid ?: false
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SanchrTheme.spacing.xl)
-                .imePadding(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SanchrTheme.spacing.xl)
+                    .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
 
             // --- Sanchr logo: purple chat bubble + shield icon ---
             Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(SanchrShapeTokens.CornerExtraLarge)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(SanchrIndigo500, SanchrIndigo400),
+                modifier =
+                    Modifier
+                        .size(80.dp)
+                        .clip(SanchrShapeTokens.CornerExtraLarge)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(SanchrIndigo500, SanchrIndigo400),
+                            ),
                         ),
-                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -115,10 +117,11 @@ fun LoginScreen(
                     imageVector = Icons.Filled.Shield,
                     contentDescription = "Sanchr logo",
                     tint = SanchrWhite.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .size(20.dp)
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 4.dp, end = 4.dp),
+                    modifier =
+                        Modifier
+                            .size(20.dp)
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 4.dp, end = 4.dp),
                 )
             }
 
@@ -172,26 +175,28 @@ fun LoginScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
                 isError = errorMessage != null,
-                supportingText = if (errorMessage != null) {
-                    {
-                        Text(
-                            text = errorMessage,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                } else {
-                    {
-                        Text(
-                            text = "We'll send you a verification code",
-                            color = SanchrGray400,
-                        )
-                    }
-                },
+                supportingText =
+                    if (errorMessage != null) {
+                        {
+                            Text(
+                                text = errorMessage,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } else {
+                        {
+                            Text(
+                                text = "We'll send you a verification code",
+                                color = SanchrGray400,
+                            )
+                        }
+                    },
                 shape = SanchrShapeTokens.CornerMedium,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SanchrIndigo500,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                ),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SanchrIndigo500,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
@@ -200,9 +205,10 @@ fun LoginScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = SanchrShapeTokens.CornerMedium,
-                colors = CardDefaults.cardColors(
-                    containerColor = SanchrIndigo100,
-                ),
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = SanchrIndigo100,
+                    ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Row(
@@ -237,22 +243,25 @@ fun LoginScreen(
 
             // --- Gradient "Continue" button ---
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .clip(SanchrShapeTokens.CornerFull)
-                    .background(
-                        brush = if (!isLoading && (isValid || phoneNumber.length >= 7)) {
-                            SanchrGradients.Primary
-                        } else {
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    SanchrGray400.copy(alpha = 0.5f),
-                                    SanchrGray400.copy(alpha = 0.5f),
-                                ),
-                            )
-                        },
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .clip(SanchrShapeTokens.CornerFull)
+                        .background(
+                            brush =
+                                if (!isLoading && (isValid || phoneNumber.length >= 7)) {
+                                    SanchrGradients.Primary
+                                } else {
+                                    Brush.linearGradient(
+                                        colors =
+                                            listOf(
+                                                SanchrGray400.copy(alpha = 0.5f),
+                                                SanchrGray400.copy(alpha = 0.5f),
+                                            ),
+                                    )
+                                },
+                        ),
             ) {
                 SanchrButton(
                     onClick = { viewModel.requestOtp(onNavigateToOtp) },
@@ -331,9 +340,10 @@ fun LoginScreen(
 
             // --- Privacy Policy / Terms links ---
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = SanchrTheme.spacing.xl),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = SanchrTheme.spacing.xl),
                 horizontalArrangement = Arrangement.Center,
             ) {
                 SanchrTextButton(onClick = { /* TODO: Open Privacy Policy */ }) {

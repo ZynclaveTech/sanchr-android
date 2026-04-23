@@ -15,16 +15,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,11 +74,12 @@ fun ChatSettingsScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // Bubble Style selector
             Text(
@@ -94,25 +95,28 @@ fun ChatSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
             ) {
-                val styles = listOf(
-                    "default" to "Default",
-                    "rounded" to "Rounded",
-                    "flat" to "Flat",
-                )
+                val styles =
+                    listOf(
+                        "default" to "Default",
+                        "rounded" to "Rounded",
+                        "flat" to "Flat",
+                    )
                 styles.forEach { (value, label) ->
                     val isSelected = uiState.bubbleStyle == value
-                    val borderColor = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outline
-                    }
+                    val borderColor =
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        }
                     Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-                            .clickable { viewModel.setBubbleStyle(value) }
-                            .padding(SanchrTheme.spacing.md),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+                                .clickable { viewModel.setBubbleStyle(value) }
+                                .padding(SanchrTheme.spacing.md),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Icon(
@@ -177,9 +181,14 @@ fun ChatSettingsScreen(
             if (uiState.backupEnabled) {
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 Text(
-                    text = "Last backup: " + (uiState.lastBackupAtMillis?.let {
-                        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))
-                    } ?: "Never"),
+                    text =
+                        "Last backup: " + (
+                            uiState.lastBackupAtMillis?.let {
+                                java.text.DateFormat
+                                    .getDateTimeInstance()
+                                    .format(java.util.Date(it))
+                            } ?: "Never"
+                        ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -225,7 +234,9 @@ fun ChatSettingsScreen(
             title = { Text("Restore Backup") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
-                    Text("Restore your encrypted chat history after sign-in using your recovery key. Leave the field blank if this device already stores it.")
+                    Text(
+                        "Restore your encrypted chat history after sign-in using your recovery key. Leave the field blank if this device already stores it.",
+                    )
                     OutlinedTextField(
                         value = restoreRecoveryKey.value,
                         onValueChange = { restoreRecoveryKey.value = it },

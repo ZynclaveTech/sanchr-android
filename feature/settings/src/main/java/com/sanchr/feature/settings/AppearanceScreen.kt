@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,7 +26,6 @@ import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -42,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -64,11 +61,12 @@ fun AppearanceScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             Text(
                 text = "Theme",
@@ -197,22 +195,22 @@ fun AppearanceScreen(
                     MaterialTheme.colorScheme.tertiaryContainer,
                 ).forEachIndexed { index, color ->
                     Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(color)
-                            .then(
-                                if (index == 0) {
-                                    Modifier.border(
-                                        2.dp,
-                                        MaterialTheme.colorScheme.primary,
-                                        RoundedCornerShape(12.dp),
-                                    )
-                                } else {
-                                    Modifier
-                                },
-                            )
-                            .clickable { /* select wallpaper */ },
+                        modifier =
+                            Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(color)
+                                .then(
+                                    if (index == 0) {
+                                        Modifier.border(
+                                            2.dp,
+                                            MaterialTheme.colorScheme.primary,
+                                            RoundedCornerShape(12.dp),
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                ).clickable { /* select wallpaper */ },
                         contentAlignment = Alignment.Center,
                     ) {
                         if (index == 0) {
@@ -240,18 +238,20 @@ private fun ThemePreviewCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = if (isSelected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.outline
-    }
+    val borderColor =
+        if (isSelected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outline
+        }
 
     Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(SanchrTheme.spacing.md),
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(12.dp))
+                .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+                .clickable(onClick = onClick)
+                .padding(SanchrTheme.spacing.md),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -270,9 +270,10 @@ private fun ThemePreviewCard(
         if (isSelected) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
             Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                modifier =
+                    Modifier
+                        .size(8.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
             )
         }
     }

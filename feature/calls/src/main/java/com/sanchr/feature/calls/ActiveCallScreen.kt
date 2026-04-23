@@ -45,7 +45,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -58,7 +57,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -70,8 +68,8 @@ import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrGradients
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import org.webrtc.SurfaceViewRenderer
 import kotlin.math.roundToInt
+import org.webrtc.SurfaceViewRenderer
 
 @Composable
 fun ActiveCallScreen(
@@ -90,8 +88,9 @@ fun ActiveCallScreen(
     val isVideoCall = callType == "video"
     val isIncoming = callState is CallState.Incoming
     val isActive = callState is CallState.Active
-    val isRinging = callState is CallState.Ringing ||
-        callState is CallState.Outgoing
+    val isRinging =
+        callState is CallState.Ringing ||
+            callState is CallState.Outgoing
 
     // Navigate away when call ends and returns to idle
     LaunchedEffect(callState) {
@@ -101,9 +100,10 @@ fun ActiveCallScreen(
     }
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(SanchrGradients.CallActive),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(SanchrGradients.CallActive),
     ) {
         // Video mode: remote video fills the screen
         if (isVideoCall && isActive) {
@@ -115,9 +115,10 @@ fun ActiveCallScreen(
 
         // Main content overlay
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(SanchrTheme.spacing.xxl),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(SanchrTheme.spacing.xxl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -167,18 +168,20 @@ fun ActiveCallScreen(
         if (isVideoCall && isActive && isVideoEnabled) {
             LocalVideoPiP(
                 viewModel = viewModel,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 64.dp, end = SanchrTheme.spacing.default),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 64.dp, end = SanchrTheme.spacing.default),
             )
         }
 
         // Encryption badge at top center
         if (isActive || isRinging) {
             EncryptionBadge(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = SanchrTheme.spacing.xxxl),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = SanchrTheme.spacing.xxxl),
             )
         }
     }
@@ -232,27 +235,28 @@ private fun CallerInfoSection(
 
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
-        val statusText = when (callState) {
-            is CallState.Outgoing -> "Calling..."
-            is CallState.Ringing -> "Ringing..."
-            is CallState.Incoming -> {
-                val type = if (callState.isVideo) "video" else "voice"
-                "Incoming $type call"
-            }
-            is CallState.Active -> formatDuration(callDuration)
-            is CallState.Reconnecting -> "Reconnecting..."
-            is CallState.Ended -> {
-                when (callState.reason) {
-                    CallState.EndReason.NORMAL -> "Call ended"
-                    CallState.EndReason.BUSY -> "Busy"
-                    CallState.EndReason.DECLINED -> "Declined"
-                    CallState.EndReason.FAILED -> "Call failed"
-                    CallState.EndReason.TIMEOUT -> "No answer"
-                    CallState.EndReason.NETWORK_ERROR -> "Connection lost"
+        val statusText =
+            when (callState) {
+                is CallState.Outgoing -> "Calling..."
+                is CallState.Ringing -> "Ringing..."
+                is CallState.Incoming -> {
+                    val type = if (callState.isVideo) "video" else "voice"
+                    "Incoming $type call"
                 }
+                is CallState.Active -> formatDuration(callDuration)
+                is CallState.Reconnecting -> "Reconnecting..."
+                is CallState.Ended -> {
+                    when (callState.reason) {
+                        CallState.EndReason.NORMAL -> "Call ended"
+                        CallState.EndReason.BUSY -> "Busy"
+                        CallState.EndReason.DECLINED -> "Declined"
+                        CallState.EndReason.FAILED -> "Call failed"
+                        CallState.EndReason.TIMEOUT -> "No answer"
+                        CallState.EndReason.NETWORK_ERROR -> "Connection lost"
+                    }
+                }
+                is CallState.Idle -> ""
             }
-            is CallState.Idle -> ""
-        }
 
         Text(
             text = statusText,
@@ -268,39 +272,44 @@ private fun PulseRing(delayMillis: Int) {
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 1200,
-                delayMillis = delayMillis,
-                easing = LinearEasing,
+        animationSpec =
+            infiniteRepeatable(
+                animation =
+                    tween(
+                        durationMillis = 1200,
+                        delayMillis = delayMillis,
+                        easing = LinearEasing,
+                    ),
+                repeatMode = RepeatMode.Restart,
             ),
-            repeatMode = RepeatMode.Restart,
-        ),
         label = "pulseScale",
     )
     val alpha by infiniteTransition.animateFloat(
         initialValue = 0.5f,
         targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 1200,
-                delayMillis = delayMillis,
-                easing = LinearEasing,
+        animationSpec =
+            infiniteRepeatable(
+                animation =
+                    tween(
+                        durationMillis = 1200,
+                        delayMillis = delayMillis,
+                        easing = LinearEasing,
+                    ),
+                repeatMode = RepeatMode.Restart,
             ),
-            repeatMode = RepeatMode.Restart,
-        ),
         label = "pulseAlpha",
     )
 
     Box(
-        modifier = Modifier
-            .size(120.dp)
-            .scale(scale)
-            .border(
-                width = 2.dp,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = alpha),
-                shape = CircleShape,
-            ),
+        modifier =
+            Modifier
+                .size(120.dp)
+                .scale(scale)
+                .border(
+                    width = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = alpha),
+                    shape = CircleShape,
+                ),
     )
 }
 
@@ -457,11 +466,12 @@ private fun CallControlButton(
     ) {
         Surface(
             shape = CircleShape,
-            color = if (isActive) {
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
-            } else {
-                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.1f)
-            },
+            color =
+                if (isActive) {
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
+                } else {
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.1f)
+                },
             modifier = Modifier.size(56.dp),
         ) {
             IconButton(onClick = onClick) {
@@ -519,22 +529,22 @@ private fun LocalVideoPiP(
     var offsetY by remember { mutableFloatStateOf(0f) }
 
     Box(
-        modifier = modifier
-            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    offsetX += dragAmount.x
-                    offsetY += dragAmount.y
-                }
-            }
-            .size(width = 120.dp, height = 160.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .border(
-                width = 2.dp,
-                color = Color.White.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(12.dp),
-            ),
+        modifier =
+            modifier
+                .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        offsetX += dragAmount.x
+                        offsetY += dragAmount.y
+                    }
+                }.size(width = 120.dp, height = 160.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    width = 2.dp,
+                    color = Color.White.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(12.dp),
+                ),
     ) {
         AndroidView(
             factory = { ctx ->
@@ -569,10 +579,11 @@ private fun EncryptionBadge(modifier: Modifier = Modifier) {
             text = "End-to-end encrypted",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
-            modifier = Modifier.padding(
-                horizontal = 12.dp,
-                vertical = 4.dp,
-            ),
+            modifier =
+                Modifier.padding(
+                    horizontal = 12.dp,
+                    vertical = 4.dp,
+                ),
         )
     }
 }
@@ -581,15 +592,16 @@ private fun EncryptionBadge(modifier: Modifier = Modifier) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-private fun extractCallerName(state: CallState): String = when (state) {
-    is CallState.Outgoing -> state.recipientName
-    is CallState.Incoming -> state.callerName
-    is CallState.Ringing -> state.recipientName
-    is CallState.Active -> state.remoteUserName
-    is CallState.Reconnecting -> state.remoteUserName
-    is CallState.Ended -> ""
-    is CallState.Idle -> ""
-}
+private fun extractCallerName(state: CallState): String =
+    when (state) {
+        is CallState.Outgoing -> state.recipientName
+        is CallState.Incoming -> state.callerName
+        is CallState.Ringing -> state.recipientName
+        is CallState.Active -> state.remoteUserName
+        is CallState.Reconnecting -> state.remoteUserName
+        is CallState.Ended -> ""
+        is CallState.Idle -> ""
+    }
 
 private fun formatDuration(totalSeconds: Long): String {
     val minutes = totalSeconds / 60

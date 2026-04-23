@@ -29,10 +29,11 @@ fun NavGraphBuilder.authGraph(
         composable(LOGIN_ROUTE) {
             LoginScreen(
                 onNavigateToOtp = { phoneNumber ->
-                    val encodedPhone = java.net.URLEncoder.encode(
-                        phoneNumber,
-                        "UTF-8",
-                    )
+                    val encodedPhone =
+                        java.net.URLEncoder.encode(
+                            phoneNumber,
+                            "UTF-8",
+                        )
                     navController.navigate("auth/otp/$encodedPhone")
                 },
             )
@@ -40,11 +41,12 @@ fun NavGraphBuilder.authGraph(
 
         composable(
             route = OTP_ROUTE,
-            arguments = listOf(
-                navArgument("phoneNumber") {
-                    type = NavType.StringType
-                },
-            ),
+            arguments =
+                listOf(
+                    navArgument("phoneNumber") {
+                        type = NavType.StringType
+                    },
+                ),
         ) { backStackEntry ->
             val encodedPhone = backStackEntry.arguments?.getString("phoneNumber") ?: ""
             val phoneNumber = java.net.URLDecoder.decode(encodedPhone, "UTF-8")

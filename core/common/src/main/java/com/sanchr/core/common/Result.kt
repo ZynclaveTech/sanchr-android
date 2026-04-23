@@ -9,35 +9,44 @@ import kotlinx.coroutines.flow.map
  * Used throughout the app for consistent error handling at the data/domain boundary.
  */
 sealed interface Result<out T> {
-    data class Success<T>(val data: T) : Result<T>
-    data class Error(val exception: Throwable) : Result<Nothing>
+    data class Success<T>(
+        val data: T,
+    ) : Result<T>
+
+    data class Error(
+        val exception: Throwable,
+    ) : Result<Nothing>
+
     data object Loading : Result<Nothing>
 }
 
 /**
  * Maps a successful result to a new type.
  */
-fun <T, R> Result<T>.map(transform: (T) -> R): Result<R> = when (this) {
-    is Result.Success -> Result.Success(transform(data))
-    is Result.Error -> this
-    is Result.Loading -> this
-}
+fun <T, R> Result<T>.map(transform: (T) -> R): Result<R> =
+    when (this) {
+        is Result.Success -> Result.Success(transform(data))
+        is Result.Error -> this
+        is Result.Loading -> this
+    }
 
 /**
  * Returns the data if successful, or null otherwise.
  */
-fun <T> Result<T>.getOrNull(): T? = when (this) {
-    is Result.Success -> data
-    else -> null
-}
+fun <T> Result<T>.getOrNull(): T? =
+    when (this) {
+        is Result.Success -> data
+        else -> null
+    }
 
 /**
  * Returns the data if successful, or the provided default value.
  */
-fun <T> Result<T>.getOrDefault(default: T): T = when (this) {
-    is Result.Success -> data
-    else -> default
-}
+fun <T> Result<T>.getOrDefault(default: T): T =
+    when (this) {
+        is Result.Success -> data
+        else -> default
+    }
 
 /**
  * Returns true if this is a successful result.
