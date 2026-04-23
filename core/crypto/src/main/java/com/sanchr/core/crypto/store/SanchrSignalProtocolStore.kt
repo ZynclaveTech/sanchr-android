@@ -1,5 +1,6 @@
 package com.sanchr.core.crypto.store
 
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.signal.libsignal.protocol.groups.state.SenderKeyStore
@@ -37,6 +38,12 @@ class SanchrSignalProtocolStore
         SessionStore by sessionStore,
         SenderKeyStore by senderKeyStore,
         KyberPreKeyStore by kyberPreKeyStore {
+        /** Local user UUID (parsed from the `accounts` row). Sealed-sender needs this. */
+        val localUserUuid: UUID get() = identityKeyStore.getLocalUserUuid()
+
+        /** Local device id (parsed from the `accounts` row). Sealed-sender needs this. */
+        val localDeviceId: Int get() = identityKeyStore.getLocalDeviceId()
+
         /**
          * Wipes all cryptographic material across every sub-store.
          * Called during account deletion to ensure zero residual key material.

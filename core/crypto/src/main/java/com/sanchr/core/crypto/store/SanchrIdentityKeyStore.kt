@@ -4,6 +4,7 @@ import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.database.dao.SignalIdentityDao
 import com.sanchr.core.database.entity.AccountEntity
 import com.sanchr.core.database.entity.SignalIdentityEntity
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.signal.libsignal.protocol.IdentityKey
@@ -138,6 +139,38 @@ class SanchrIdentityKeyStore
             )
             stagedIdentityKeyPair = null
             stagedRegistrationId = null
+        }
+
+        /**
+         * Returns the local user's UUID, parsed from `accounts.userId`.
+         *
+         * Sealed-sender requires the sender's UUID (not the opaque string userId)
+         * because libsignal's `SealedSessionCipher` constructor takes a `UUID`.
+         * Account creation guarantees userIds are UUID strings (matches iOS
+         * `ServiceId.parseFromStringLenient` pattern).
+         *
+         * @throws IllegalStateException if no account row exists.
+         * @throws IllegalArgumentException if `userId` is not a valid UUID.
+         */
+        fun getLocalUserUuid(): UUID {
+            val account =
+                accountDao.getCurrentBlocking()
+                    ?: throw IllegalStateException("Account not initialized — local UUID unavailable")
+            return UUID.fromString(account.userId)
+        }
+
+        /**
+         * Returns the local device id as an int. `AccountEntity.deviceId` is a
+         * string (to match server representation); libsignal wants an int.
+         *
+         * @throws IllegalStateException if no account row exists.
+         * @throws NumberFormatException if `deviceId` is not parseable.
+         */
+        fun getLocalDeviceId(): Int {
+            val account =
+                accountDao.getCurrentBlocking()
+                    ?: throw IllegalStateException("Account not initialized — device id unavailable")
+            return account.deviceId.toInt()
         }
 
         /** Returns true once the identity key pair has been generated. */

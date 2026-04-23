@@ -1,6 +1,7 @@
 package com.sanchr.core.crypto
 
 import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.crypto.sealed.SealedSenderCipher
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import javax.inject.Inject
@@ -37,7 +38,26 @@ class SignalSessionManager
         private val store: SanchrSignalProtocolStore,
         private val keyManager: SignalKeyManager,
         private val dispatchers: DispatcherProvider,
+        private val sealedSenderCipher: SealedSenderCipher,
     ) {
+        // ------------------------------------------------------------------
+        // Sealed-sender (delegates to SealedSenderCipher — see that class for
+        // the full contract). Kept in SignalSessionManager so callers have a
+        // single entry point for all session-scoped crypto.
+        // ------------------------------------------------------------------
+
+        /** Sealed-sender encrypt for a single recipient device. */
+        suspend fun encryptSealed(
+            recipient: SignalProtocolAddress,
+            plaintext: ByteArray,
+        ): ByteArray = sealedSenderCipher.sealedEncrypt(recipient, plaintext)
+
+        /** Sealed-sender decrypt. `timestamp` is the server receive time. */
+        suspend fun decryptSealed(
+            envelope: ByteArray,
+            timestamp: Long,
+        ): SealedSenderCipher.DecryptedEnvelope = sealedSenderCipher.sealedDecrypt(envelope, timestamp)
+
         // ------------------------------------------------------------------
         // Session Establishment
         // ------------------------------------------------------------------

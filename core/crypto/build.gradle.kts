@@ -11,6 +11,14 @@ android {
 
     defaultConfig {
         minSdk = 26
+        // Base64-encoded ECPublicKey (33 bytes) of the sealed-sender TrustRoot.
+        // Empty default — SealedSenderCipher throws if decrypt is invoked without
+        // a wired TrustRoot. Populated in M3 once the backend spec is confirmed.
+        buildConfigField("String", "SEALED_SENDER_TRUST_ROOT", "\"\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
