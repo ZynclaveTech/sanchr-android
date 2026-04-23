@@ -72,7 +72,12 @@ class SignalKeyManagerTest {
                 .build()
 
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        identityStore = SanchrIdentityKeyStore(db.accountDao(), db.signalIdentityDao())
+        identityStore =
+            SanchrIdentityKeyStore(
+                db.accountDao(),
+                db.signalIdentityDao(),
+                InMemoryStagedIdentityStore(context),
+            )
         preKeyStore = SanchrPreKeyStore(db.signalPreKeyDao())
         signedPreKeyStore = SanchrSignedPreKeyStore(db.signalSignedPreKeyDao())
         val sessionStore = SanchrSessionStore(db.signalSessionDao())

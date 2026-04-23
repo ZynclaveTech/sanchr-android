@@ -87,7 +87,14 @@ class SealedSenderCipherTest {
                 ).allowMainThreadQueries()
                 .build()
 
-        identityStore = SanchrIdentityKeyStore(db.accountDao(), db.signalIdentityDao())
+        identityStore =
+            SanchrIdentityKeyStore(
+                db.accountDao(),
+                db.signalIdentityDao(),
+                com.sanchr.core.crypto.InMemoryStagedIdentityStore(
+                    ApplicationProvider.getApplicationContext(),
+                ),
+            )
         val preKeyStore = SanchrPreKeyStore(db.signalPreKeyDao())
         val signedPreKeyStore = SanchrSignedPreKeyStore(db.signalSignedPreKeyDao())
         val sessionStore = SanchrSessionStore(db.signalSessionDao())

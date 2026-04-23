@@ -97,7 +97,12 @@ class SignalSessionManagerTest {
                 .inMemoryDatabaseBuilder(context, SanchrDatabase::class.java)
                 .allowMainThreadQueries()
                 .build()
-        aliceIdentityStore = SanchrIdentityKeyStore(aliceDb.accountDao(), aliceDb.signalIdentityDao())
+        aliceIdentityStore =
+            SanchrIdentityKeyStore(
+                aliceDb.accountDao(),
+                aliceDb.signalIdentityDao(),
+                InMemoryStagedIdentityStore(context),
+            )
         val alicePreKeyStore = SanchrPreKeyStore(aliceDb.signalPreKeyDao())
         val aliceSignedPreKeyStore = SanchrSignedPreKeyStore(aliceDb.signalSignedPreKeyDao())
         val aliceSessionStore = SanchrSessionStore(aliceDb.signalSessionDao())
@@ -153,7 +158,12 @@ class SignalSessionManagerTest {
                 .inMemoryDatabaseBuilder(context, SanchrDatabase::class.java)
                 .allowMainThreadQueries()
                 .build()
-        bobIdentityStore = SanchrIdentityKeyStore(bobDb.accountDao(), bobDb.signalIdentityDao())
+        bobIdentityStore =
+            SanchrIdentityKeyStore(
+                bobDb.accountDao(),
+                bobDb.signalIdentityDao(),
+                InMemoryStagedIdentityStore(context),
+            )
         bobPreKeyStore = SanchrPreKeyStore(bobDb.signalPreKeyDao())
         bobSignedPreKeyStore = SanchrSignedPreKeyStore(bobDb.signalSignedPreKeyDao())
         val bobSessionStore = SanchrSessionStore(bobDb.signalSessionDao())

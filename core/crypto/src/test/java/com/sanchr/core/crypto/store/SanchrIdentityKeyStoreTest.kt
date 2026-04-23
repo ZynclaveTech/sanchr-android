@@ -2,6 +2,7 @@ package com.sanchr.core.crypto.store
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.sanchr.core.crypto.InMemoryStagedIdentityStore
 import com.sanchr.core.database.SanchrDatabase
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -34,7 +35,12 @@ class SanchrIdentityKeyStoreTest {
                     SanchrDatabase::class.java,
                 ).allowMainThreadQueries()
                 .build()
-        store = SanchrIdentityKeyStore(db.accountDao(), db.signalIdentityDao())
+        store =
+            SanchrIdentityKeyStore(
+                db.accountDao(),
+                db.signalIdentityDao(),
+                InMemoryStagedIdentityStore(ApplicationProvider.getApplicationContext()),
+            )
     }
 
     @After

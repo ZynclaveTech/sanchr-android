@@ -212,7 +212,12 @@ class RoundTripIntegrationTest {
                 .fallbackToDestructiveMigration()
                 .build()
 
-        val identityStore = SanchrIdentityKeyStore(db.accountDao(), db.signalIdentityDao())
+        val identityStore =
+            SanchrIdentityKeyStore(
+                db.accountDao(),
+                db.signalIdentityDao(),
+                StagedIdentityStore(context),
+            )
         val preKeyStore = SanchrPreKeyStore(db.signalPreKeyDao())
         val signedPreKeyStore = SanchrSignedPreKeyStore(db.signalSignedPreKeyDao())
         val sessionStore = SanchrSessionStore(db.signalSessionDao())

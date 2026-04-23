@@ -1,5 +1,6 @@
 package com.sanchr.core.crypto.store
 
+import com.sanchr.core.crypto.StagedIdentityStore
 import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.database.dao.SignalIdentityDao
 import com.sanchr.core.database.entity.AccountEntity
@@ -35,18 +36,38 @@ class SanchrIdentityKeyStore
     constructor(
         private val accountDao: AccountDao,
         private val identityDao: SignalIdentityDao,
+        private val stagedStore: StagedIdentityStore,
     ) : IdentityKeyStore {
         /**
          * In-memory staging for keys generated before the account row exists
          * (i.e. during the early part of registration, before the server
          * assigns the final `userId`). Once [initializeAccount] is called
          * these values are flushed to the DB.
+         *
+         * Backed by [StagedIdentityStore] on disk so a process crash between
+         * staging and [initializeAccount] does not silently forget the
+         * generated identity keypair.
          */
         @Volatile
         private var stagedIdentityKeyPair: IdentityKeyPair? = null
 
         @Volatile
         private var stagedRegistrationId: Int? = null
+
+        init {
+            // Re-hydrate in-memory staging from disk on process restart, but
+            // only if no account row has been written yet (otherwise the DB
+            // is the source of truth and the staged blob is stale garbage).
+            if (accountDao.getCurrentBlocking() == null) {
+                stagedStore.loadStaged()?.let { staged ->
+                    stagedIdentityKeyPair = staged.keypair
+                    stagedRegistrationId = staged.registrationId
+                }
+            } else {
+                // Account exists — any stale staged blob is dead weight.
+                stagedStore.clear()
+            }
+        }
 
         override fun getIdentityKeyPair(): IdentityKeyPair {
             stagedIdentityKeyPair?.let { return it }
@@ -82,8 +103,14 @@ class SanchrIdentityKeyStore
                     existing.copy(identityPrivateKey = identityKeyPair.serialize()),
                 )
                 stagedIdentityKeyPair = null
+                // Staged-blob is dead once the DB has the row.
+                stagedStore.clear()
             } else {
                 stagedIdentityKeyPair = identityKeyPair
+                // Mirror to disk so a crash before initializeAccount doesn't
+                // lose the keypair. registrationId may be absent here — if so
+                // persist a placeholder (0) and overwrite on next call.
+                stagedStore.stage(identityKeyPair, stagedRegistrationId ?: 0)
             }
         }
 
@@ -96,8 +123,14 @@ class SanchrIdentityKeyStore
             if (existing != null) {
                 accountDao.upsertBlocking(existing.copy(registrationId = registrationId))
                 stagedRegistrationId = null
+                stagedStore.clear()
             } else {
                 stagedRegistrationId = registrationId
+                // Only mirror to disk if we already have an identity keypair —
+                // registrationId without a keypair is useless.
+                stagedIdentityKeyPair?.let { kp ->
+                    stagedStore.stage(kp, registrationId)
+                }
             }
         }
 
@@ -139,6 +172,7 @@ class SanchrIdentityKeyStore
             )
             stagedIdentityKeyPair = null
             stagedRegistrationId = null
+            stagedStore.clear()
         }
 
         /**
@@ -226,6 +260,7 @@ class SanchrIdentityKeyStore
         fun wipeAll() {
             stagedIdentityKeyPair = null
             stagedRegistrationId = null
+            stagedStore.clear()
             identityDao.deleteAllBlocking()
             accountDao.deleteAllBlocking()
         }
