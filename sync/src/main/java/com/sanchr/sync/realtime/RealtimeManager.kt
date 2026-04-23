@@ -1,10 +1,10 @@
 package com.sanchr.sync.realtime
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
@@ -17,6 +17,8 @@ import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.ServerEvent
 import com.sanchr.proto.messaging.TypingIndicator
+import com.sanchr.sync.rotation.PreKeyReplenishWorker
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -36,9 +38,9 @@ import kotlinx.coroutines.launch
 class RealtimeManager
     @Inject
     constructor(
+        @ApplicationContext private val appContext: Context,
         private val messagingClient: MessagingServiceClient,
         private val sessionManager: SessionManager,
-        private val signalKeyManager: SignalKeyManager,
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
     ) : DefaultLifecycleObserver {
@@ -130,7 +132,7 @@ class RealtimeManager
                 is ServerEvent.Message -> event.envelope?.let { persistIncomingEnvelope(it) }
                 is ServerEvent.Typing -> handleTyping(event.indicator)
                 is ServerEvent.Receipt -> handleReceipt(event.update)
-                is ServerEvent.PreKeyCountLow -> signalKeyManager.checkAndReplenishPreKeys()
+                is ServerEvent.PreKeyCountLow -> PreKeyReplenishWorker.enqueueOneTime(appContext)
                 is ServerEvent.CallOffer -> {
                     Log.d(TAG, "Received call offer event ${event.offer?.callId.orEmpty()}")
                 }

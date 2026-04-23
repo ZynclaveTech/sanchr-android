@@ -5,6 +5,9 @@ import android.util.Log
 import androidx.startup.Initializer
 import androidx.work.WorkManager
 import androidx.work.WorkManagerInitializer
+import com.sanchr.sync.rotation.PreKeyReplenishWorker
+import com.sanchr.sync.rotation.SenderCertificateRotationWorker
+import com.sanchr.sync.rotation.SignedPreKeyRotationWorker
 
 /**
  * App Startup [Initializer] that automatically schedules the periodic
@@ -25,7 +28,10 @@ class SyncInitializer : Initializer<Unit> {
         val workManager = WorkManager.getInstance(context)
         SyncWorker.schedulePeriodic(workManager)
         SendRetryWorker.schedulePeriodic(workManager)
-        Log.i(TAG, "Periodic sync + send-retry initialized via App Startup")
+        SignedPreKeyRotationWorker.schedulePeriodic(workManager)
+        SenderCertificateRotationWorker.schedulePeriodic(workManager)
+        PreKeyReplenishWorker.schedulePeriodic(workManager)
+        Log.i(TAG, "Periodic sync + send-retry + rotation workers initialized via App Startup")
     }
 
     override fun dependencies(): List<Class<out Initializer<*>>> =
