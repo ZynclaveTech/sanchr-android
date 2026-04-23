@@ -2,14 +2,11 @@ package com.sanchr.core.notifications
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.app.Person
-import androidx.core.app.RemoteInput
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -99,202 +96,15 @@ class NotificationHandler
         // Message notifications
         // -----------------------------------------------------------------------
 
-        /**
-         * Posts a notification for an incoming chat message.
-         *
-         * Includes:
-         * - Inline reply action via [RemoteInput]
-         * - Mark-as-read action
-         * - Deep-link content intent into the conversation
-         * - Grouped under [NOTIFICATION_GROUP_MESSAGES] for automatic bundling
-         */
-        fun showMessageNotification(payload: PushPayload) {
-            val conversationId = payload.conversationId ?: return
-            val notificationId = conversationId.hashCode()
-
-            // Deep-link intent: opens MainActivity with extras for navigation
-            val contentIntent = buildDeepLinkIntent(conversationId)
-            val contentPendingIntent =
-                PendingIntent.getActivity(
-                    context,
-                    notificationId,
-                    contentIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
-            // Inline reply action
-            val remoteInput =
-                RemoteInput
-                    .Builder(KEY_TEXT_REPLY)
-                    .setLabel("Reply")
-                    .build()
-
-            val replyIntent =
-                Intent(context, NotificationReceiver::class.java).apply {
-                    action = NotificationReceiver.ACTION_REPLY
-                    putExtra(NotificationReceiver.EXTRA_CONVERSATION_ID, conversationId)
-                    putExtra(NotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-                }
-            val replyPendingIntent =
-                PendingIntent.getBroadcast(
-                    context,
-                    notificationId,
-                    replyIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-                )
-
-            val replyAction =
-                NotificationCompat.Action
-                    .Builder(
-                        android.R.drawable.ic_menu_send,
-                        "Reply",
-                        replyPendingIntent,
-                    ).addRemoteInput(remoteInput)
-                    .setAllowGeneratedReplies(true)
-                    .build()
-
-            // Mark-as-read action
-            val markReadIntent =
-                Intent(context, NotificationReceiver::class.java).apply {
-                    action = NotificationReceiver.ACTION_MARK_READ
-                    putExtra(NotificationReceiver.EXTRA_CONVERSATION_ID, conversationId)
-                    putExtra(NotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-                }
-            val markReadPendingIntent =
-                PendingIntent.getBroadcast(
-                    context,
-                    notificationId + 1,
-                    markReadIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
-            val markReadAction =
-                NotificationCompat.Action
-                    .Builder(
-                        android.R.drawable.ic_menu_view,
-                        "Mark as read",
-                        markReadPendingIntent,
-                    ).build()
-
-            // Sender as Person for MessagingStyle
-            val sender =
-                Person
-                    .Builder()
-                    .setName(payload.senderName ?: "Unknown")
-                    .build()
-
-            val messagingStyle =
-                NotificationCompat
-                    .MessagingStyle(sender)
-                    .setConversationTitle(payload.senderName)
-                    .addMessage(
-                        payload.messagePreview ?: payload.body ?: "New message",
-                        System.currentTimeMillis(),
-                        sender,
-                    )
-
-            val notification =
-                NotificationCompat
-                    .Builder(context, CHANNEL_MESSAGES)
-                    .setSmallIcon(android.R.drawable.ic_dialog_email) // TODO: Replace with R.drawable.ic_notification
-                    .setStyle(messagingStyle)
-                    .setAutoCancel(true)
-                    .setGroup(NOTIFICATION_GROUP_MESSAGES)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                    .setContentIntent(contentPendingIntent)
-                    .addAction(replyAction)
-                    .addAction(markReadAction)
-                    .build()
-
-            notifyIfAllowed(notificationId, notification)
-        }
-
-        // -----------------------------------------------------------------------
-        // Call notifications
-        // -----------------------------------------------------------------------
-
-        /**
-         * Posts a high-priority full-screen notification for an incoming call.
-         *
-         * On Android 10+ this will launch the full-screen intent when the device is locked.
-         * On lower versions it behaves as a heads-up notification.
-         */
-        fun showCallNotification(payload: PushPayload) {
-            val callId = payload.callId ?: return
-            val notificationId = callId.hashCode()
-
-            val callerName = payload.senderName ?: "Incoming call"
-            val callTypeLabel =
-                when (payload.callType) {
-                    "video" -> "Incoming video call"
-                    else -> "Incoming voice call"
-                }
-
-            // Full-screen intent -- opens MainActivity with call extras
-            val fullScreenIntent =
-                Intent(context, Class.forName("com.sanchr.app.MainActivity")).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    putExtra("call_id", callId)
-                    putExtra("call_type", payload.callType)
-                    putExtra("caller_name", callerName)
-                }
-            val fullScreenPendingIntent =
-                PendingIntent.getActivity(
-                    context,
-                    notificationId,
-                    fullScreenIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
-            // Answer action
-            val answerIntent =
-                Intent(context, NotificationReceiver::class.java).apply {
-                    action = NotificationReceiver.ACTION_ANSWER_CALL
-                    putExtra(NotificationReceiver.EXTRA_CALL_ID, callId)
-                    putExtra(NotificationReceiver.EXTRA_CALL_TYPE, payload.callType)
-                    putExtra(NotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-                }
-            val answerPendingIntent =
-                PendingIntent.getBroadcast(
-                    context,
-                    notificationId + 10,
-                    answerIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
-            // Decline action
-            val declineIntent =
-                Intent(context, NotificationReceiver::class.java).apply {
-                    action = NotificationReceiver.ACTION_DECLINE_CALL
-                    putExtra(NotificationReceiver.EXTRA_CALL_ID, callId)
-                    putExtra(NotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-                }
-            val declinePendingIntent =
-                PendingIntent.getBroadcast(
-                    context,
-                    notificationId + 11,
-                    declineIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-
-            val notification =
-                NotificationCompat
-                    .Builder(context, CHANNEL_CALLS)
-                    .setSmallIcon(android.R.drawable.ic_menu_call) // TODO: Replace with app icon
-                    .setContentTitle(callerName)
-                    .setContentText(callTypeLabel)
-                    .setPriority(NotificationCompat.PRIORITY_MAX)
-                    .setCategory(NotificationCompat.CATEGORY_CALL)
-                    .setOngoing(true)
-                    .setAutoCancel(false)
-                    .setFullScreenIntent(fullScreenPendingIntent, true)
-                    .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePendingIntent)
-                    .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent)
-                    .build()
-
-            notifyIfAllowed(notificationId, notification)
-        }
+        // showMessageNotification(...) is reintroduced in Phase C.4 as an
+        // entity-based overload sourced from the decrypted local DB row.
+        // The legacy PushPayload-based body has been deleted along with
+        // the PushPayload content fields (Phase C.1).
+        //
+        // showCallNotification(...) was also PushPayload-driven and is
+        // deleted here; the call-offer path is out of scope for M3 and
+        // will be rebuilt on top of the sealed call-offer wire in a later
+        // milestone.
 
         // -----------------------------------------------------------------------
         // System notifications

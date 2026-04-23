@@ -55,37 +55,16 @@ class SanchrPushService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
 
-        val payload = PushPayload.fromRemoteMessage(message)
-
-        when (payload.type) {
-            PushPayload.TYPE_MESSAGE -> handleMessagePayload(payload)
-            PushPayload.TYPE_CALL -> handleCallPayload(payload)
-            PushPayload.TYPE_SYSTEM -> handleSystemPayload(payload)
-            else -> handleSystemPayload(payload)
+        val payload = PushPayload.fromData(message.data)
+        if (payload == null) {
+            android.util.Log.w("SanchrPushService", "ignoring push with no type field")
+            return
         }
-    }
-
-    // ------------------------------------------------------------------
-    // Payload handlers
-    // ------------------------------------------------------------------
-
-    private fun handleMessagePayload(payload: PushPayload) {
-        notificationHandler.showMessageNotification(payload)
-
-        // Update the summary/badge for grouped notifications
-        payload.badge?.let { count ->
-            notificationHandler.updateSummaryNotification(count)
-        }
-    }
-
-    private fun handleCallPayload(payload: PushPayload) {
-        notificationHandler.showCallNotification(payload)
-    }
-
-    private fun handleSystemPayload(payload: PushPayload) {
-        val title = payload.title ?: "Sanchr"
-        val body = payload.body ?: return
-        notificationHandler.showSystemNotification(title, body)
+        // Phase C.2 rewires this to enqueue MessageDrainWorker. For now the
+        // shrunk payload simply surfaces the wake signal without any content
+        // — the old handleMessage/handleCall/handleSystem branches have been
+        // removed along with their PushPayload fields.
+        android.util.Log.d("SanchrPushService", "wake push received type=${payload.type}")
     }
 
     // ------------------------------------------------------------------
