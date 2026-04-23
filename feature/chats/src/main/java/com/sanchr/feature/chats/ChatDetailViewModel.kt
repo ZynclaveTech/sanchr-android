@@ -1,26 +1,21 @@
 package com.sanchr.feature.chats
 
-import android.text.format.DateUtils
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
-import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.SendMessageUseCase
-import com.sanchr.proto.messaging.PresenceStatus
-import com.sanchr.proto.messaging.PresenceUpdate
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -32,12 +27,10 @@ class ChatDetailViewModel
         private val messageRepository: MessageRepository,
         private val sendMessageUseCase: SendMessageUseCase,
         private val sessionManager: SessionManager,
-        private val userPreferences: UserPreferences,
         private val realtimeManager: RealtimeManager,
         private val notificationHandler: NotificationHandler,
     ) : ViewModel() {
         private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
-        private var trackedPeerId: String? = null
 
         private val _uiState =
             MutableStateFlow(
@@ -51,7 +44,6 @@ class ChatDetailViewModel
             observeConversation()
             observeMessages()
             observeTyping()
-            observePresence()
             markAsRead()
             clearNotificationsForConversation()
         }
@@ -59,18 +51,6 @@ class ChatDetailViewModel
         private fun observeConversation() {
             viewModelScope.launch {
                 messageRepository.observeConversation(conversationId).collect { conversation ->
-                    val nextPeerId =
-                        conversation
-                            ?.participants
-                            ?.firstOrNull { it.id != _uiState.value.currentUserId }
-                            ?.id
-
-                    if (trackedPeerId != nextPeerId) {
-                        trackedPeerId?.let(realtimeManager::untrackPeer)
-                        nextPeerId?.let(realtimeManager::trackPeer)
-                        trackedPeerId = nextPeerId
-                    }
-
                     _uiState.update { state ->
                         state.copy(conversation = conversation)
                     }
@@ -97,20 +77,6 @@ class ChatDetailViewModel
                     _uiState.update { state ->
                         state.copy(peerTyping = cache[conversationId]?.isTyping == true)
                     }
-                }
-            }
-        }
-
-        private fun observePresence() {
-            viewModelScope.launch {
-                combine(
-                    realtimeManager.presenceCache,
-                    userPreferences.onlineStatusVisible,
-                ) { cache, onlineStatusVisible ->
-                    cache to onlineStatusVisible
-                }.collect { (cache, onlineStatusVisible) ->
-                    val peerUpdate = trackedPeerId?.let(cache::get)
-                    applyPresence(peerUpdate, onlineStatusVisible)
                 }
             }
         }
@@ -178,74 +144,6 @@ class ChatDetailViewModel
 
         fun dismissError() {
             _uiState.update { it.copy(error = null) }
-        }
-
-        override fun onCleared() {
-            trackedPeerId?.let(realtimeManager::untrackPeer)
-            super.onCleared()
-        }
-
-        private fun applyPresence(
-            update: PresenceUpdate?,
-            onlineStatusVisible: Boolean,
-        ) {
-            if (!onlineStatusVisible) {
-                _uiState.update { state ->
-                    state.copy(
-                        isPeerOnline = false,
-                        peerPresenceHidden = true,
-                        peerPresenceText = null,
-                    )
-                }
-                return
-            }
-
-            when (update?.statusCode ?: PresenceStatus.PRESENCE_STATUS_UNSPECIFIED) {
-                PresenceStatus.ONLINE -> {
-                    _uiState.update { state ->
-                        state.copy(
-                            isPeerOnline = true,
-                            peerPresenceHidden = false,
-                            peerPresenceText = "Online",
-                        )
-                    }
-                }
-                PresenceStatus.HIDDEN -> {
-                    _uiState.update { state ->
-                        state.copy(
-                            isPeerOnline = false,
-                            peerPresenceHidden = true,
-                            peerPresenceText = null,
-                        )
-                    }
-                }
-                PresenceStatus.OFFLINE,
-                PresenceStatus.PRESENCE_STATUS_UNSPECIFIED,
-                -> {
-                    val label =
-                        update
-                            ?.lastSeen
-                            ?.takeIf { it > 0L }
-                            ?.let(::formatLastSeen)
-                    _uiState.update { state ->
-                        state.copy(
-                            isPeerOnline = false,
-                            peerPresenceHidden = false,
-                            peerPresenceText = label,
-                        )
-                    }
-                }
-            }
-        }
-
-        private fun formatLastSeen(lastSeenMillis: Long): String {
-            val relative =
-                DateUtils.getRelativeTimeSpanString(
-                    lastSeenMillis,
-                    System.currentTimeMillis(),
-                    DateUtils.MINUTE_IN_MILLIS,
-                )
-            return "Last seen $relative"
         }
 
         private fun Message.toUiModel(): MessageUiModel {

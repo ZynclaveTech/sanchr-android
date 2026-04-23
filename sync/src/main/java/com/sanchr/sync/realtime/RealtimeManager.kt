@@ -10,10 +10,8 @@ import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.messaging.ClientEvent
-import com.sanchr.proto.messaging.DevicePresenceState
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
-import com.sanchr.proto.messaging.PresenceUpdate
 import com.sanchr.proto.messaging.ServerEvent
 import com.sanchr.proto.messaging.TypingIndicator
 import dagger.Lazy
@@ -45,21 +43,16 @@ class RealtimeManager
     ) : DefaultLifecycleObserver {
         companion object {
             private const val TAG = "RealtimeManager"
-            private const val HEARTBEAT_INTERVAL_MS = 30_000L
             private const val BACKGROUND_DRAIN_DELAY_MS = 200L
         }
 
         private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val outboundEvents = Channel<ClientEvent>(capacity = Channel.BUFFERED)
-        private val trackedPeerIds = MutableStateFlow<Set<String>>(emptySet())
-        private val _presenceCache = MutableStateFlow<Map<String, PresenceUpdate>>(emptyMap())
         private val _typingCache = MutableStateFlow<Map<String, TypingIndicator>>(emptyMap())
 
-        val presenceCache: StateFlow<Map<String, PresenceUpdate>> = _presenceCache.asStateFlow()
         val typingCache: StateFlow<Map<String, TypingIndicator>> = _typingCache.asStateFlow()
 
         private var streamJob: Job? = null
-        private var heartbeatJob: Job? = null
         private var initialized = false
 
         fun initialize() {
@@ -79,40 +72,18 @@ class RealtimeManager
         fun enterForeground() {
             if (sessionManager.getAccessToken().isNullOrEmpty()) return
             ensureStreamStarted()
-            startHeartbeatLoop()
-            appScope.launch {
-                emitHeartbeat(DevicePresenceState.FOREGROUND)
-                refreshPresenceSnapshot()
-            }
         }
 
         fun enterBackground() {
-            heartbeatJob?.cancel()
-            heartbeatJob = null
-
             if (sessionManager.getAccessToken().isNullOrEmpty()) {
                 stopStream()
                 return
             }
 
             appScope.launch {
-                emitHeartbeat(DevicePresenceState.BACKGROUND)
                 delay(BACKGROUND_DRAIN_DELAY_MS)
                 stopStream()
             }
-        }
-
-        fun trackPeer(peerId: String) {
-            if (peerId.isBlank()) return
-            trackedPeerIds.update { it + peerId }
-            appScope.launch {
-                refreshPresenceSnapshot(listOf(peerId))
-            }
-        }
-
-        fun untrackPeer(peerId: String) {
-            if (peerId.isBlank()) return
-            trackedPeerIds.update { it - peerId }
         }
 
         fun sendTypingIndicator(
@@ -151,30 +122,6 @@ class RealtimeManager
         private fun stopStream() {
             streamJob?.cancel()
             streamJob = null
-        }
-
-        private fun startHeartbeatLoop() {
-            heartbeatJob?.cancel()
-            heartbeatJob =
-                appScope.launch {
-                    while (true) {
-                        delay(HEARTBEAT_INTERVAL_MS)
-                        if (sessionManager.getAccessToken().isNullOrEmpty()) {
-                            return@launch
-                        }
-                        emitHeartbeat(DevicePresenceState.FOREGROUND)
-                    }
-                }
-        }
-
-        @Suppress("UNUSED_PARAMETER")
-        private suspend fun emitHeartbeat(state: DevicePresenceState) {
-            // TODO(M3): presence heartbeat removed from messaging.proto; rework via new path.
-        }
-
-        @Suppress("UNUSED_PARAMETER")
-        private suspend fun refreshPresenceSnapshot(peerIds: Collection<String> = trackedPeerIds.value) {
-            // TODO(M3): GetPresenceSnapshot RPC removed from messaging.proto; rework via new path.
         }
 
         private suspend fun handleServerEvent(event: ServerEvent) {

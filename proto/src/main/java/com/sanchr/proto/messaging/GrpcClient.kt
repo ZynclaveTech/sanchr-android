@@ -1,12 +1,16 @@
 package com.sanchr.proto.messaging
 
+import android.util.Log
 import com.google.protobuf.ByteString
 import io.grpc.CallOptions
 import io.grpc.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import sanchr.messaging.Messaging
 import sanchr.messaging.MessagingServiceGrpcKt
+
+private const val TAG = "MessagingGrpcClient"
 
 interface MessagingServiceClient {
     suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse
@@ -38,7 +42,7 @@ class MessagingServiceGrpcClient(
         stub.startDirectConversation(request.toProto()).toManual()
 
     override fun messageStream(requests: Flow<ClientEvent>): Flow<ServerEvent> =
-        stub.messageStream(requests.map(ClientEvent::toProto)).map(Messaging.ServerEvent::toManual)
+        stub.messageStream(requests.map(ClientEvent::toProto)).mapNotNull(Messaging.ServerEvent::toManual)
 
     override fun syncMessages(request: SyncRequest): Flow<EncryptedEnvelope> =
         stub.syncMessages(request.toProto()).map(Messaging.EncryptedEnvelope::toManual)
@@ -215,7 +219,7 @@ private fun Messaging.CallLifecycleEvent.toManual(): CallLifecycleEvent =
         actorId = actorId,
     )
 
-private fun Messaging.ServerEvent.toManual(): ServerEvent =
+private fun Messaging.ServerEvent.toManual(): ServerEvent? =
     when (eventCase) {
         Messaging.ServerEvent.EventCase.MESSAGE -> ServerEvent.Message(message.toManual())
         Messaging.ServerEvent.EventCase.TYPING -> ServerEvent.Typing(typing.toManual())
@@ -229,6 +233,8 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent =
         Messaging.ServerEvent.EventCase.SEALED_MESSAGE,
         Messaging.ServerEvent.EventCase.MESSAGE_EDITED,
         Messaging.ServerEvent.EventCase.EVENT_NOT_SET,
-        ->
-            throw IllegalStateException("Unhandled ServerEvent case: $eventCase")
+        -> {
+            Log.d(TAG, "Unhandled ServerEvent case: $eventCase (deferred to M3)")
+            null
+        }
     }
