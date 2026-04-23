@@ -11,11 +11,17 @@ android {
 
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GRPC_CORE_HOST", "\"api-dev.sanchr.com\"")
         buildConfigField("int", "GRPC_CORE_PORT", "443")
         buildConfigField("String", "GRPC_CALL_HOST", "\"call-dev.sanchr.com\"")
         buildConfigField("int", "GRPC_CALL_PORT", "443")
+        buildConfigField(
+            "String",
+            "DEV_BACKEND_URL",
+            "\"${project.findProperty("sanchr.devBackendUrl") ?: ""}\"",
+        )
     }
 
     compileOptions {
@@ -56,4 +62,12 @@ dependencies {
     testImplementation(libs.grpc.testing)
     testImplementation(libs.grpc.inprocess)
     testImplementation(libs.grpc.stub)
+
+    androidTestImplementation(libs.junit.ext)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlin.test)
+    androidTestImplementation(libs.grpc.okhttp)
+    androidTestImplementation(libs.grpc.stub)
+    androidTestImplementation(projects.proto)
 }
