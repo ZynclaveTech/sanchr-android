@@ -15,6 +15,7 @@ import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.EnvelopeQueueDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
+import com.sanchr.core.database.dao.QuarantinedEnvelopeDao
 import com.sanchr.core.database.dao.SignalIdentityDao
 import com.sanchr.core.database.dao.SignalPreKeyDao
 import com.sanchr.core.database.dao.SignalSessionDao
@@ -25,6 +26,7 @@ import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.EnvelopeQueueEntity
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
+import com.sanchr.core.database.entity.QuarantinedEnvelopeEntity
 import com.sanchr.core.database.entity.SignalIdentityEntity
 import com.sanchr.core.database.entity.SignalPreKeyEntity
 import com.sanchr.core.database.entity.SignalSessionEntity
@@ -49,8 +51,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         SignalPreKeyEntity::class,
         SignalSignedPreKeyEntity::class,
         EnvelopeQueueEntity::class,
+        QuarantinedEnvelopeEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -74,6 +77,8 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun signalSignedPreKeyDao(): SignalSignedPreKeyDao
 
     abstract fun envelopeQueueDao(): EnvelopeQueueDao
+
+    abstract fun quarantinedEnvelopeDao(): QuarantinedEnvelopeDao
 }
 
 /**
@@ -189,6 +194,24 @@ object DatabaseModule {
             }
         }
 
+    private val migration3To4 =
+        object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `quarantined_envelopes` (" +
+                        "`envelope_id` TEXT NOT NULL, " +
+                        "`received_at` INTEGER NOT NULL, " +
+                        "`payload` BLOB NOT NULL, " +
+                        "`sender_user_id` TEXT, " +
+                        "`sender_device` INTEGER, " +
+                        "`failure_class` TEXT NOT NULL, " +
+                        "`failure_message` TEXT, " +
+                        "`attempts` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`envelope_id`))",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -202,7 +225,7 @@ object DatabaseModule {
                 SanchrDatabase::class.java,
                 "sanchr-database",
             ).openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))
-            .addMigrations(migration1To2, migration2To3)
+            .addMigrations(migration1To2, migration2To3, migration3To4)
             .build()
     }
 
@@ -235,4 +258,7 @@ object DatabaseModule {
 
     @Provides
     fun provideEnvelopeQueueDao(database: SanchrDatabase): EnvelopeQueueDao = database.envelopeQueueDao()
+
+    @Provides
+    fun provideQuarantinedEnvelopeDao(database: SanchrDatabase): QuarantinedEnvelopeDao = database.quarantinedEnvelopeDao()
 }
