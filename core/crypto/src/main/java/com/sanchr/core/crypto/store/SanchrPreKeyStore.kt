@@ -1,9 +1,7 @@
 package com.sanchr.core.crypto.store
 
-import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.File
-import java.util.concurrent.ConcurrentHashMap
+import com.sanchr.core.database.dao.SignalPreKeyDao
+import com.sanchr.core.database.entity.SignalPreKeyEntity
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.signal.libsignal.protocol.InvalidKeyIdException
@@ -11,73 +9,45 @@ import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.PreKeyStore
 
 /**
- * File-based pre-key store. Each pre-key is persisted as a binary file under
- * the app's internal storage at `signal/prekeys/{keyId}.bin`.
- *
- * Pre-keys are one-time-use Curve25519 key pairs uploaded to the server and
- * consumed when a new session is established via X3DH.
+ * Room-backed one-time pre-key store. Pre-key records are opaque libsignal
+ * blobs persisted to the `signal_prekeys` table, keyed by `prekey_id`.
  */
 @Singleton
 class SanchrPreKeyStore
     @Inject
     constructor(
-        @ApplicationContext private val context: Context,
+        private val preKeyDao: SignalPreKeyDao,
     ) : PreKeyStore {
-        private val preKeyDir: File by lazy {
-            File(context.filesDir, "signal/prekeys").also { it.mkdirs() }
-        }
-
-        /** In-memory cache to avoid repeated disk I/O for hot keys. */
-        private val cache = ConcurrentHashMap<Int, PreKeyRecord>()
-
         override fun loadPreKey(preKeyId: Int): PreKeyRecord {
-            cache[preKeyId]?.let { return it }
-
-            val file = preKeyFile(preKeyId)
-            if (!file.exists()) {
-                throw InvalidKeyIdException("No pre-key found for ID: $preKeyId")
-            }
-
-            val record = PreKeyRecord(file.readBytes())
-            cache[preKeyId] = record
-            return record
+            val entity =
+                preKeyDao.getBlocking(preKeyId)
+                    ?: throw InvalidKeyIdException("No pre-key found for ID: $preKeyId")
+            return PreKeyRecord(entity.record)
         }
 
         override fun storePreKey(
             preKeyId: Int,
             record: PreKeyRecord,
         ) {
-            preKeyFile(preKeyId).writeBytes(record.serialize())
-            cache[preKeyId] = record
+            preKeyDao.upsertBlocking(
+                SignalPreKeyEntity(prekeyId = preKeyId, record = record.serialize()),
+            )
         }
 
-        override fun containsPreKey(preKeyId: Int): Boolean = cache.containsKey(preKeyId) || preKeyFile(preKeyId).exists()
+        override fun containsPreKey(preKeyId: Int): Boolean = preKeyDao.existsBlocking(preKeyId)
 
         override fun removePreKey(preKeyId: Int) {
-            cache.remove(preKeyId)
-            preKeyFile(preKeyId).delete()
+            preKeyDao.deleteBlocking(preKeyId)
         }
 
         /**
-         * Returns the next available pre-key ID by scanning existing files.
-         * The caller should use this as `startId` when generating a new batch.
+         * Returns the next available pre-key ID (max existing + 1, or 1 if empty).
+         * Used by [SignalKeyManager] when generating a fresh batch.
          */
-        fun getNextPreKeyId(): Int {
-            val existingIds =
-                preKeyDir
-                    .listFiles()
-                    ?.mapNotNull { it.nameWithoutExtension.toIntOrNull() }
-                    ?: emptyList()
-            return if (existingIds.isEmpty()) 1 else existingIds.max() + 1
-        }
+        fun getNextPreKeyId(): Int = (preKeyDao.maxIdBlocking() ?: 0) + 1
 
-        /**
-         * Wipes all pre-key data. Called on account deletion.
-         */
+        /** Wipes all pre-key data. Called on account deletion. */
         fun wipeAll() {
-            cache.clear()
-            preKeyDir.listFiles()?.forEach { it.delete() }
+            preKeyDao.deleteAllBlocking()
         }
-
-        private fun preKeyFile(preKeyId: Int): File = File(preKeyDir, "$preKeyId.bin")
     }
