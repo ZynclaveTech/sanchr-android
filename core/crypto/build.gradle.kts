@@ -13,9 +13,15 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Base64-encoded ECPublicKey (33 bytes) of the sealed-sender TrustRoot.
-        // Empty default — SealedSenderCipher throws if decrypt is invoked without
-        // a wired TrustRoot. Populated in M3 once the backend spec is confirmed.
-        buildConfigField("String", "SEALED_SENDER_TRUST_ROOT", "\"\"")
+        // Supplied at build time via the `sanchr.sealedSenderTrustRoot` Gradle
+        // property — empty default so [BuildConfigTrustRootProvider] throws a
+        // loud error if sealed-sender decrypt is attempted in an unconfigured
+        // build. Production / CI builds set the property; see [SealedSenderCipher].
+        buildConfigField(
+            "String",
+            "SEALED_SENDER_TRUST_ROOT",
+            "\"${project.findProperty("sanchr.sealedSenderTrustRoot") ?: ""}\"",
+        )
     }
 
     buildFeatures {

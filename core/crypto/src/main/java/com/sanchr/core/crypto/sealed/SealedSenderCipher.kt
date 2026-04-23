@@ -1,3 +1,13 @@
+// Configuring the sealed-sender TrustRoot:
+//
+//   ./gradlew assembleDebug -Psanchr.sealedSenderTrustRoot=<base64 SPKI>
+//
+// The value is the Base64 (NO_WRAP / NO_PADDING) encoding of the server's
+// sealed-sender authority public key serialization. CI sets it via a
+// pipeline variable; local builds that exercise sealed-sender decrypt must
+// pass the property explicitly. Omitting it leaves
+// [BuildConfig.SEALED_SENDER_TRUST_ROOT] empty and
+// [BuildConfigTrustRootProvider] will throw on first decrypt.
 package com.sanchr.core.crypto.sealed
 
 import android.util.Base64
