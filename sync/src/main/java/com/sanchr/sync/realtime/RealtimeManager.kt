@@ -9,6 +9,7 @@ import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
+import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
@@ -144,12 +145,22 @@ class RealtimeManager
 
         private suspend fun persistIncomingEnvelope(envelope: EncryptedEnvelope) {
             val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
+            val domainKind = EnvelopeKindResolver.resolve(envelope)
+            // Sealed envelopes carry the sender inside the encrypted blob;
+            // passing the (nil-sentinel) server-declared sender through would
+            // confuse the sealed decrypt path. Mirrors MessageDrainWorker.
+            val declaredSender =
+                if (domainKind == EnvelopeKind.SEALED) {
+                    null
+                } else {
+                    ServerProvidedSender(envelope.senderId, senderDeviceId)
+                }
             val result =
                 receiveMessageUseCase.receive(
                     envelopeBytes = envelope.cipherText,
-                    kind = EnvelopeKind.NON_SEALED,
+                    kind = domainKind,
                     serverTimestamp = envelope.serverTimestamp,
-                    declaredSender = ServerProvidedSender(envelope.senderId, senderDeviceId),
+                    declaredSender = declaredSender,
                     envelopeContext =
                         IncomingEnvelopeContext(
                             conversationId = envelope.conversationId,

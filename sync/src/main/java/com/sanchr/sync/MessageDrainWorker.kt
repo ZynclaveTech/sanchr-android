@@ -14,12 +14,11 @@ import androidx.work.WorkerParameters
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
+import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
-import com.sanchr.proto.messaging.EncryptedEnvelope
-import com.sanchr.proto.messaging.EnvelopeKind as ProtoEnvelopeKind
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
 import dagger.assisted.Assisted
@@ -85,7 +84,7 @@ class MessageDrainWorker
 
             for (envelope in envelopes) {
                 val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
-                val domainKind = resolveEnvelopeKind(envelope)
+                val domainKind = EnvelopeKindResolver.resolve(envelope)
                 // Sealed envelopes carry the sender inside the encrypted blob;
                 // passing the (nil-sentinel) server-declared sender through
                 // would confuse the sealed decrypt path.
@@ -127,31 +126,6 @@ class MessageDrainWorker
             const val WORK_NAME = "message-drain"
             private const val MAX_RETRIES = 3
             private const val DRAIN_TIMEOUT_MS = 30_000L
-            private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
-
-            /**
-             * Maps a wire envelope to the domain decrypt path.
-             *
-             * Prefer the wire-level [ProtoEnvelopeKind] when the backend
-             * populates it. When we see [ProtoEnvelopeKind.UNSPECIFIED]
-             * the server is either pre-rollout or replaying an old row
-             * that predates the field — fall back to the legacy sentinel
-             * (`content_type == "sealed"` and/or nil sender + device 0)
-             * that the backend has used since sealed sender shipped.
-             */
-            internal fun resolveEnvelopeKind(envelope: EncryptedEnvelope): EnvelopeKind =
-                when (envelope.envelopeKind) {
-                    ProtoEnvelopeKind.SEALED -> EnvelopeKind.SEALED
-                    ProtoEnvelopeKind.NORMAL -> EnvelopeKind.NON_SEALED
-                    ProtoEnvelopeKind.UNSPECIFIED ->
-                        if (envelope.contentType == "sealed" ||
-                            (envelope.senderId == NIL_UUID && envelope.senderDevice == 0)
-                        ) {
-                            EnvelopeKind.SEALED
-                        } else {
-                            EnvelopeKind.NON_SEALED
-                        }
-                }
 
             /**
              * Enqueue an expedited drain. Uses [ExistingWorkPolicy.KEEP] so that

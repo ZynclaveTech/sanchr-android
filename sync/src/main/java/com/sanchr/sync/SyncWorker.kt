@@ -20,6 +20,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
+import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
@@ -290,7 +291,7 @@ class SyncWorker
             var persistedCount = 0
             for (envelope in envelopes) {
                 val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
-                val domainKind = MessageDrainWorker.resolveEnvelopeKind(envelope)
+                val domainKind = EnvelopeKindResolver.resolve(envelope)
                 val declaredSender =
                     if (domainKind == EnvelopeKind.SEALED) {
                         null
