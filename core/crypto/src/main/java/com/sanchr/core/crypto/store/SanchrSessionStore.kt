@@ -1,9 +1,7 @@
 package com.sanchr.core.crypto.store
 
-import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.File
-import java.util.concurrent.ConcurrentHashMap
+import com.sanchr.core.database.dao.SignalSessionDao
+import com.sanchr.core.database.entity.SignalSessionEntity
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.signal.libsignal.protocol.SignalProtocolAddress
@@ -11,112 +9,64 @@ import org.signal.libsignal.protocol.state.SessionRecord
 import org.signal.libsignal.protocol.state.SessionStore
 
 /**
- * File-based session store. Each session is persisted as a binary file under
- * `signal/sessions/{userId}_{deviceId}.bin`.
+ * Room-backed session store. Session records are opaque libsignal blobs
+ * persisted to the `signal_sessions` table, keyed by `"name.deviceId"`.
  *
- * Sessions contain the Double Ratchet state for an established E2EE channel
- * with a specific device of a specific user.
+ * Blocking DAO methods are used because libsignal's [SessionStore] interface
+ * is synchronous; callers must invoke these from a safe single-threaded
+ * dispatcher (`SignalDispatcher`).
  */
 @Singleton
 class SanchrSessionStore
     @Inject
     constructor(
-        @ApplicationContext private val context: Context,
+        private val sessionDao: SignalSessionDao,
     ) : SessionStore {
-        private val sessionDir: File by lazy {
-            File(context.filesDir, "signal/sessions").also { it.mkdirs() }
-        }
-
-        private val cache = ConcurrentHashMap<String, SessionRecord>()
-
         override fun loadSession(address: SignalProtocolAddress): SessionRecord {
-            val key = addressKey(address)
-            cache[key]?.let { return it }
-
-            val file = sessionFile(address)
-            if (!file.exists()) {
-                // libsignal expects a fresh SessionRecord if none exists yet
-                val fresh = SessionRecord()
-                cache[key] = fresh
-                return fresh
-            }
-
-            val record = SessionRecord(file.readBytes())
-            cache[key] = record
-            return record
+            val entity = sessionDao.getBlocking(address.toRoomKey())
+            // libsignal contract: if no session exists, return a fresh empty record.
+            return entity?.sessionRecord?.let { SessionRecord(it) } ?: SessionRecord()
         }
 
-        override fun loadExistingSessions(addresses: List<SignalProtocolAddress>): List<SessionRecord> {
-            return addresses.mapNotNull { address ->
-                val key = addressKey(address)
-                cache[key]?.let { return@mapNotNull it }
-
-                val file = sessionFile(address)
-                if (!file.exists()) return@mapNotNull null
-
-                val record = SessionRecord(file.readBytes())
-                cache[key] = record
-                record
+        override fun loadExistingSessions(addresses: List<SignalProtocolAddress>): List<SessionRecord> =
+            addresses.mapNotNull { address ->
+                sessionDao.getBlocking(address.toRoomKey())?.sessionRecord?.let(::SessionRecord)
             }
-        }
 
         override fun getSubDeviceSessions(name: String): List<Int> {
-            val prefix = "${name}_"
-            val fromCache =
-                cache.keys
-                    .filter { it.startsWith(prefix) }
-                    .mapNotNull { it.removePrefix(prefix).toIntOrNull() }
-
-            val fromDisk =
-                sessionDir
-                    .listFiles()
-                    ?.filter { it.nameWithoutExtension.startsWith(prefix) }
-                    ?.mapNotNull { it.nameWithoutExtension.removePrefix(prefix).toIntOrNull() }
-                    ?: emptyList()
-
-            return (fromCache + fromDisk).distinct().filter { it != 1 }
+            // LIKE prefix uses "name.%" — safe because '.' is not a SQL wildcard.
+            val keys = sessionDao.listAddressesBlocking("$name.%")
+            return keys.mapNotNull { key ->
+                val device = key.substringAfterLast('.').toIntOrNull() ?: return@mapNotNull null
+                // libsignal's contract excludes the primary device (deviceId=1).
+                device.takeIf { it != 1 }
+            }
         }
 
         override fun storeSession(
             address: SignalProtocolAddress,
             record: SessionRecord,
         ) {
-            val key = addressKey(address)
-            sessionFile(address).writeBytes(record.serialize())
-            cache[key] = record
+            sessionDao.upsertBlocking(
+                SignalSessionEntity(
+                    address = address.toRoomKey(),
+                    sessionRecord = record.serialize(),
+                ),
+            )
         }
 
-        override fun containsSession(address: SignalProtocolAddress): Boolean {
-            val key = addressKey(address)
-            return cache.containsKey(key) || sessionFile(address).exists()
-        }
+        override fun containsSession(address: SignalProtocolAddress): Boolean = sessionDao.existsBlocking(address.toRoomKey())
 
         override fun deleteSession(address: SignalProtocolAddress) {
-            cache.remove(addressKey(address))
-            sessionFile(address).delete()
+            sessionDao.deleteBlocking(address.toRoomKey())
         }
 
         override fun deleteAllSessions(name: String) {
-            val prefix = "${name}_"
-
-            val keysToRemove = cache.keys.filter { it.startsWith(prefix) }
-            keysToRemove.forEach { cache.remove(it) }
-
-            sessionDir
-                .listFiles()
-                ?.filter { it.nameWithoutExtension.startsWith(prefix) }
-                ?.forEach { it.delete() }
+            sessionDao.deleteByPrefixBlocking("$name.%")
         }
 
-        /**
-         * Wipes all session data. Called on account deletion.
-         */
+        /** Wipes all session data. Called on account deletion. */
         fun wipeAll() {
-            cache.clear()
-            sessionDir.listFiles()?.forEach { it.delete() }
+            sessionDao.deleteAllBlocking()
         }
-
-        private fun addressKey(address: SignalProtocolAddress): String = "${address.name}_${address.deviceId}"
-
-        private fun sessionFile(address: SignalProtocolAddress): File = File(sessionDir, "${address.name}_${address.deviceId}.bin")
     }
