@@ -85,6 +85,18 @@ message CallEventAck {
   string kind = 2; // "offer" or "lifecycle"
 }
 
+// Wire-level discriminator for inbound envelopes on the SyncMessages
+// stream. Prior to this field, clients disambiguated sealed-sender
+// envelopes via the legacy sentinel (content_type="sealed" and/or nil
+// sender_id + sender_device=0). That pattern remains honored as a
+// rollout safety net — clients should prefer `envelope_kind` when
+// set, and fall back to the sentinel when UNSPECIFIED.
+enum EnvelopeKind {
+  ENVELOPE_KIND_UNSPECIFIED = 0;
+  ENVELOPE_KIND_NORMAL = 1;
+  ENVELOPE_KIND_SEALED = 2;
+}
+
 message EncryptedEnvelope {
   string conversation_id = 1;
   string message_id = 2;
@@ -93,6 +105,10 @@ message EncryptedEnvelope {
   bytes ciphertext = 5;
   string content_type = 6;
   int64 server_timestamp = 7;
+  // Sealed vs non-sealed discriminator. UNSPECIFIED means the backend
+  // has not yet been upgraded to populate this field — clients must
+  // fall back to the sentinel pattern in that case.
+  EnvelopeKind envelope_kind = 8;
 }
 
 message TypingIndicator {

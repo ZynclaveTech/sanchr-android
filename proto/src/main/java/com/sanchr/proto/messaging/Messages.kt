@@ -71,6 +71,19 @@ sealed interface ServerEvent {
     ) : ServerEvent
 }
 
+/**
+ * Wire-level discriminator for inbound envelopes on the `SyncMessages`
+ * stream. Prior to this field, the client disambiguated sealed-sender
+ * envelopes from the legacy sentinel (`contentType == "sealed"` and/or
+ * nil sender). That sentinel is still honored in the drain worker as a
+ * rollout safety net when `UNSPECIFIED` is seen.
+ */
+enum class EnvelopeKind {
+    UNSPECIFIED,
+    NORMAL,
+    SEALED,
+}
+
 data class EncryptedEnvelope(
     val conversationId: String = "",
     val messageId: String = "",
@@ -79,6 +92,7 @@ data class EncryptedEnvelope(
     val cipherText: ByteArray = ByteArray(0),
     val contentType: String = "",
     val serverTimestamp: Long = 0L,
+    val envelopeKind: EnvelopeKind = EnvelopeKind.UNSPECIFIED,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

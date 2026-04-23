@@ -292,12 +292,19 @@ class SyncWorker
             var persistedCount = 0
             for (envelope in envelopes) {
                 val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
+                val domainKind = MessageDrainWorker.resolveEnvelopeKind(envelope)
+                val declaredSender =
+                    if (domainKind == EnvelopeKind.SEALED) {
+                        null
+                    } else {
+                        ServerProvidedSender(envelope.senderId, senderDeviceId)
+                    }
                 val result =
                     receiveMessageUseCase.receive(
                         envelopeBytes = envelope.cipherText,
-                        kind = EnvelopeKind.NON_SEALED,
+                        kind = domainKind,
                         serverTimestamp = envelope.serverTimestamp,
-                        declaredSender = ServerProvidedSender(envelope.senderId, senderDeviceId),
+                        declaredSender = declaredSender,
                         envelopeContext =
                             IncomingEnvelopeContext(
                                 conversationId = envelope.conversationId,

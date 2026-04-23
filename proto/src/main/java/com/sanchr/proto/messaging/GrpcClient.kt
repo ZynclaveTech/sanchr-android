@@ -189,6 +189,15 @@ private fun Messaging.EncryptedEnvelope.toManual(): EncryptedEnvelope =
         cipherText = ciphertext.toByteArray(),
         contentType = contentType,
         serverTimestamp = serverTimestamp,
+        envelopeKind =
+            when (envelopeKind) {
+                Messaging.EnvelopeKind.ENVELOPE_KIND_NORMAL -> EnvelopeKind.NORMAL
+                Messaging.EnvelopeKind.ENVELOPE_KIND_SEALED -> EnvelopeKind.SEALED
+                // UNRECOGNIZED (proto-lite's open-enum fallback) collapses into
+                // UNSPECIFIED — the drain worker treats that as "server has not
+                // upgraded" and falls back to the content_type/sender sentinel.
+                else -> EnvelopeKind.UNSPECIFIED
+            },
     )
 
 private fun Messaging.TypingIndicator.toManual(): TypingIndicator =
