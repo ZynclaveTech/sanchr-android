@@ -11,35 +11,32 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * FCM push notification service.
+ * FCM push entry point.
  *
- * Handles two callbacks from Firebase Cloud Messaging:
- * 1. **onNewToken** -- called when the FCM registration token is created or rotated.
- *    The token is forwarded to the backend via [PushTokenManager].
- * 2. **onMessageReceived** -- called when a data-only push arrives (the backend never
- *    sends display notifications, only data payloads, so the app has full control).
+ * As of Phase C.2 the FCM transport carries only a content-free wake
+ * signal; [onMessageReceived] never reads sender / conversation / body
+ * strings and never posts a notification directly. Its sole job is to
+ * enqueue [MessageDrainScheduler.enqueueDrain], which pulls pending
+ * envelopes from the server, decrypts them via
+ * [com.sanchr.domain.messaging.ReceiveMessageUseCase], persists the
+ * decrypted rows, and acks the batch. Any user-visible notification is
+ * then rendered by `NewMessageNotifier` (Phase C.4) from the local DB —
+ * never from FCM data.
  *
- * Notification types handled:
- * - `message` -- new encrypted chat message
- * - `call`    -- incoming voice/video call
- * - `system`  -- security alerts, app updates, contact-joined, key-change, etc.
+ * [onNewToken] stays as-is: it uploads the rotated registration token via
+ * [PushTokenManager].
  */
 @AndroidEntryPoint
 class SanchrPushService : FirebaseMessagingService() {
-    @Inject lateinit var notificationHandler: NotificationHandler
-
     @Inject lateinit var tokenManager: PushTokenManager
 
+    @Inject lateinit var drainScheduler: MessageDrainScheduler
+
     /**
-     * Service-scoped coroutine scope. We use [SupervisorJob] so a single failure
-     * does not cancel the entire scope, and [Dispatchers.IO] because token upload
-     * performs network I/O.
+     * Service-scoped coroutine scope. [SupervisorJob] isolates failures and
+     * [Dispatchers.IO] is appropriate for the token upload network call.
      */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    // ------------------------------------------------------------------
-    // Token management
-    // ------------------------------------------------------------------
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
@@ -48,31 +45,26 @@ class SanchrPushService : FirebaseMessagingService() {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Message handling
-    // ------------------------------------------------------------------
-
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
 
         val payload = PushPayload.fromData(message.data)
-        if (payload == null) {
-            android.util.Log.w("SanchrPushService", "ignoring push with no type field")
+        if (payload == null || payload.type != PushPayload.TYPE_WAKE) {
+            android.util.Log.w(
+                TAG,
+                "ignoring FCM push with unexpected type=${payload?.type ?: "<none>"}",
+            )
             return
         }
-        // Phase C.2 rewires this to enqueue MessageDrainWorker. For now the
-        // shrunk payload simply surfaces the wake signal without any content
-        // — the old handleMessage/handleCall/handleSystem branches have been
-        // removed along with their PushPayload fields.
-        android.util.Log.d("SanchrPushService", "wake push received type=${payload.type}")
+        drainScheduler.enqueueDrain()
     }
-
-    // ------------------------------------------------------------------
-    // Lifecycle
-    // ------------------------------------------------------------------
 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+    }
+
+    private companion object {
+        const val TAG = "SanchrPushService"
     }
 }
