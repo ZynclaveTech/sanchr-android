@@ -1,9 +1,11 @@
 package com.sanchr.core.crypto
 
+import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.withContext
 import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
@@ -23,6 +25,10 @@ import org.signal.libsignal.protocol.message.SignalMessage
  *
  * All operations are backed by [SanchrSignalProtocolStore] which persists
  * session state, identity keys, and pre-keys to encrypted local storage.
+ *
+ * All libsignal-touching operations are serialized on [DispatcherProvider.signalDispatcher]
+ * (a single-threaded dispatcher) to guarantee thread-safety of the underlying
+ * native libsignal state across concurrent encrypt/decrypt/establish calls.
  */
 @Singleton
 class SignalSessionManager
@@ -30,6 +36,7 @@ class SignalSessionManager
     constructor(
         private val store: SanchrSignalProtocolStore,
         private val keyManager: SignalKeyManager,
+        private val dispatchers: DispatcherProvider,
     ) {
         // ------------------------------------------------------------------
         // Session Establishment
@@ -51,23 +58,26 @@ class SignalSessionManager
             userId: String,
             deviceId: Int,
         ): SessionBuilder {
-            val address = SignalProtocolAddress(userId, deviceId)
-            val sessionBuilder = SessionBuilder(store, address)
             val preKeyBundle = keyManager.fetchPreKeyBundle(userId, deviceId)
-            sessionBuilder.process(preKeyBundle)
-            return sessionBuilder
+            return withContext(dispatchers.signalDispatcher) {
+                val address = SignalProtocolAddress(userId, deviceId)
+                val sessionBuilder = SessionBuilder(store, address)
+                sessionBuilder.process(preKeyBundle)
+                sessionBuilder
+            }
         }
 
         /**
          * Returns true if an active session exists with the specified device.
          */
-        fun hasSession(
+        suspend fun hasSession(
             userId: String,
             deviceId: Int,
-        ): Boolean {
-            val address = SignalProtocolAddress(userId, deviceId)
-            return store.containsSession(address)
-        }
+        ): Boolean =
+            withContext(dispatchers.signalDispatcher) {
+                val address = SignalProtocolAddress(userId, deviceId)
+                store.containsSession(address)
+            }
 
         // ------------------------------------------------------------------
         // Encryption
@@ -92,20 +102,26 @@ class SignalSessionManager
             userId: String,
             deviceId: Int,
         ): EncryptResult {
-            val address = SignalProtocolAddress(userId, deviceId)
-
-            // Ensure session exists; establish if needed
-            if (!store.containsSession(address)) {
+            // Session establishment (if needed) must happen outside the signalDispatcher
+            // block because it performs a network call via keyManager.fetchPreKeyBundle.
+            val sessionExists =
+                withContext(dispatchers.signalDispatcher) {
+                    store.containsSession(SignalProtocolAddress(userId, deviceId))
+                }
+            if (!sessionExists) {
                 establishSession(userId, deviceId)
             }
 
-            val cipher = SessionCipher(store, address)
-            val ciphertextMessage = cipher.encrypt(plaintext)
+            return withContext(dispatchers.signalDispatcher) {
+                val address = SignalProtocolAddress(userId, deviceId)
+                val cipher = SessionCipher(store, address)
+                val ciphertextMessage = cipher.encrypt(plaintext)
 
-            return EncryptResult(
-                ciphertext = ciphertextMessage.serialize(),
-                messageType = ciphertextMessage.type,
-            )
+                EncryptResult(
+                    ciphertext = ciphertextMessage.serialize(),
+                    messageType = ciphertextMessage.type,
+                )
+            }
         }
 
         /**
@@ -121,20 +137,21 @@ class SignalSessionManager
             plaintext: ByteArray,
             recipientId: String,
         ): List<DeviceEncryptedMessage> {
-            val devicesResponse =
-                com.sanchr.proto.keys
-                    .GetUserDevicesRequest(userId = recipientId)
             // The key service returns the list of active devices for this user.
             // For now, we encrypt for device ID 1 (primary device) as a baseline,
             // and the caller can provide the device list from the server response.
             // In production, ChatEncryptionHelper fetches the device list.
             val result = encrypt(plaintext, recipientId, 1)
+            val registrationId =
+                withContext(dispatchers.signalDispatcher) {
+                    store.getLocalRegistrationId()
+                }
             return listOf(
                 DeviceEncryptedMessage(
                     deviceId = 1,
                     ciphertext = result.ciphertext,
                     messageType = result.messageType,
-                    registrationId = store.getLocalRegistrationId(),
+                    registrationId = registrationId,
                 ),
             )
         }
@@ -160,21 +177,22 @@ class SignalSessionManager
             ciphertext: ByteArray,
             senderId: String,
             senderDevice: Int,
-        ): ByteArray {
-            val address = SignalProtocolAddress(senderId, senderDevice)
-            val cipher = SessionCipher(store, address)
+        ): ByteArray =
+            withContext(dispatchers.signalDispatcher) {
+                val address = SignalProtocolAddress(senderId, senderDevice)
+                val cipher = SessionCipher(store, address)
 
-            // Try PreKeySignalMessage first (type 3), fall back to SignalMessage (type 1).
-            // PreKeySignalMessage contains the embedded SignalMessage plus pre-key
-            // information needed to establish the session on the receiving side.
-            return try {
-                val preKeyMessage = PreKeySignalMessage(ciphertext)
-                cipher.decrypt(preKeyMessage)
-            } catch (_: Exception) {
-                val signalMessage = SignalMessage(ciphertext)
-                cipher.decrypt(signalMessage)
+                // Try PreKeySignalMessage first (type 3), fall back to SignalMessage (type 1).
+                // PreKeySignalMessage contains the embedded SignalMessage plus pre-key
+                // information needed to establish the session on the receiving side.
+                try {
+                    val preKeyMessage = PreKeySignalMessage(ciphertext)
+                    cipher.decrypt(preKeyMessage)
+                } catch (_: Exception) {
+                    val signalMessage = SignalMessage(ciphertext)
+                    cipher.decrypt(signalMessage)
+                }
             }
-        }
 
         /**
          * Decrypts a full [EncryptedEnvelope] received from the server.
@@ -221,10 +239,10 @@ class SignalSessionManager
          * @param userId The remote user ID.
          * @param deviceId The remote device ID.
          */
-        fun resetSession(
+        suspend fun resetSession(
             userId: String,
             deviceId: Int,
-        ) {
+        ) = withContext(dispatchers.signalDispatcher) {
             val address = SignalProtocolAddress(userId, deviceId)
             store.deleteSession(address)
         }
@@ -232,9 +250,10 @@ class SignalSessionManager
         /**
          * Resets all sessions with a user (all their devices).
          */
-        fun resetAllSessions(userId: String) {
-            store.deleteAllSessions(userId)
-        }
+        suspend fun resetAllSessions(userId: String) =
+            withContext(dispatchers.signalDispatcher) {
+                store.deleteAllSessions(userId)
+            }
     }
 
 /**

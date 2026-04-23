@@ -1,5 +1,6 @@
 package com.sanchr.core.crypto
 
+import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
 import com.sanchr.core.crypto.store.SanchrKyberPreKeyStore
 import com.sanchr.core.crypto.store.SanchrPreKeyStore
@@ -16,6 +17,7 @@ import com.sanchr.proto.keys.UploadOneTimePreKeysRequest
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.withContext
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.ecc.ECKeyPair
@@ -39,6 +41,10 @@ import org.signal.libsignal.protocol.util.KeyHelper
  * All generated keys are persisted through the protocol stores and uploaded
  * to the server via [KeyServiceClient] so that other devices can establish
  * PQXDH sessions with this device.
+ *
+ * All libsignal-touching operations are serialized on [DispatcherProvider.signalDispatcher]
+ * (a single-threaded dispatcher) to guarantee thread-safety of the underlying
+ * native libsignal state.
  */
 @Singleton
 class SignalKeyManager
@@ -51,6 +57,7 @@ class SignalKeyManager
         private val kyberPreKeyStore: SanchrKyberPreKeyStore,
         private val sessionManager: SessionManager,
         private val keyServiceClient: KeyServiceClient,
+        private val dispatchers: DispatcherProvider,
     ) {
         companion object {
             /** Number of one-time pre-keys to generate per batch. */
@@ -74,15 +81,16 @@ class SignalKeyManager
          *
          * @return The generated [IdentityKeyPair].
          */
-        fun generateIdentity(): IdentityKeyPair {
-            val identityKeyPair = IdentityKeyPair.generate()
-            val registrationId = KeyHelper.generateRegistrationId(false)
+        suspend fun generateIdentity(): IdentityKeyPair =
+            withContext(dispatchers.signalDispatcher) {
+                val identityKeyPair = IdentityKeyPair.generate()
+                val registrationId = KeyHelper.generateRegistrationId(false)
 
-            identityKeyStore.storeIdentityKeyPair(identityKeyPair)
-            identityKeyStore.storeLocalRegistrationId(registrationId)
+                identityKeyStore.storeIdentityKeyPair(identityKeyPair)
+                identityKeyStore.storeLocalRegistrationId(registrationId)
 
-            return identityKeyPair
-        }
+                identityKeyPair
+            }
 
         /**
          * Generates a signed pre-key, signed by the local identity key.
@@ -91,7 +99,12 @@ class SignalKeyManager
          * @param identityKeyPair The identity key pair used to sign the pre-key.
          * @return The generated [SignedPreKeyRecord].
          */
-        fun generateSignedPreKey(identityKeyPair: IdentityKeyPair): SignedPreKeyRecord {
+        suspend fun generateSignedPreKey(identityKeyPair: IdentityKeyPair): SignedPreKeyRecord =
+            withContext(dispatchers.signalDispatcher) {
+                generateSignedPreKeyBlocking(identityKeyPair)
+            }
+
+        private fun generateSignedPreKeyBlocking(identityKeyPair: IdentityKeyPair): SignedPreKeyRecord {
             val signedPreKeyId = signedPreKeyStore.getNextSignedPreKeyId()
             val signedPreKeyPair = ECKeyPair.generate()
             val signature =
@@ -121,9 +134,17 @@ class SignalKeyManager
          * @param count Number of pre-keys to generate (defaults to [PRE_KEY_BATCH_SIZE]).
          * @return List of generated [PreKeyRecord]s.
          */
-        fun generateOneTimePreKeys(
+        suspend fun generateOneTimePreKeys(
             startId: Int,
             count: Int = PRE_KEY_BATCH_SIZE,
+        ): List<PreKeyRecord> =
+            withContext(dispatchers.signalDispatcher) {
+                generateOneTimePreKeysBlocking(startId, count)
+            }
+
+        private fun generateOneTimePreKeysBlocking(
+            startId: Int,
+            count: Int,
         ): List<PreKeyRecord> {
             val records = mutableListOf<PreKeyRecord>()
             for (i in 0 until count) {
@@ -136,7 +157,12 @@ class SignalKeyManager
             return records
         }
 
-        fun generateKyberPreKey(identityKeyPair: IdentityKeyPair): KyberPreKeyRecord {
+        suspend fun generateKyberPreKey(identityKeyPair: IdentityKeyPair): KyberPreKeyRecord =
+            withContext(dispatchers.signalDispatcher) {
+                generateKyberPreKeyBlocking(identityKeyPair)
+            }
+
+        private fun generateKyberPreKeyBlocking(identityKeyPair: IdentityKeyPair): KyberPreKeyRecord {
             val kyberPreKeyId = (System.currentTimeMillis() and 0x00FF_FFFFL).toInt()
             val keyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
             val signature =
@@ -169,47 +195,50 @@ class SignalKeyManager
          * Must be called after [generateIdentity] has been called.
          */
         suspend fun uploadInitialKeyBundle() {
-            val identityKeyPair = identityKeyStore.getIdentityKeyPair()
-            val registrationId = identityKeyStore.getLocalRegistrationId()
+            val bundle =
+                withContext(dispatchers.signalDispatcher) {
+                    val identityKeyPair = identityKeyStore.getIdentityKeyPair()
+                    val registrationId = identityKeyStore.getLocalRegistrationId()
 
-            val signedPreKey = generateSignedPreKey(identityKeyPair)
-            val kyberPreKey = generateKyberPreKey(identityKeyPair)
-            val oneTimePreKeys =
-                generateOneTimePreKeys(
-                    startId = preKeyStore.getNextPreKeyId(),
-                )
+                    val signedPreKey = generateSignedPreKeyBlocking(identityKeyPair)
+                    val kyberPreKey = generateKyberPreKeyBlocking(identityKeyPair)
+                    val oneTimePreKeys =
+                        generateOneTimePreKeysBlocking(
+                            startId = preKeyStore.getNextPreKeyId(),
+                            count = PRE_KEY_BATCH_SIZE,
+                        )
 
-            val signedPreKeyProto =
-                com.sanchr.proto.keys.SignedPreKey(
-                    keyId = signedPreKey.id,
-                    publicKey = signedPreKey.keyPair.publicKey.serialize(),
-                    signature = signedPreKey.signature,
-                    timestamp = signedPreKey.timestamp,
-                )
+                    val signedPreKeyProto =
+                        com.sanchr.proto.keys.SignedPreKey(
+                            keyId = signedPreKey.id,
+                            publicKey = signedPreKey.keyPair.publicKey.serialize(),
+                            signature = signedPreKey.signature,
+                            timestamp = signedPreKey.timestamp,
+                        )
 
-            val oneTimePreKeyProtos =
-                oneTimePreKeys.map { record ->
-                    OneTimePreKey(
-                        keyId = record.id,
-                        publicKey = record.keyPair.publicKey.serialize(),
+                    val oneTimePreKeyProtos =
+                        oneTimePreKeys.map { record ->
+                            OneTimePreKey(
+                                keyId = record.id,
+                                publicKey = record.keyPair.publicKey.serialize(),
+                            )
+                        }
+
+                    KeyBundle(
+                        identityPublicKey = identityKeyPair.publicKey.serialize(),
+                        signedPreKey = signedPreKeyProto,
+                        oneTimePreKeys = oneTimePreKeyProtos,
+                        registrationId = registrationId,
+                        deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
+                        kyberPreKey =
+                            KyberPreKey(
+                                keyId = kyberPreKey.id,
+                                publicKey = kyberPreKey.keyPair.publicKey.serialize(),
+                                signature = kyberPreKey.signature,
+                                timestamp = kyberPreKey.timestamp,
+                            ),
                     )
                 }
-
-            val bundle =
-                KeyBundle(
-                    identityPublicKey = identityKeyPair.publicKey.serialize(),
-                    signedPreKey = signedPreKeyProto,
-                    oneTimePreKeys = oneTimePreKeyProtos,
-                    registrationId = registrationId,
-                    deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
-                    kyberPreKey =
-                        KyberPreKey(
-                            keyId = kyberPreKey.id,
-                            publicKey = kyberPreKey.keyPair.publicKey.serialize(),
-                            signature = kyberPreKey.signature,
-                            timestamp = kyberPreKey.timestamp,
-                        ),
-                )
 
             keyServiceClient.uploadKeyBundle(bundle)
         }
@@ -219,15 +248,17 @@ class SignalKeyManager
          * Called when the server signals that the pre-key count is low.
          */
         suspend fun replenishPreKeys() {
-            val startId = preKeyStore.getNextPreKeyId()
-            val newKeys = generateOneTimePreKeys(startId)
-
             val preKeyProtos =
-                newKeys.map { record ->
-                    OneTimePreKey(
-                        keyId = record.id,
-                        publicKey = record.keyPair.publicKey.serialize(),
-                    )
+                withContext(dispatchers.signalDispatcher) {
+                    val startId = preKeyStore.getNextPreKeyId()
+                    val newKeys = generateOneTimePreKeysBlocking(startId, PRE_KEY_BATCH_SIZE)
+
+                    newKeys.map { record ->
+                        OneTimePreKey(
+                            keyId = record.id,
+                            publicKey = record.keyPair.publicKey.serialize(),
+                        )
+                    }
                 }
 
             keyServiceClient.uploadOneTimePreKeys(
@@ -272,29 +303,31 @@ class SignalKeyManager
                     ),
                 )
 
-            val identityKey = IdentityKey(response.identityPublicKey)
-            val signedPreKey =
-                response.signedPreKey
-                    ?: throw IllegalStateException("Server returned no signed pre-key for $userId:$deviceId")
+            return withContext(dispatchers.signalDispatcher) {
+                val identityKey = IdentityKey(response.identityPublicKey)
+                val signedPreKey =
+                    response.signedPreKey
+                        ?: throw IllegalStateException("Server returned no signed pre-key for $userId:$deviceId")
 
-            val oneTimePreKey = response.oneTimePreKey
-            val kyberPreKey =
-                response.kyberPreKey
-                    ?: throw IllegalStateException("Server returned no Kyber pre-key for $userId:$deviceId")
+                val oneTimePreKey = response.oneTimePreKey
+                val kyberPreKey =
+                    response.kyberPreKey
+                        ?: throw IllegalStateException("Server returned no Kyber pre-key for $userId:$deviceId")
 
-            return PreKeyBundle(
-                response.registrationId,
-                deviceId,
-                oneTimePreKey?.keyId ?: PreKeyBundle.NULL_PRE_KEY_ID,
-                if (oneTimePreKey != null) ECPublicKey(oneTimePreKey.publicKey) else null,
-                signedPreKey.keyId,
-                ECPublicKey(signedPreKey.publicKey),
-                signedPreKey.signature,
-                identityKey,
-                kyberPreKey.keyId,
-                KEMPublicKey(kyberPreKey.publicKey),
-                kyberPreKey.signature,
-            )
+                PreKeyBundle(
+                    response.registrationId,
+                    deviceId,
+                    oneTimePreKey?.keyId ?: PreKeyBundle.NULL_PRE_KEY_ID,
+                    if (oneTimePreKey != null) ECPublicKey(oneTimePreKey.publicKey) else null,
+                    signedPreKey.keyId,
+                    ECPublicKey(signedPreKey.publicKey),
+                    signedPreKey.signature,
+                    identityKey,
+                    kyberPreKey.keyId,
+                    KEMPublicKey(kyberPreKey.publicKey),
+                    kyberPreKey.signature,
+                )
+            }
         }
 
         // ------------------------------------------------------------------
@@ -308,51 +341,63 @@ class SignalKeyManager
          * allow in-flight messages to be decrypted.
          */
         suspend fun rotateSignedPreKeyIfNeeded() {
-            val signedPreKeys = signedPreKeyStore.loadSignedPreKeys()
-            if (signedPreKeys.isEmpty()) return
+            val prepared =
+                withContext(dispatchers.signalDispatcher) {
+                    val signedPreKeys = signedPreKeyStore.loadSignedPreKeys()
+                    if (signedPreKeys.isEmpty()) return@withContext null
 
-            val latest = signedPreKeys.maxByOrNull { it.timestamp } ?: return
-            val age = System.currentTimeMillis() - latest.timestamp
+                    val latest = signedPreKeys.maxByOrNull { it.timestamp } ?: return@withContext null
+                    val age = System.currentTimeMillis() - latest.timestamp
 
-            if (age < SIGNED_PRE_KEY_ROTATION_MILLIS) return
+                    if (age < SIGNED_PRE_KEY_ROTATION_MILLIS) return@withContext null
 
-            val identityKeyPair = identityKeyStore.getIdentityKeyPair()
-            val newSignedPreKey = generateSignedPreKey(identityKeyPair)
-            val newKyberPreKey = generateKyberPreKey(identityKeyPair)
+                    val identityKeyPair = identityKeyStore.getIdentityKeyPair()
+                    val newSignedPreKey = generateSignedPreKeyBlocking(identityKeyPair)
+                    val newKyberPreKey = generateKyberPreKeyBlocking(identityKeyPair)
 
-            // Upload updated bundle with new signed pre-key
-            val signedPreKeyProto =
-                com.sanchr.proto.keys.SignedPreKey(
-                    keyId = newSignedPreKey.id,
-                    publicKey = newSignedPreKey.keyPair.publicKey.serialize(),
-                    signature = newSignedPreKey.signature,
-                    timestamp = newSignedPreKey.timestamp,
-                )
+                    val signedPreKeyProto =
+                        com.sanchr.proto.keys.SignedPreKey(
+                            keyId = newSignedPreKey.id,
+                            publicKey = newSignedPreKey.keyPair.publicKey.serialize(),
+                            signature = newSignedPreKey.signature,
+                            timestamp = newSignedPreKey.timestamp,
+                        )
 
-            val bundle =
-                KeyBundle(
-                    identityPublicKey = identityKeyPair.publicKey.serialize(),
-                    signedPreKey = signedPreKeyProto,
-                    registrationId = identityKeyStore.getLocalRegistrationId(),
-                    deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
-                    kyberPreKey =
-                        KyberPreKey(
-                            keyId = newKyberPreKey.id,
-                            publicKey = newKyberPreKey.keyPair.publicKey.serialize(),
-                            signature = newKyberPreKey.signature,
-                            timestamp = newKyberPreKey.timestamp,
-                        ),
-                )
+                    val bundle =
+                        KeyBundle(
+                            identityPublicKey = identityKeyPair.publicKey.serialize(),
+                            signedPreKey = signedPreKeyProto,
+                            registrationId = identityKeyStore.getLocalRegistrationId(),
+                            deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
+                            kyberPreKey =
+                                KyberPreKey(
+                                    keyId = newKyberPreKey.id,
+                                    publicKey = newKyberPreKey.keyPair.publicKey.serialize(),
+                                    signature = newKyberPreKey.signature,
+                                    timestamp = newKyberPreKey.timestamp,
+                                ),
+                        )
 
-            keyServiceClient.uploadKeyBundle(bundle)
+                    RotationPrep(bundle, newSignedPreKey.id, signedPreKeys)
+                } ?: return
 
-            // Clean up signed pre-keys older than 2 rotation periods (grace period)
-            val gracePeriod = SIGNED_PRE_KEY_ROTATION_MILLIS * 2
-            signedPreKeys
-                .filter { System.currentTimeMillis() - it.timestamp > gracePeriod }
-                .filter { it.id != newSignedPreKey.id }
-                .forEach { signedPreKeyStore.removeSignedPreKey(it.id) }
+            keyServiceClient.uploadKeyBundle(prepared.bundle)
+
+            withContext(dispatchers.signalDispatcher) {
+                // Clean up signed pre-keys older than 2 rotation periods (grace period)
+                val gracePeriod = SIGNED_PRE_KEY_ROTATION_MILLIS * 2
+                prepared.existingSignedPreKeys
+                    .filter { System.currentTimeMillis() - it.timestamp > gracePeriod }
+                    .filter { it.id != prepared.newSignedPreKeyId }
+                    .forEach { signedPreKeyStore.removeSignedPreKey(it.id) }
+            }
         }
+
+        private data class RotationPrep(
+            val bundle: KeyBundle,
+            val newSignedPreKeyId: Int,
+            val existingSignedPreKeys: List<SignedPreKeyRecord>,
+        )
 
         /**
          * Returns true if the local identity key pair has been generated.
