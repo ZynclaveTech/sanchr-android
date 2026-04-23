@@ -9,7 +9,7 @@ import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
-import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.messaging.ClientEvent
@@ -17,7 +17,6 @@ import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.ServerEvent
 import com.sanchr.proto.messaging.TypingIndicator
-import dagger.Lazy
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +39,6 @@ class RealtimeManager
         private val messagingClient: MessagingServiceClient,
         private val sessionManager: SessionManager,
         private val signalKeyManager: SignalKeyManager,
-        private val messageRepository: Lazy<MessageRepository>,
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
     ) : DefaultLifecycleObserver {
@@ -150,24 +148,15 @@ class RealtimeManager
                     kind = EnvelopeKind.NON_SEALED,
                     serverTimestamp = envelope.serverTimestamp,
                     declaredSender = ServerProvidedSender(envelope.senderId, senderDeviceId),
+                    envelopeContext =
+                        IncomingEnvelopeContext(
+                            conversationId = envelope.conversationId,
+                            messageId = envelope.messageId,
+                            contentType = envelope.contentType,
+                        ),
                 )
-            when (result) {
-                is EnvelopeDecryptResult.Success -> {
-                    messageRepository.get().insertDecryptedMessage(
-                        conversationId = envelope.conversationId,
-                        messageId = envelope.messageId,
-                        senderId = result.senderUserId,
-                        content = String(result.plaintext, Charsets.UTF_8),
-                        contentType = envelope.contentType,
-                        timestamp = result.serverTimestamp,
-                    )
-                }
-                EnvelopeDecryptResult.DuplicateMessage,
-                EnvelopeDecryptResult.SessionMissing,
-                is EnvelopeDecryptResult.Quarantined,
-                -> {
-                    Log.d(TAG, "Realtime envelope handled with result=$result")
-                }
+            if (result !is EnvelopeDecryptResult.Success) {
+                Log.d(TAG, "Realtime envelope handled with result=$result")
             }
         }
 

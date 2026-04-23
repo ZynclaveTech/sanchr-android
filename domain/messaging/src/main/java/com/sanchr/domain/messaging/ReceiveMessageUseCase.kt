@@ -4,6 +4,7 @@ import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import dagger.Lazy
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,6 +47,24 @@ data class ServerProvidedSender(
 )
 
 /**
+ * Server-envelope metadata required to persist a decrypted message row.
+ *
+ * The inbound wire protocol (`sanchr.messaging.EncryptedEnvelope` and
+ * `SealedInboundMessage`) carries `conversationId`, `messageId`, and
+ * `contentType` alongside the ciphertext — there is no app-level inner
+ * plaintext proto wrapping these fields, so the use case takes them as
+ * context instead of parsing them out after decrypt.
+ *
+ * Passing `null` preserves the pre-Phase-C "decrypt only" behavior used by
+ * tests that exercise the crypto chokepoint in isolation.
+ */
+data class IncomingEnvelopeContext(
+    val conversationId: String,
+    val messageId: String,
+    val contentType: String,
+)
+
+/**
  * Single chokepoint for every inbound envelope on the receive path.
  *
  * Decrypts the envelope via the correct libsignal primitive, classifies
@@ -69,6 +88,7 @@ class ReceiveMessageUseCase
         private val sealedSenderCipher: SealedSenderCipher,
         private val signalSessionManager: SignalSessionManager,
         private val quarantineUseCase: QuarantineEnvelopeUseCase,
+        private val messageRepository: Lazy<MessageRepository>,
         private val dispatchers: DispatcherProvider,
     ) {
         /**
@@ -85,10 +105,22 @@ class ReceiveMessageUseCase
             kind: EnvelopeKind,
             serverTimestamp: Long,
             declaredSender: ServerProvidedSender?,
+            envelopeContext: IncomingEnvelopeContext? = null,
         ): EnvelopeDecryptResult =
             withContext(dispatchers.io) {
                 try {
-                    decryptByKind(envelopeBytes, kind, serverTimestamp, declaredSender)
+                    val success = decryptByKind(envelopeBytes, kind, serverTimestamp, declaredSender)
+                    envelopeContext?.let { ctx ->
+                        messageRepository.get().insertDecryptedMessage(
+                            conversationId = ctx.conversationId,
+                            messageId = ctx.messageId,
+                            senderId = success.senderUserId,
+                            content = String(success.plaintext, Charsets.UTF_8),
+                            contentType = ctx.contentType,
+                            timestamp = success.serverTimestamp,
+                        )
+                    }
+                    success
                 } catch (e: DuplicateMessageException) {
                     Log.d(TAG, "duplicate message (unsealed) ignored", e)
                     EnvelopeDecryptResult.DuplicateMessage

@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import dagger.Lazy
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -21,6 +22,8 @@ class ReceiveMessageUseCaseTest {
     private val sealedSenderCipher = mockk<SealedSenderCipher>()
     private val signalSessionManager = mockk<SignalSessionManager>()
     private val quarantineUseCase = mockk<QuarantineEnvelopeUseCase>()
+    private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val messageRepositoryLazy = Lazy<MessageRepository> { messageRepository }
     private val dispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher = Dispatchers.Unconfined
@@ -35,6 +38,7 @@ class ReceiveMessageUseCaseTest {
             sealedSenderCipher,
             signalSessionManager,
             quarantineUseCase,
+            messageRepositoryLazy,
             dispatchers,
         )
 

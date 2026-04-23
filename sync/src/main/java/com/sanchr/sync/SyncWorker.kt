@@ -18,12 +18,11 @@ import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ConversationEntity
-import com.sanchr.core.database.entity.MessageEntity
-import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
+import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.auth.AuthServiceClient
@@ -301,35 +300,17 @@ class SyncWorker
                         kind = EnvelopeKind.NON_SEALED,
                         serverTimestamp = envelope.serverTimestamp,
                         declaredSender = ServerProvidedSender(envelope.senderId, senderDeviceId),
-                    )
-                when (result) {
-                    is EnvelopeDecryptResult.Success -> {
-                        messageDao.insertMessage(
-                            MessageEntity(
-                                id = envelope.messageId,
-                                conversationId = envelope.conversationId,
-                                senderId = result.senderUserId,
-                                contentType = envelope.contentType,
-                                contentBody = String(result.plaintext, Charsets.UTF_8),
-                                status = "DELIVERED",
-                                timestamp = result.serverTimestamp,
-                            ),
-                        )
-                        pendingMessageAckDao.insertAck(
-                            PendingMessageAckEntity(
+                        envelopeContext =
+                            IncomingEnvelopeContext(
                                 conversationId = envelope.conversationId,
                                 messageId = envelope.messageId,
-                                createdAt = System.currentTimeMillis(),
+                                contentType = envelope.contentType,
                             ),
-                        )
-                        persistedCount += 1
-                    }
-                    EnvelopeDecryptResult.DuplicateMessage,
-                    EnvelopeDecryptResult.SessionMissing,
-                    is EnvelopeDecryptResult.Quarantined,
-                    -> {
-                        Log.d(TAG, "Sync envelope ${envelope.messageId} handled with result=$result")
-                    }
+                    )
+                if (result is EnvelopeDecryptResult.Success) {
+                    persistedCount += 1
+                } else {
+                    Log.d(TAG, "Sync envelope ${envelope.messageId} handled with result=$result")
                 }
             }
 
