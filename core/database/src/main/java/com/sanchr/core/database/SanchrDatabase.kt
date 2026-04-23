@@ -8,6 +8,7 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.sanchr.core.database.crypto.DatabasePassphraseProvider
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
@@ -22,6 +23,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [
@@ -66,6 +68,24 @@ class Converters {
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
+    @Volatile
+    private var sqlcipherLoaded = false
+
+    private fun ensureSqlCipherLoaded(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+    ) {
+        if (sqlcipherLoaded) return
+        synchronized(this) {
+            if (sqlcipherLoaded) return
+            // sqlcipher-android 4.6.1 does not expose SQLiteDatabase.loadLibs(Context).
+            // The native library is loaded via the class's static initializer, but we
+            // invoke System.loadLibrary defensively (idempotent) so any early DB use
+            // does not race the static init.
+            System.loadLibrary("sqlcipher")
+            sqlcipherLoaded = true
+        }
+    }
+
     private val migration1To2 =
         object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
@@ -92,17 +112,18 @@ object DatabaseModule {
     @Singleton
     fun provideSanchrDatabase(
         @ApplicationContext context: Context,
-    ): SanchrDatabase =
-        Room
+        passphraseProvider: DatabasePassphraseProvider,
+    ): SanchrDatabase {
+        ensureSqlCipherLoaded(context)
+        return Room
             .databaseBuilder(
                 context,
                 SanchrDatabase::class.java,
                 "sanchr-database",
-            )
-            // TODO: Add SQLCipher for encrypted database storage
-            // .openHelperFactory(SupportFactory(passphrase))
+            ).openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))
             .addMigrations(migration1To2)
             .build()
+    }
 
     @Provides
     fun provideMessageDao(database: SanchrDatabase): MessageDao = database.messageDao()
