@@ -13,7 +13,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.entity.ConversationEntity
@@ -49,9 +48,14 @@ import org.json.JSONArray
  * 1. Refresh auth token if expiring soon
  * 2. Sync pending/missed messages via SyncMessages RPC
  * 3. Refresh conversations from server
- * 4. Replenish Signal pre-keys if below threshold
- * 5. Clean expired vault items and messages locally
- * 6. Update notification badge count
+ * 4. Clean expired vault items and messages locally
+ * 5. Update notification badge count
+ *
+ * Signal key rotation, signed pre-key replenish, and sender-certificate
+ * refresh live in dedicated workers under [com.sanchr.sync.rotation] —
+ * see [com.sanchr.sync.rotation.SignedPreKeyRotationWorker],
+ * [com.sanchr.sync.rotation.PreKeyReplenishWorker], and
+ * [com.sanchr.sync.rotation.SenderCertificateRotationWorker].
  */
 @HiltWorker
 class SyncWorker
@@ -61,7 +65,6 @@ class SyncWorker
         @Assisted params: WorkerParameters,
         private val messagingClient: MessagingServiceClient,
         private val authClient: AuthServiceClient,
-        private val keyManager: SignalKeyManager,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val sessionManager: SessionManager,
         private val notificationHandler: NotificationHandler,
@@ -176,14 +179,9 @@ class SyncWorker
                     conversationsDeferred.await()
                 }
 
-                // Phase 4 & 5 can run concurrently
-                coroutineScope {
-                    val preKeysDeferred = async { replenishPreKeys() }
-                    val cleanupDeferred = async { cleanExpiredVaultItems() }
-
-                    preKeysDeferred.await()
-                    cleanupDeferred.await()
-                }
+                // Phase 4: local cleanup (key rotation/replenishment is now
+                // owned by the dedicated workers under sync/rotation/)
+                cleanExpiredVaultItems()
 
                 chatBackupManager.performScheduledBackupIfNeeded()
 
@@ -365,32 +363,7 @@ class SyncWorker
         }
 
         // ------------------------------------------------------------------
-        // Phase 4: Replenish pre-keys
-        // ------------------------------------------------------------------
-
-        /**
-         * Checks the server-side pre-key count and uploads a new batch if the
-         * count has fallen below the configured threshold.
-         */
-        private suspend fun replenishPreKeys() {
-            try {
-                val userId = sessionManager.getUserId()
-                val deviceId = sessionManager.getDeviceId()?.toIntOrNull()
-
-                if (userId != null && deviceId != null && !keyManager.hasCompleteServerBundle(userId, deviceId)) {
-                    keyManager.uploadInitialKeyBundle()
-                } else {
-                    keyManager.checkAndReplenishPreKeys()
-                    keyManager.rotateSignedPreKeyIfNeeded()
-                }
-            } catch (e: Exception) {
-                // Pre-key replenishment is best-effort; do not fail the entire sync
-                Log.w(TAG, "Pre-key replenishment failed (non-fatal)", e)
-            }
-        }
-
-        // ------------------------------------------------------------------
-        // Phase 5: Clean expired items
+        // Phase 4: Clean expired items
         // ------------------------------------------------------------------
 
         /**
@@ -406,7 +379,7 @@ class SyncWorker
         }
 
         // ------------------------------------------------------------------
-        // Phase 6: Badge update
+        // Phase 5: Badge update
         // ------------------------------------------------------------------
 
         /**
