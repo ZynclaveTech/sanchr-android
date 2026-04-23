@@ -64,9 +64,8 @@ class NewMessageNotifier
          * [LinkedHashMap] with `accessOrder = true` makes eviction LRU.
          */
         private val renderedIds: MutableMap<String, Boolean> =
-            object : LinkedHashMap<String, Boolean>(RENDERED_ID_CAPACITY, 0.75f, /* accessOrder */ true) {
-                override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>): Boolean =
-                    size > RENDERED_ID_CAPACITY
+            object : LinkedHashMap<String, Boolean>(RENDERED_ID_CAPACITY, 0.75f, true) {
+                override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>): Boolean = size > RENDERED_ID_CAPACITY
             }
 
         /**

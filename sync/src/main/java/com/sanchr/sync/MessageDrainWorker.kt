@@ -19,9 +19,9 @@ import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.messaging.EncryptedEnvelope
+import com.sanchr.proto.messaging.EnvelopeKind as ProtoEnvelopeKind
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
-import com.sanchr.proto.messaging.EnvelopeKind as ProtoEnvelopeKind
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.toList

@@ -146,6 +146,7 @@ class ChatDetailViewModel
             _uiState.update { it.copy(error = null) }
         }
 
+        @Suppress("CyclomaticComplexMethod")
         private fun Message.toUiModel(): MessageUiModel {
             val currentUser = sessionManager.getUserId() ?: ""
             return MessageUiModel(

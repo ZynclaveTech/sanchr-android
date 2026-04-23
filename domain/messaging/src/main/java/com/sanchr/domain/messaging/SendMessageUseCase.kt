@@ -136,7 +136,9 @@ class SendMessageUseCase
                     id = response.messageId,
                     conversationId = entity.conversationId,
                     senderId = entity.senderId,
-                    content = com.sanchr.core.model.MessageContent.Text(entity.contentBody),
+                    content =
+                        com.sanchr.core.model.MessageContent
+                            .Text(entity.contentBody),
                     status = MessageStatus.SENT,
                     timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
                 )

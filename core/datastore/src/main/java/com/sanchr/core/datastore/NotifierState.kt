@@ -42,8 +42,7 @@ class NotifierState
          * Returns the epoch-millis timestamp of the last message the notifier
          * rendered, or `null` if the notifier has never run on this install.
          */
-        suspend fun getLastNotifiedTimestamp(): Long? =
-            dataStore.data.first()[Keys.LAST_NOTIFIED_TIMESTAMP]
+        suspend fun getLastNotifiedTimestamp(): Long? = dataStore.data.first()[Keys.LAST_NOTIFIED_TIMESTAMP]
 
         /**
          * Advances the high-water mark. Idempotent — a call with a smaller
