@@ -34,6 +34,7 @@ class UserPreferences
             val NOTIFICATION_SOUND = booleanPreferencesKey("notification_sound")
             val NOTIFICATION_VIBRATE = booleanPreferencesKey("notification_vibrate")
             val NOTIFICATION_PREVIEW = stringPreferencesKey("notification_preview") // "always", "contacts", "never"
+            val NOTIFICATION_LOCKSCREEN_PREVIEW = booleanPreferencesKey("notification_lockscreen_preview")
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
@@ -68,6 +69,19 @@ class UserPreferences
 
         suspend fun setNotificationPreview(preview: String) {
             dataStore.edit { it[Keys.NOTIFICATION_PREVIEW] = preview }
+        }
+
+        /**
+         * If true, message notifications render their full sender + preview on
+         * the lockscreen (NotificationCompat.VISIBILITY_PUBLIC). Default false
+         * — the lockscreen gets the generic public-version notification
+         * ("New message") only, matching the iOS private-by-default posture.
+         */
+        val showPreviewOnLockscreen: Flow<Boolean> =
+            dataStore.data.map { it[Keys.NOTIFICATION_LOCKSCREEN_PREVIEW] ?: false }
+
+        suspend fun setShowPreviewOnLockscreen(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFICATION_LOCKSCREEN_PREVIEW] = enabled }
         }
 
         // --- Privacy ---

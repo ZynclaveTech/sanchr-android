@@ -5,11 +5,13 @@ import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -34,6 +36,7 @@ class NewMessageNotifier
         private val messageDao: MessageDao,
         private val contactDao: ContactDao,
         private val sessionManager: SessionManager,
+        private val userPreferences: UserPreferences,
         private val notificationHandler: NotificationHandler,
         private val dispatchers: DispatcherProvider,
     ) {
@@ -60,12 +63,18 @@ class NewMessageNotifier
                         messageDao
                             .observeIncomingMessagesAfter(startTime, selfUserId)
                             .collectLatest { batch ->
+                                // Read the preference once per batch — cheap and
+                                // avoids re-renders when the toggle flips mid-flow.
+                                val showPreview =
+                                    runCatching { userPreferences.showPreviewOnLockscreen.first() }
+                                        .getOrDefault(false)
                                 batch.forEach { entity ->
                                     if (renderedIds.add(entity.id)) {
                                         val senderName = resolveSenderName(entity.senderId)
                                         notificationHandler.showMessageNotification(
                                             entity = entity,
                                             senderDisplayName = senderName,
+                                            showPreviewOnLockscreen = showPreview,
                                         )
                                     }
                                 }
