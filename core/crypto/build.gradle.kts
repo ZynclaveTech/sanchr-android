@@ -22,6 +22,30 @@ android {
             "SEALED_SENDER_TRUST_ROOT",
             "\"${project.findProperty("sanchr.sealedSenderTrustRoot") ?: ""}\"",
         )
+        // iOS → Android interop contract test fixtures. All four are empty by
+        // default so [SealedSenderInteropContractTest] skips via assumeTrue in
+        // unconfigured builds. CI builds that have captured a fixture from the
+        // iOS test harness set these Gradle properties to wire the fixture in.
+        buildConfigField(
+            "String",
+            "IOS_TEST_FIXTURE_ENVELOPE",
+            "\"${project.findProperty("sanchr.iosTestFixtureEnvelope") ?: ""}\"",
+        )
+        buildConfigField(
+            "String",
+            "IOS_TEST_FIXTURE_EXPECTED_PLAINTEXT",
+            "\"${project.findProperty("sanchr.iosTestFixtureExpectedPlaintext") ?: ""}\"",
+        )
+        buildConfigField(
+            "Long",
+            "IOS_TEST_FIXTURE_TIMESTAMP",
+            "${project.findProperty("sanchr.iosTestFixtureTimestamp") ?: "0"}L",
+        )
+        buildConfigField(
+            "String",
+            "IOS_TEST_FIXTURE_SINK_PATH",
+            "\"${project.findProperty("sanchr.iosTestFixtureSinkPath") ?: ""}\"",
+        )
     }
 
     buildFeatures {
