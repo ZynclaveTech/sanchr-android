@@ -15,8 +15,6 @@ import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.MessageRepository
-import com.sanchr.proto.keys.GetUserDevicesRequest
-import com.sanchr.proto.keys.KeyServiceClient
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteMessageRequest
 import com.sanchr.proto.messaging.DeviceMessage
@@ -42,7 +40,6 @@ class MessageRepositoryImpl
         private val pendingMessageAckDao: PendingMessageAckDao,
         private val sessionManager: SessionManager,
         private val signalSessionManager: SignalSessionManager,
-        private val keyServiceClient: KeyServiceClient,
     ) : MessageRepository {
         override fun observeConversations(): Flow<List<Conversation>> =
             conversationDao.observeConversations().map { entities ->
@@ -89,11 +86,24 @@ class MessageRepositoryImpl
             messageDao.insertMessage(entity)
 
             return try {
+                val plaintext = content.toByteArray(Charsets.UTF_8)
+                val deviceMessages =
+                    recipientIds.flatMap { recipientId ->
+                        signalSessionManager
+                            .encryptForAllDevices(plaintext, recipientId)
+                            .map { encrypted ->
+                                DeviceMessage(
+                                    recipientId = recipientId,
+                                    deviceId = encrypted.deviceId,
+                                    cipherText = encrypted.ciphertext,
+                                )
+                            }
+                    }
                 val response =
                     messagingClient.sendMessage(
                         SendMessageRequest(
                             conversationId = conversationId,
-                            deviceMessages = encryptForRecipients(content, recipientIds),
+                            deviceMessages = deviceMessages,
                             contentType = "text",
                         ),
                     )
@@ -308,44 +318,6 @@ class MessageRepositoryImpl
                     fileName = json.optString("fileName").takeIf { it.isNotBlank() },
                 )
             }.getOrNull()
-
-        private suspend fun encryptForRecipients(
-            content: String,
-            recipientIds: List<String>,
-        ): List<DeviceMessage> {
-            val plaintext = content.toByteArray(Charsets.UTF_8)
-            val encryptedMessages = mutableListOf<DeviceMessage>()
-
-            for (recipientId in recipientIds) {
-                val devices =
-                    keyServiceClient
-                        .getUserDevices(
-                            GetUserDevicesRequest(userId = recipientId),
-                        ).devices
-                        .filter { it.keyCapable }
-
-                for (device in devices) {
-                    if (!signalSessionManager.hasSession(recipientId, device.deviceId)) {
-                        signalSessionManager.establishSession(recipientId, device.deviceId)
-                    }
-
-                    val encrypted =
-                        signalSessionManager.encrypt(
-                            plaintext = plaintext,
-                            userId = recipientId,
-                            deviceId = device.deviceId,
-                        )
-                    encryptedMessages +=
-                        DeviceMessage(
-                            recipientId = recipientId,
-                            deviceId = device.deviceId,
-                            cipherText = encrypted.ciphertext,
-                        )
-                }
-            }
-
-            return encryptedMessages
-        }
 
         private fun parseParticipantIds(raw: String): List<String> {
             val trimmed = raw.trim()
