@@ -57,7 +57,7 @@ class SignalSessionManager
         suspend fun encryptSealed(
             recipient: SignalProtocolAddress,
             plaintext: ByteArray,
-        ): ByteArray = sealedSenderCipher.sealedEncrypt(recipient, plaintext)
+        ): ByteArray = sealedSenderCipher.sealedEncrypt(recipient, MessagePadding.pad(plaintext))
 
         /** Sealed-sender decrypt. `timestamp` is the server receive time. */
         suspend fun decryptSealed(
@@ -139,10 +139,11 @@ class SignalSessionManager
                 establishSession(userId, deviceId)
             }
 
+            val padded = MessagePadding.pad(plaintext)
             return withContext(dispatchers.signalDispatcher) {
                 val address = SignalProtocolAddress(userId, deviceId)
                 val cipher = SessionCipher(store, address)
-                val ciphertextMessage = cipher.encrypt(plaintext)
+                val ciphertextMessage = cipher.encrypt(padded)
 
                 EncryptResult(
                     ciphertext = ciphertextMessage.serialize(),
@@ -198,7 +199,8 @@ class SignalSessionManager
                     }
 
                     val address = SignalProtocolAddress(recipientId, deviceId)
-                    val sealedCiphertext = sealedSenderCipher.sealedEncrypt(address, plaintext)
+                    val sealedCiphertext =
+                        sealedSenderCipher.sealedEncrypt(address, MessagePadding.pad(plaintext))
                     results.add(
                         DeviceEncryptedMessage(
                             deviceId = deviceId,
@@ -238,22 +240,25 @@ class SignalSessionManager
             ciphertext: ByteArray,
             senderId: String,
             senderDevice: Int,
-        ): ByteArray =
-            withContext(dispatchers.signalDispatcher) {
-                val address = SignalProtocolAddress(senderId, senderDevice)
-                val cipher = SessionCipher(store, address)
+        ): ByteArray {
+            val padded =
+                withContext(dispatchers.signalDispatcher) {
+                    val address = SignalProtocolAddress(senderId, senderDevice)
+                    val cipher = SessionCipher(store, address)
 
-                // Try PreKeySignalMessage first (type 3), fall back to SignalMessage (type 1).
-                // PreKeySignalMessage contains the embedded SignalMessage plus pre-key
-                // information needed to establish the session on the receiving side.
-                try {
-                    val preKeyMessage = PreKeySignalMessage(ciphertext)
-                    cipher.decrypt(preKeyMessage)
-                } catch (_: Exception) {
-                    val signalMessage = SignalMessage(ciphertext)
-                    cipher.decrypt(signalMessage)
+                    // Try PreKeySignalMessage first (type 3), fall back to SignalMessage (type 1).
+                    // PreKeySignalMessage contains the embedded SignalMessage plus pre-key
+                    // information needed to establish the session on the receiving side.
+                    try {
+                        val preKeyMessage = PreKeySignalMessage(ciphertext)
+                        cipher.decrypt(preKeyMessage)
+                    } catch (_: Exception) {
+                        val signalMessage = SignalMessage(ciphertext)
+                        cipher.decrypt(signalMessage)
+                    }
                 }
-            }
+            return MessagePadding.strip(padded)
+        }
 
         /**
          * Decrypts a full [EncryptedEnvelope] received from the server.

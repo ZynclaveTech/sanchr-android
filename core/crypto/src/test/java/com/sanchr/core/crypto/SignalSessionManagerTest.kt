@@ -250,7 +250,9 @@ class SignalSessionManagerTest {
             val aliceAddressOnBobsSide = SignalProtocolAddress(aliceUserId, aliceDeviceId)
             val bobCipher = SessionCipher(bobStore, aliceAddressOnBobsSide)
             val preKeyMessage = PreKeySignalMessage(result.ciphertext)
-            val decrypted = bobCipher.decrypt(preKeyMessage)
+            // SignalSessionManager pads before encrypt; strip here to mirror
+            // what the real receiving side (another SignalSessionManager) does.
+            val decrypted = MessagePadding.strip(bobCipher.decrypt(preKeyMessage))
 
             assertTrue(plaintext.contentEquals(decrypted), "round-tripped plaintext must match")
             // And Bob now has a session with Alice.

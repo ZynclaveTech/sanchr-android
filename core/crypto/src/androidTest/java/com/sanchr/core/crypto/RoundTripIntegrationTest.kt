@@ -141,14 +141,16 @@ class RoundTripIntegrationTest {
             //    of the session while decrypting.
             val aliceAddrOnBob = SignalProtocolAddress(aliceUserId, deviceId)
             val bobCipher = SessionCipher(bob.unifiedStore, aliceAddrOnBob)
-            val decrypted1 = bobCipher.decrypt(PreKeySignalMessage(result1.ciphertext))
+            // SessionManager pads outbound; mirror by stripping on the raw-cipher side.
+            val decrypted1 =
+                MessagePadding.strip(bobCipher.decrypt(PreKeySignalMessage(result1.ciphertext)))
             assertTrue(plaintext1.contentEquals(decrypted1), "first round-trip plaintext must match")
             assertTrue(bob.unifiedStore.containsSession(aliceAddrOnBob))
 
             // 5. Bob replies with an established-session SignalMessage (type 1);
-            //    Alice decrypts.
+            //    Alice decrypts. Bob must also pad so Alice's strip() sees a sentinel.
             val plaintext2 = "hi alice".toByteArray()
-            val ciphertext2 = bobCipher.encrypt(plaintext2)
+            val ciphertext2 = bobCipher.encrypt(MessagePadding.pad(plaintext2))
             val decrypted2 =
                 alice.sessionManager.decrypt(
                     ciphertext = ciphertext2.serialize(),
@@ -170,7 +172,8 @@ class RoundTripIntegrationTest {
             // Bob consumes the PreKeySignalMessage so his side is live.
             val aliceAddrOnBob = SignalProtocolAddress(aliceUserId, deviceId)
             val bobCipher = SessionCipher(bob.unifiedStore, aliceAddrOnBob)
-            val decryptedFirst = bobCipher.decrypt(PreKeySignalMessage(firstResult.ciphertext))
+            val decryptedFirst =
+                MessagePadding.strip(bobCipher.decrypt(PreKeySignalMessage(firstResult.ciphertext)))
             assertTrue(first.contentEquals(decryptedFirst))
 
             // Close Alice's DB and reopen against the same on-disk file and
@@ -185,7 +188,8 @@ class RoundTripIntegrationTest {
             val second = "after reopen".toByteArray()
             val secondResult = alice.sessionManager.encrypt(second, bobUserId, deviceId)
             // Already-established session → SignalMessage (type 2), NOT PreKey.
-            val decryptedSecond = bobCipher.decrypt(SignalMessage(secondResult.ciphertext))
+            val decryptedSecond =
+                MessagePadding.strip(bobCipher.decrypt(SignalMessage(secondResult.ciphertext)))
             assertTrue(second.contentEquals(decryptedSecond), "post-reopen round-trip plaintext must match")
         }
 

@@ -3,6 +3,7 @@ package com.sanchr.core.crypto.sealed
 import android.util.Base64
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.BuildConfig
+import com.sanchr.core.crypto.MessagePadding
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -111,7 +112,7 @@ class SealedSenderCipher
                 DecryptedEnvelope(
                     senderUserId = result.senderUuid,
                     senderDeviceId = result.deviceId,
-                    plaintext = result.paddedMessage,
+                    plaintext = MessagePadding.strip(result.paddedMessage),
                 )
             }
         }
@@ -119,8 +120,9 @@ class SealedSenderCipher
         /**
          * Result of a successful sealed-sender decrypt.
          *
-         * `plaintext` is the padded-message payload as returned by libsignal —
-         * callers must strip the app-level padding scheme agreed with iOS.
+         * `plaintext` has already been unpadded via [MessagePadding.strip]
+         * (libsignal 0x80 sentinel scheme) — consumers get raw application
+         * bytes, no further processing required.
          */
         data class DecryptedEnvelope(
             val senderUserId: String,
