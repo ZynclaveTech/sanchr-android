@@ -1,8 +1,11 @@
 package com.sanchr.core.crypto
 
+import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
+import com.sanchr.proto.keys.GetUserDevicesRequest
+import com.sanchr.proto.keys.KeyServiceClient
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,7 +42,11 @@ class SignalSessionManager
         private val keyManager: SignalKeyManager,
         private val dispatchers: DispatcherProvider,
         private val sealedSenderCipher: SealedSenderCipher,
+        private val keyServiceClient: KeyServiceClient,
     ) {
+        private companion object {
+            const val TAG = "SignalSessionManager"
+        }
         // ------------------------------------------------------------------
         // Sealed-sender (delegates to SealedSenderCipher — see that class for
         // the full contract). Kept in SignalSessionManager so callers have a
@@ -145,36 +152,103 @@ class SignalSessionManager
         }
 
         /**
-         * Encrypts plaintext for ALL devices of a recipient.
-         * Fetches the device list from the key server, then encrypts a separate
-         * ciphertext for each device.
+         * Encrypts plaintext for ALL key-capable devices of a recipient.
+         *
+         * 1. Fetches the recipient's active device list via `KeyService.GetUserDevices`.
+         * 2. For each device, ensures a Signal session exists (running X3DH if needed).
+         * 3. Prefers the sealed-sender encrypt path; if the local sender certificate
+         *    is unavailable (M2: the refresh RPC is still a stub), falls back to the
+         *    non-sealed `SessionCipher` path and logs the fallback at WARN.
+         *
+         * A per-device failure (e.g. stale pre-key, transient network error while
+         * establishing a session) is logged and skipped so that delivery to other
+         * devices still succeeds.
          *
          * @param plaintext The raw message bytes to encrypt.
          * @param recipientId The recipient's user ID.
-         * @return A list of [DeviceEncryptedMessage], one per recipient device.
+         * @return A list of [DeviceEncryptedMessage], one entry per recipient device
+         *         for which encryption succeeded.
          */
         suspend fun encryptForAllDevices(
             plaintext: ByteArray,
             recipientId: String,
         ): List<DeviceEncryptedMessage> {
-            // The key service returns the list of active devices for this user.
-            // For now, we encrypt for device ID 1 (primary device) as a baseline,
-            // and the caller can provide the device list from the server response.
-            // In production, ChatEncryptionHelper fetches the device list.
-            val result = encrypt(plaintext, recipientId, 1)
+            val devices =
+                keyServiceClient
+                    .getUserDevices(GetUserDevicesRequest(userId = recipientId))
+                    .devices
+                    .filter { it.keyCapable }
+
+            if (devices.isEmpty()) {
+                Log.w(TAG, "No key-capable devices for recipient $recipientId")
+                return emptyList()
+            }
+
             val registrationId =
                 withContext(dispatchers.signalDispatcher) {
                     store.getLocalRegistrationId()
                 }
-            return listOf(
-                DeviceEncryptedMessage(
-                    deviceId = 1,
-                    ciphertext = result.ciphertext,
-                    messageType = result.messageType,
-                    registrationId = registrationId,
-                ),
-            )
+
+            val results = ArrayList<DeviceEncryptedMessage>(devices.size)
+            for (device in devices) {
+                val deviceId = device.deviceId
+                try {
+                    if (!hasSession(recipientId, deviceId)) {
+                        establishSession(recipientId, deviceId)
+                    }
+
+                    val address = SignalProtocolAddress(recipientId, deviceId)
+                    val sealedCiphertext = trySealedEncrypt(address, plaintext)
+                    if (sealedCiphertext != null) {
+                        results.add(
+                            DeviceEncryptedMessage(
+                                deviceId = deviceId,
+                                ciphertext = sealedCiphertext,
+                                // Sealed-sender envelopes are a distinct transport type;
+                                // type 0 signals "not a plain CiphertextMessage".
+                                messageType = 0,
+                                registrationId = registrationId,
+                            ),
+                        )
+                    } else {
+                        val fallback = encrypt(plaintext, recipientId, deviceId)
+                        results.add(
+                            DeviceEncryptedMessage(
+                                deviceId = deviceId,
+                                ciphertext = fallback.ciphertext,
+                                messageType = fallback.messageType,
+                                registrationId = registrationId,
+                            ),
+                        )
+                    }
+                } catch (t: Throwable) {
+                    // Skip this device; other devices remain deliverable.
+                    Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
+                }
+            }
+            return results
         }
+
+        /**
+         * Attempts the sealed-sender encrypt path. Returns `null` (after logging
+         * at WARN) when the local sender certificate is unavailable so the caller
+         * can fall back to the non-sealed path. Any other failure is rethrown and
+         * handled by the per-device try/catch in [encryptForAllDevices].
+         */
+        private suspend fun trySealedEncrypt(
+            address: SignalProtocolAddress,
+            plaintext: ByteArray,
+        ): ByteArray? =
+            try {
+                sealedSenderCipher.sealedEncrypt(address, plaintext)
+            } catch (e: IllegalStateException) {
+                // SenderCertificateManager.refresh() throws ISE while the M3 RPC is unwired.
+                Log.w(
+                    TAG,
+                    "Sealed-sender unavailable (${e.message}); falling back to non-sealed encrypt for $address",
+                )
+                null
+            }
 
         // ------------------------------------------------------------------
         // Decryption
