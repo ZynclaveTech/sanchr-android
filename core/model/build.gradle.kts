@@ -1,25 +1,15 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
 }
 
-android {
-    namespace = "com.sanchr.core.model"
-    compileSdk = 35
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
 
-    defaultConfig {
-        minSdk = 26
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -27,4 +17,7 @@ dependencies {
     // Exposed as api because public model classes (Message, Conversation, etc.)
     // use kotlinx.datetime.Instant in their public properties
     api(libs.kotlinx.datetime)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
 }
