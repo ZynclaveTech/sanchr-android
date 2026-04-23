@@ -8,13 +8,14 @@ service MessagingService {
   rpc SyncMessages(SyncRequest) returns (stream EncryptedEnvelope);
   rpc AckMessages(AckMessagesRequest) returns (AckMessagesResponse);
   rpc DeleteMessage(DeleteMessageRequest) returns (DeleteMessageResponse);
+  rpc EditMessage(EditMessageRequest) returns (EditMessageResponse);
   rpc SendReceipt(ReceiptRequest) returns (ReceiptResponse);
   rpc GetConversations(GetConversationsRequest) returns (GetConversationsResponse);
-  rpc GetPresenceSnapshot(GetPresenceSnapshotRequest) returns (GetPresenceSnapshotResponse);
   rpc SendReaction(Reaction) returns (Reaction);
   rpc GetSenderCertificate(SenderCertificateRequest) returns (SenderCertificateResponse);
   rpc GetDeliveryTokens(DeliveryTokenRequest) returns (DeliveryTokenResponse);
   rpc SendSealedMessage(SendSealedMessageRequest) returns (SendSealedMessageResponse);
+  rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
 }
 
 message StartDirectConversationRequest {
@@ -42,8 +43,9 @@ message SendMessageResponse {
 message ClientEvent {
   oneof event {
     TypingIndicator typing = 1;
-    ReceiptRequest receipt = 2;
-    PresenceHeartbeat heartbeat = 3;
+    // field 2 reserved — formerly ReceiptRequest (removed: sealed receipts)
+    // field 3 reserved — formerly PresenceHeartbeat (removed: P2P presence)
+    CallEventAck call_event_ack = 4;
   }
 }
 
@@ -52,12 +54,13 @@ message ServerEvent {
     EncryptedEnvelope message = 1;
     TypingIndicator typing = 2;
     ReceiptUpdate receipt = 3;
-    PresenceUpdate presence = 4;
+    // field 4 reserved — formerly PresenceUpdate (removed: P2P presence)
     PreKeyCountLow pre_key_count_low = 5;
     CallOfferEvent call_offer = 6;
     CallLifecycleEvent call_lifecycle = 7;
     Reaction reaction = 8;
     SealedInboundMessage sealed_message = 9;
+    MessageEdited message_edited = 10;
   }
 }
 
@@ -67,6 +70,7 @@ message CallOfferEvent {
   string call_type = 3;
   bytes sdp_offer = 4;
   bytes srtp_key_params = 5;
+  bytes encrypted_sdp_payload = 6;  // Signal-encrypt(SealedCallPayload JSON)
 }
 
 message CallLifecycleEvent {
@@ -74,6 +78,11 @@ message CallLifecycleEvent {
   string peer_id = 2;
   string event_type = 3;
   string actor_id = 4;
+}
+
+message CallEventAck {
+  string call_id = 1;
+  string kind = 2; // "offer" or "lifecycle"
 }
 
 message EncryptedEnvelope {
@@ -161,18 +170,36 @@ message DeleteMessageRequest {
 
 message DeleteMessageResponse {}
 
+message EditMessageRequest {
+  string conversation_id = 1;
+  string message_id = 2;
+  // Re-encrypted ciphertext for each recipient device.  Same semantics as
+  // SendMessageRequest.device_messages — one entry per target device.
+  repeated DeviceMessage device_messages = 3;
+}
+
+message EditMessageResponse {
+  // Milliseconds since Unix epoch when the edit was recorded server-side.
+  int64 edited_at = 1;
+}
+
+// Broadcast to all conversation participants (except the editor) when a
+// message is edited.  Each recipient gets the ciphertext encrypted for their
+// specific device.
+message MessageEdited {
+  string conversation_id = 1;
+  string message_id = 2;
+  string sender_id = 3;
+  // Per-device ciphertext — each ServerEvent carrying this message targets a
+  // single device and contains that device's ciphertext.
+  bytes ciphertext = 4;
+  int64 edited_at = 5;
+}
+
 message GetConversationsRequest {}
 
 message GetConversationsResponse {
   repeated Conversation conversations = 1;
-}
-
-message GetPresenceSnapshotRequest {
-  repeated string user_ids = 1;
-}
-
-message GetPresenceSnapshotResponse {
-  repeated PresenceUpdate users = 1;
 }
 
 message Conversation {
@@ -222,6 +249,10 @@ message SealedDeviceMessage {
   string recipient_id = 1;
   int32 device_id = 2;
   bytes sealed_envelope = 3;
+  // Optional cleartext routing metadata. It lets the server honor
+  // per-device conversation notification mutes before sending silent APNs,
+  // while the sealed envelope remains opaque.
+  string conversation_id = 4;
 }
 
 message SendSealedMessageResponse {
@@ -232,4 +263,12 @@ message SealedInboundMessage {
   bytes sealed_envelope = 1;
   int64 server_timestamp = 2;
   string message_id = 3;
+}
+
+message DeleteConversationRequest {
+  string conversation_id = 1;
+}
+
+message DeleteConversationResponse {
+  bool success = 1;
 }
