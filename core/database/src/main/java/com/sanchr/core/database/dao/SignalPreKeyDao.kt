@@ -19,4 +19,22 @@ interface SignalPreKeyDao {
 
     @Query("SELECT COUNT(*) FROM signal_prekeys")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM signal_prekeys WHERE prekey_id = :prekeyId")
+    fun getBlocking(prekeyId: Int): SignalPreKeyEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertBlocking(entity: SignalPreKeyEntity)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM signal_prekeys WHERE prekey_id = :prekeyId)")
+    fun existsBlocking(prekeyId: Int): Boolean
+
+    @Query("DELETE FROM signal_prekeys WHERE prekey_id = :prekeyId")
+    fun deleteBlocking(prekeyId: Int)
+
+    @Query("SELECT MAX(prekey_id) FROM signal_prekeys")
+    fun maxIdBlocking(): Int?
+
+    @Query("DELETE FROM signal_prekeys")
+    fun deleteAllBlocking()
 }

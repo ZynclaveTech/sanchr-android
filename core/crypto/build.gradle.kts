@@ -22,6 +22,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -29,6 +33,7 @@ dependencies {
 
     implementation(projects.core.common)
     implementation(projects.core.datastore)
+    implementation(projects.core.database)
     implementation(projects.proto)
 
     implementation(libs.hilt.android)
@@ -41,4 +46,15 @@ dependencies {
     implementation(libs.tink.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.security.crypto)
+
+    // Unit testing with in-memory Room via Robolectric
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.room.runtime)
+    testImplementation(libs.room.ktx)
 }

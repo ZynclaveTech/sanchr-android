@@ -19,4 +19,19 @@ interface AccountDao {
 
     @Query("DELETE FROM accounts WHERE user_id = :userId")
     suspend fun delete(userId: String)
+
+    // ------------------------------------------------------------------
+    // Blocking variants — called from SignalDispatcher seam by libsignal
+    // stores, whose interfaces are synchronous. Safe because SignalDispatcher
+    // is a single-threaded confined dispatcher.
+    // ------------------------------------------------------------------
+
+    @Query("SELECT * FROM accounts LIMIT 1")
+    fun getCurrentBlocking(): AccountEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertBlocking(account: AccountEntity)
+
+    @Query("DELETE FROM accounts")
+    fun deleteAllBlocking()
 }

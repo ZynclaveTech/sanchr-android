@@ -16,4 +16,13 @@ interface SignalIdentityDao {
 
     @Query("DELETE FROM signal_identities WHERE address = :address")
     suspend fun delete(address: String)
+
+    @Query("SELECT * FROM signal_identities WHERE address = :address")
+    fun getBlocking(address: String): SignalIdentityEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertBlocking(entity: SignalIdentityEntity)
+
+    @Query("DELETE FROM signal_identities")
+    fun deleteAllBlocking()
 }

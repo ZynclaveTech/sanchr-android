@@ -16,4 +16,25 @@ interface SignalSignedPreKeyDao {
 
     @Query("DELETE FROM signal_signed_prekeys WHERE prekey_id < :prekeyId")
     suspend fun deleteOlderThan(prekeyId: Int)
+
+    @Query("SELECT * FROM signal_signed_prekeys WHERE prekey_id = :prekeyId")
+    fun getBlocking(prekeyId: Int): SignalSignedPreKeyEntity?
+
+    @Query("SELECT * FROM signal_signed_prekeys")
+    fun getAllBlocking(): List<SignalSignedPreKeyEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertBlocking(entity: SignalSignedPreKeyEntity)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM signal_signed_prekeys WHERE prekey_id = :prekeyId)")
+    fun existsBlocking(prekeyId: Int): Boolean
+
+    @Query("DELETE FROM signal_signed_prekeys WHERE prekey_id = :prekeyId")
+    fun deleteBlocking(prekeyId: Int)
+
+    @Query("SELECT MAX(prekey_id) FROM signal_signed_prekeys")
+    fun maxIdBlocking(): Int?
+
+    @Query("DELETE FROM signal_signed_prekeys")
+    fun deleteAllBlocking()
 }
