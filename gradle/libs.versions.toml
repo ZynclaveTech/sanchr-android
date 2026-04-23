@@ -60,6 +60,11 @@ espresso = "3.6.1"
 turbine = "1.2.0"
 mockk = "1.13.13"
 
+# Code quality
+ktlint = "12.1.1"
+detekt = "1.23.7"
+kover = "0.9.0"
+
 [libraries]
 # AndroidX Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
@@ -166,3 +171,6 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
