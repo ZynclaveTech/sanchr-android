@@ -104,6 +104,33 @@ interface MessageDao {
     @Query("UPDATE messages SET is_deleted = 1 WHERE id = :messageId")
     suspend fun softDeleteMessage(messageId: String)
 
+    /**
+     * In-place swap of a locally-generated client message id for the server
+     * id once `SendMessage` / `SendSealedMessage` returns. Also flips the
+     * status (typically QUEUED/SENDING → SENT) and adopts the server
+     * timestamp in a single UPDATE so observers see one row transition, not
+     * a delete + insert.
+     *
+     * Row identity is preserved — messages has no FK inbound, so mutating
+     * the PK is safe. Returns the number of rows affected so callers can
+     * detect a race where the row was already moved (or deleted).
+     */
+    @Query(
+        """
+        UPDATE messages
+        SET id = :newId,
+            status = :newStatus,
+            timestamp = :serverTimestamp
+        WHERE id = :oldId
+        """,
+    )
+    suspend fun adoptServerMessageId(
+        oldId: String,
+        newId: String,
+        newStatus: String,
+        serverTimestamp: Long,
+    ): Int
+
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteAllMessagesInConversation(conversationId: String)
 

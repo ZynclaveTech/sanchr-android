@@ -1,6 +1,5 @@
 package com.sanchr.app.data
 
-import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
@@ -17,9 +16,7 @@ import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteMessageRequest
-import com.sanchr.proto.messaging.DeviceMessage
 import com.sanchr.proto.messaging.MessagingServiceClient
-import com.sanchr.proto.messaging.SendMessageRequest
 import com.sanchr.proto.messaging.StartDirectConversationRequest
 import java.util.UUID
 import javax.inject.Inject
@@ -39,7 +36,6 @@ class MessageRepositoryImpl
         private val conversationDao: ConversationDao,
         private val pendingMessageAckDao: PendingMessageAckDao,
         private val sessionManager: SessionManager,
-        private val signalSessionManager: SignalSessionManager,
     ) : MessageRepository {
         override fun observeConversations(): Flow<List<Conversation>> =
             conversationDao.observeConversations().map { entities ->
@@ -56,71 +52,78 @@ class MessageRepositoryImpl
                 entities.map { it.toDomain() }
             }
 
-        override suspend fun sendMessage(
+        override suspend fun enqueueOutboundMessage(
             conversationId: String,
             content: String,
-        ): Message {
-            val clientMessageId = UUID.randomUUID().toString()
-            val now = System.currentTimeMillis()
+            contentType: String,
+        ): MessageEntity {
             val currentUserId = sessionManager.getUserId().orEmpty()
             require(currentUserId.isNotBlank()) { "Missing current user id" }
 
+            val entity =
+                MessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    conversationId = conversationId,
+                    senderId = currentUserId,
+                    contentType = contentType,
+                    contentBody = content,
+                    status = MessageStatus.QUEUED.name,
+                    timestamp = System.currentTimeMillis(),
+                )
+            messageDao.insertMessage(entity)
+            return entity
+        }
+
+        override suspend fun recordSendAttempt(
+            messageId: String,
+            newStatus: String,
+        ): Int {
+            messageDao.recordSendAttempt(
+                messageId = messageId,
+                attemptedAt = System.currentTimeMillis(),
+                newStatus = newStatus,
+            )
+            // Re-read to return the post-increment attempts count. The two
+            // statements run on the same dispatcher so the UPDATE is
+            // visible here; wrapping in @Transaction is unnecessary since
+            // no concurrent writer touches this row mid-attempt (the use
+            // case serializes transitions for a given message id).
+            return messageDao.getMessageById(messageId)?.attempts ?: 0
+        }
+
+        override suspend fun adoptServerId(
+            oldMessageId: String,
+            newMessageId: String,
+            serverTimestamp: Long,
+        ) {
+            messageDao.adoptServerMessageId(
+                oldId = oldMessageId,
+                newId = newMessageId,
+                newStatus = MessageStatus.SENT.name,
+                serverTimestamp = serverTimestamp,
+            )
+        }
+
+        override suspend fun markSendFailed(messageId: String) {
+            messageDao.updateMessageStatus(messageId, MessageStatus.FAILED.name)
+        }
+
+        override suspend fun requeueAfterFailure(messageId: String) {
+            messageDao.updateMessageStatus(messageId, MessageStatus.QUEUED.name)
+        }
+
+        override suspend fun getOutboundRecipients(
+            conversationId: String,
+            selfUserId: String,
+        ): List<String> {
             val conversation =
                 conversationDao.getConversationById(conversationId)
                     ?: error("Conversation $conversationId not found")
-            val recipientIds =
+            val recipients =
                 parseParticipantIds(conversation.participantIds)
-                    .filter { it != currentUserId }
-            require(recipientIds.isNotEmpty()) { "Conversation has no remote participants" }
-
-            val entity =
-                MessageEntity(
-                    id = clientMessageId,
-                    conversationId = conversationId,
-                    senderId = currentUserId,
-                    contentType = "text",
-                    contentBody = content,
-                    status = MessageStatus.SENDING.name,
-                    timestamp = now,
-                )
-            messageDao.insertMessage(entity)
-
-            return try {
-                val plaintext = content.toByteArray(Charsets.UTF_8)
-                val deviceMessages =
-                    recipientIds.flatMap { recipientId ->
-                        signalSessionManager
-                            .encryptForAllDevices(plaintext, recipientId)
-                            .map { encrypted ->
-                                DeviceMessage(
-                                    recipientId = recipientId,
-                                    deviceId = encrypted.deviceId,
-                                    cipherText = encrypted.ciphertext,
-                                )
-                            }
-                    }
-                val response =
-                    messagingClient.sendMessage(
-                        SendMessageRequest(
-                            conversationId = conversationId,
-                            deviceMessages = deviceMessages,
-                            contentType = "text",
-                        ),
-                    )
-
-                val updatedEntity =
-                    entity.copy(
-                        id = response.messageId,
-                        status = MessageStatus.SENT.name,
-                        timestamp = response.serverTimestamp,
-                    )
-                messageDao.softDeleteMessage(clientMessageId)
-                messageDao.insertMessage(updatedEntity)
-                updatedEntity.toDomain()
-            } catch (error: Exception) {
-                messageDao.updateMessage(entity.copy(status = MessageStatus.FAILED.name))
-                throw error
-            }
+                    .filter { it != selfUserId }
+            require(recipients.isNotEmpty()) { "Conversation has no remote participants" }
+            return recipients
         }
 
         override suspend fun markAsRead(conversationId: String) {

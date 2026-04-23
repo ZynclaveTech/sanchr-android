@@ -1,5 +1,6 @@
 package com.sanchr.domain.messaging
 
+import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
 import kotlinx.coroutines.flow.Flow
@@ -18,11 +19,65 @@ interface MessageRepository {
     /** Observes messages in a specific conversation. */
     fun observeMessages(conversationId: String): Flow<List<Message>>
 
-    /** Sends an encrypted message to a conversation. */
-    suspend fun sendMessage(
+    /**
+     * Persists a new outbound message in the QUEUED state and returns the
+     * row. The state machine (encrypt → RPC → transition) is owned by
+     * [SendMessageUseCase] — this method is the persistence-only entry
+     * point so the use case can insert once, then drive state transitions
+     * through the other bookkeeping methods below.
+     */
+    suspend fun enqueueOutboundMessage(
         conversationId: String,
         content: String,
-    ): Message
+        contentType: String = "text",
+    ): MessageEntity
+
+    /**
+     * Atomically bumps the `attempts` counter, stamps `last_attempt_at`,
+     * and sets the status to [newStatus]. Returns the row's `attempts`
+     * value *after* the increment so callers can decide whether to
+     * transition to FAILED once the cap is reached.
+     */
+    suspend fun recordSendAttempt(
+        messageId: String,
+        newStatus: String,
+    ): Int
+
+    /**
+     * On successful send, replaces the local client-generated id with the
+     * server-assigned id, flips status to SENT, and adopts the server
+     * timestamp — all in one UPDATE so observers see a single row
+     * transition rather than a soft-delete + re-insert.
+     */
+    suspend fun adoptServerId(
+        oldMessageId: String,
+        newMessageId: String,
+        serverTimestamp: Long,
+    )
+
+    /**
+     * Marks a row FAILED (terminal). Called when [recordSendAttempt]
+     * reports the attempts cap was reached.
+     */
+    suspend fun markSendFailed(messageId: String)
+
+    /**
+     * Reverts a row's status to QUEUED after a transient failure so
+     * `SendRetryWorker` can retry it. Does not touch the attempts counter —
+     * that was bumped by [recordSendAttempt] at the start of the attempt.
+     */
+    suspend fun requeueAfterFailure(messageId: String)
+
+    /**
+     * Resolves the non-self participant set for [conversationId]. Used by
+     * [SendMessageUseCase] to fan out encryption. Fails if no remote
+     * participants are present — a conversation of one is a programming
+     * error on the caller side.
+     */
+    suspend fun getOutboundRecipients(
+        conversationId: String,
+        selfUserId: String,
+    ): List<String>
 
     /** Marks all messages in a conversation as read. */
     suspend fun markAsRead(conversationId: String)
