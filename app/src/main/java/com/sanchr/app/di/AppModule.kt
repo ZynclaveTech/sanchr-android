@@ -1,7 +1,6 @@
 package com.sanchr.app.di
 
 import com.sanchr.core.common.DispatcherProvider
-import com.sanchr.core.common.StandardDispatcherProvider
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,10 +17,6 @@ annotation class ApplicationScope
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-    @Provides
-    @Singleton
-    fun provideDispatcherProvider(): DispatcherProvider = StandardDispatcherProvider()
-
     @Provides
     @Singleton
     @ApplicationScope
