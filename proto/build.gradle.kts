@@ -65,3 +65,19 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
 }
+
+val syncProtos by tasks.registering(Exec::class) {
+    workingDir = rootDir
+    commandLine("./scripts/sync-protos.sh", "check")
+    group = "verification"
+    description = "Verifies android protos match backend/crates/sanchr-proto/proto"
+}
+
+tasks.matching { it.name.startsWith("generateProto") }.configureEach {
+    dependsOn(syncProtos)
+}
+
+tasks.matching { it.name == "check" }.configureEach {
+    dependsOn(syncProtos)
+}
+
