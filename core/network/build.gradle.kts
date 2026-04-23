@@ -48,4 +48,12 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.core.ktx)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockk)
+    testImplementation(libs.grpc.testing)
+    testImplementation(libs.grpc.inprocess)
+    testImplementation(libs.grpc.stub)
 }
