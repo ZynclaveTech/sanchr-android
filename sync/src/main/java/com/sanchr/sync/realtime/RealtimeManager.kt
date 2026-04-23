@@ -5,10 +5,13 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.sanchr.core.crypto.SignalKeyManager
-import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.domain.messaging.EnvelopeDecryptResult
+import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.ReceiveMessageUseCase
+import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -36,10 +39,10 @@ class RealtimeManager
     constructor(
         private val messagingClient: MessagingServiceClient,
         private val sessionManager: SessionManager,
-        private val signalSessionManager: SignalSessionManager,
         private val signalKeyManager: SignalKeyManager,
         private val messageRepository: Lazy<MessageRepository>,
         private val messageDao: MessageDao,
+        private val receiveMessageUseCase: ReceiveMessageUseCase,
     ) : DefaultLifecycleObserver {
         companion object {
             private const val TAG = "RealtimeManager"
@@ -140,19 +143,31 @@ class RealtimeManager
         }
 
         private suspend fun persistIncomingEnvelope(envelope: EncryptedEnvelope) {
-            runCatching {
-                val decrypted = signalSessionManager.decryptEnvelope(envelope)
-                val plaintext = String(decrypted.plaintext, Charsets.UTF_8)
-                messageRepository.get().insertDecryptedMessage(
-                    conversationId = decrypted.conversationId,
-                    messageId = decrypted.messageId,
-                    senderId = decrypted.senderId,
-                    content = plaintext,
-                    contentType = decrypted.contentType,
-                    timestamp = decrypted.serverTimestamp,
+            val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
+            val result =
+                receiveMessageUseCase.receive(
+                    envelopeBytes = envelope.cipherText,
+                    kind = EnvelopeKind.NON_SEALED,
+                    serverTimestamp = envelope.serverTimestamp,
+                    declaredSender = ServerProvidedSender(envelope.senderId, senderDeviceId),
                 )
-            }.onFailure { error ->
-                Log.w(TAG, "Failed to decrypt realtime envelope", error)
+            when (result) {
+                is EnvelopeDecryptResult.Success -> {
+                    messageRepository.get().insertDecryptedMessage(
+                        conversationId = envelope.conversationId,
+                        messageId = envelope.messageId,
+                        senderId = result.senderUserId,
+                        content = String(result.plaintext, Charsets.UTF_8),
+                        contentType = envelope.contentType,
+                        timestamp = result.serverTimestamp,
+                    )
+                }
+                EnvelopeDecryptResult.DuplicateMessage,
+                EnvelopeDecryptResult.SessionMissing,
+                is EnvelopeDecryptResult.Quarantined,
+                -> {
+                    Log.d(TAG, "Realtime envelope handled with result=$result")
+                }
             }
         }
 

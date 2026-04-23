@@ -14,7 +14,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.sanchr.core.crypto.SignalKeyManager
-import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
@@ -23,6 +22,10 @@ import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.EnvelopeDecryptResult
+import com.sanchr.domain.messaging.EnvelopeKind
+import com.sanchr.domain.messaging.ReceiveMessageUseCase
+import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.RefreshTokenRequest
 import com.sanchr.proto.messaging.AckMessagesRequest
@@ -62,7 +65,7 @@ class SyncWorker
         private val messagingClient: MessagingServiceClient,
         private val authClient: AuthServiceClient,
         private val keyManager: SignalKeyManager,
-        private val signalSessionManager: SignalSessionManager,
+        private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val sessionManager: SessionManager,
         private val notificationHandler: NotificationHandler,
         private val conversationDao: ConversationDao,
@@ -291,31 +294,42 @@ class SyncWorker
 
             var persistedCount = 0
             for (envelope in envelopes) {
-                try {
-                    val decrypted = signalSessionManager.decryptEnvelope(envelope)
-                    val plaintext = String(decrypted.plaintext, Charsets.UTF_8)
-
-                    messageDao.insertMessage(
-                        MessageEntity(
-                            id = decrypted.messageId,
-                            conversationId = decrypted.conversationId,
-                            senderId = decrypted.senderId,
-                            contentType = decrypted.contentType,
-                            contentBody = plaintext,
-                            status = "DELIVERED",
-                            timestamp = decrypted.serverTimestamp,
-                        ),
+                val senderDeviceId = envelope.senderDevice.takeIf { it > 0 } ?: 1
+                val result =
+                    receiveMessageUseCase.receive(
+                        envelopeBytes = envelope.cipherText,
+                        kind = EnvelopeKind.NON_SEALED,
+                        serverTimestamp = envelope.serverTimestamp,
+                        declaredSender = ServerProvidedSender(envelope.senderId, senderDeviceId),
                     )
-                    pendingMessageAckDao.insertAck(
-                        PendingMessageAckEntity(
-                            conversationId = decrypted.conversationId,
-                            messageId = decrypted.messageId,
-                            createdAt = System.currentTimeMillis(),
-                        ),
-                    )
-                    persistedCount += 1
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to decrypt synced envelope", e)
+                when (result) {
+                    is EnvelopeDecryptResult.Success -> {
+                        messageDao.insertMessage(
+                            MessageEntity(
+                                id = envelope.messageId,
+                                conversationId = envelope.conversationId,
+                                senderId = result.senderUserId,
+                                contentType = envelope.contentType,
+                                contentBody = String(result.plaintext, Charsets.UTF_8),
+                                status = "DELIVERED",
+                                timestamp = result.serverTimestamp,
+                            ),
+                        )
+                        pendingMessageAckDao.insertAck(
+                            PendingMessageAckEntity(
+                                conversationId = envelope.conversationId,
+                                messageId = envelope.messageId,
+                                createdAt = System.currentTimeMillis(),
+                            ),
+                        )
+                        persistedCount += 1
+                    }
+                    EnvelopeDecryptResult.DuplicateMessage,
+                    EnvelopeDecryptResult.SessionMissing,
+                    is EnvelopeDecryptResult.Quarantined,
+                    -> {
+                        Log.d(TAG, "Sync envelope ${envelope.messageId} handled with result=$result")
+                    }
                 }
             }
 
