@@ -136,11 +136,13 @@ class SignalSessionManagerTest {
                 dispatchers = dispatchers,
             )
 
-        // SealedSenderCipher is not the subject of these tests — treat as opaque.
+        // Outbound is sealed-only (no non-sealed fallback), so provide a
+        // deterministic non-empty envelope for every sealedEncrypt call.
         val sealed = mockk<SealedSenderCipher>(relaxed = true)
-        // Force all sealed-sender attempts to look "unavailable" so we exercise the
-        // non-sealed fallback path in encryptForAllDevices.
-        coEvery { sealed.sealedEncrypt(any(), any()) } throws IllegalStateException("no cert in tests")
+        coEvery { sealed.sealedEncrypt(any(), any()) } answers {
+            val plaintext = secondArg<ByteArray>()
+            byteArrayOf(0x55) + plaintext + byteArrayOf(0x55)
+        }
 
         aliceSessionManager =
             SignalSessionManager(

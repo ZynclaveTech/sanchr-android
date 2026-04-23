@@ -156,9 +156,9 @@ class SignalSessionManager
          *
          * 1. Fetches the recipient's active device list via `KeyService.GetUserDevices`.
          * 2. For each device, ensures a Signal session exists (running X3DH if needed).
-         * 3. Prefers the sealed-sender encrypt path; if the local sender certificate
-         *    is unavailable (M2: the refresh RPC is still a stub), falls back to the
-         *    non-sealed `SessionCipher` path and logs the fallback at WARN.
+         * 3. Encrypts via the sealed-sender path. There is no non-sealed
+         *    fallback — v1 is sealed-only on outbound per the M3 scope, so a
+         *    missing/expired sender certificate must propagate as an error.
          *
          * A per-device failure (e.g. stale pre-key, transient network error while
          * establishing a session) is logged and skipped so that delivery to other
@@ -198,29 +198,17 @@ class SignalSessionManager
                     }
 
                     val address = SignalProtocolAddress(recipientId, deviceId)
-                    val sealedCiphertext = trySealedEncrypt(address, plaintext)
-                    if (sealedCiphertext != null) {
-                        results.add(
-                            DeviceEncryptedMessage(
-                                deviceId = deviceId,
-                                ciphertext = sealedCiphertext,
-                                // Sealed-sender envelopes are a distinct transport type;
-                                // type 0 signals "not a plain CiphertextMessage".
-                                messageType = 0,
-                                registrationId = registrationId,
-                            ),
-                        )
-                    } else {
-                        val fallback = encrypt(plaintext, recipientId, deviceId)
-                        results.add(
-                            DeviceEncryptedMessage(
-                                deviceId = deviceId,
-                                ciphertext = fallback.ciphertext,
-                                messageType = fallback.messageType,
-                                registrationId = registrationId,
-                            ),
-                        )
-                    }
+                    val sealedCiphertext = sealedSenderCipher.sealedEncrypt(address, plaintext)
+                    results.add(
+                        DeviceEncryptedMessage(
+                            deviceId = deviceId,
+                            ciphertext = sealedCiphertext,
+                            // Sealed-sender envelopes are a distinct transport type;
+                            // type 0 signals "not a plain CiphertextMessage".
+                            messageType = 0,
+                            registrationId = registrationId,
+                        ),
+                    )
                 } catch (t: Throwable) {
                     // Skip this device; other devices remain deliverable.
                     Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
@@ -228,27 +216,6 @@ class SignalSessionManager
             }
             return results
         }
-
-        /**
-         * Attempts the sealed-sender encrypt path. Returns `null` (after logging
-         * at WARN) when the local sender certificate is unavailable so the caller
-         * can fall back to the non-sealed path. Any other failure is rethrown and
-         * handled by the per-device try/catch in [encryptForAllDevices].
-         */
-        private suspend fun trySealedEncrypt(
-            address: SignalProtocolAddress,
-            plaintext: ByteArray,
-        ): ByteArray? =
-            try {
-                sealedSenderCipher.sealedEncrypt(address, plaintext)
-            } catch (e: IllegalStateException) {
-                // SenderCertificateManager.refresh() throws ISE while the M3 RPC is unwired.
-                Log.w(
-                    TAG,
-                    "Sealed-sender unavailable (${e.message}); falling back to non-sealed encrypt for $address",
-                )
-                null
-            }
 
         // ------------------------------------------------------------------
         // Decryption
