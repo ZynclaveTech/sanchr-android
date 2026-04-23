@@ -65,4 +65,5 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.room.runtime)
     testImplementation(libs.room.ktx)
+    testImplementation(libs.mockk)
 }
