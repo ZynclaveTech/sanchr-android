@@ -11,6 +11,7 @@ android {
 
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Base64-encoded ECPublicKey (33 bytes) of the sealed-sender TrustRoot.
         // Empty default — SealedSenderCipher throws if decrypt is invoked without
         // a wired TrustRoot. Populated in M3 once the backend spec is confirmed.
@@ -33,6 +34,20 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+    }
+
+    packaging {
+        resources {
+            // MockK's android variant pulls in JUnit Jupiter which carries duplicate
+            // META-INF license/notice files; merging those into the androidTest APK
+            // is unnecessary for test execution.
+            excludes +=
+                setOf(
+                    "META-INF/LICENSE.md",
+                    "META-INF/LICENSE-notice.md",
+                    "META-INF/NOTICE.md",
+                )
+        }
     }
 }
 
@@ -66,4 +81,14 @@ dependencies {
     testImplementation(libs.room.runtime)
     testImplementation(libs.room.ktx)
     testImplementation(libs.mockk)
+
+    // androidTest — real SQLCipher-backed DB round-trip tests on device/emulator.
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlin.test)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.mockk)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.sqlcipher.android)
 }
