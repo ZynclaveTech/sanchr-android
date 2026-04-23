@@ -32,7 +32,7 @@ import org.signal.libsignal.protocol.util.KeyHelper
 /**
  * Manages all Signal Protocol key lifecycle operations:
  * - Identity key pair generation (once, at registration)
- * - Signed pre-key generation and monthly rotation
+ * - Signed pre-key generation and weekly rotation
  * - One-time pre-key batch generation and server replenishment
  * - Pre-key bundle upload to and retrieval from the key server
  *
@@ -56,11 +56,11 @@ class SignalKeyManager
             /** Number of one-time pre-keys to generate per batch. */
             const val PRE_KEY_BATCH_SIZE = 100
 
-            /** Server-side threshold below which we generate more pre-keys. */
-            const val PRE_KEY_REPLENISH_THRESHOLD = 25
+            /** Server-side threshold below which we generate more pre-keys (per spec §4 M2). */
+            const val PRE_KEY_REPLENISH_THRESHOLD = 20
 
-            /** Signed pre-keys are rotated every 30 days. */
-            private val SIGNED_PRE_KEY_ROTATION_MILLIS = TimeUnit.DAYS.toMillis(30)
+            /** Signed pre-keys are rotated every 7 days (per spec §4 M2). */
+            private val SIGNED_PRE_KEY_ROTATION_MILLIS = TimeUnit.DAYS.toMillis(7)
         }
 
         // ------------------------------------------------------------------
@@ -86,7 +86,7 @@ class SignalKeyManager
 
         /**
          * Generates a signed pre-key, signed by the local identity key.
-         * Signed pre-keys are medium-term keys rotated approximately monthly.
+         * Signed pre-keys are medium-term keys rotated approximately weekly.
          *
          * @param identityKeyPair The identity key pair used to sign the pre-key.
          * @return The generated [SignedPreKeyRecord].
@@ -302,7 +302,7 @@ class SignalKeyManager
         // ------------------------------------------------------------------
 
         /**
-         * Rotates the signed pre-key if the current one is older than 30 days.
+         * Rotates the signed pre-key if the current one is older than 7 days.
          * The new signed pre-key is uploaded to the server as part of a fresh
          * key bundle. Old signed pre-keys are retained for a grace period to
          * allow in-flight messages to be decrypted.
