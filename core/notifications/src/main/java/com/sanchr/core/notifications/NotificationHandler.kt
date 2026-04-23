@@ -65,7 +65,7 @@ class NotificationHandler @Inject constructor(
         val callChannel = NotificationChannel(
             CHANNEL_CALLS,
             "Calls",
-            NotificationManager.IMPORTANCE_MAX,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = "Incoming call notifications"
             enableVibration(true)
