@@ -3,6 +3,7 @@ package com.sanchr.core.crypto
 import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.crypto.sealed.SenderCertificateManager
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import com.sanchr.proto.keys.GetUserDevicesRequest
 import com.sanchr.proto.keys.KeyServiceClient
@@ -10,9 +11,12 @@ import com.sanchr.proto.messaging.EncryptedEnvelope
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.withContext
+import org.signal.libsignal.protocol.InvalidKeyException
+import org.signal.libsignal.protocol.NoSessionException
 import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
+import org.signal.libsignal.protocol.UntrustedIdentityException
 import org.signal.libsignal.protocol.message.CiphertextMessage
 import org.signal.libsignal.protocol.message.PreKeySignalMessage
 import org.signal.libsignal.protocol.message.SignalMessage
@@ -42,6 +46,7 @@ class SignalSessionManager
         private val keyManager: SignalKeyManager,
         private val dispatchers: DispatcherProvider,
         private val sealedSenderCipher: SealedSenderCipher,
+        private val senderCertificateManager: SenderCertificateManager,
         private val keyServiceClient: KeyServiceClient,
     ) {
         private companion object {
@@ -161,14 +166,23 @@ class SignalSessionManager
          *    fallback — v1 is sealed-only on outbound per the M3 scope, so a
          *    missing/expired sender certificate must propagate as an error.
          *
-         * A per-device failure (e.g. stale pre-key, transient network error while
-         * establishing a session) is logged and skipped so that delivery to other
-         * devices still succeeds.
+         * A per-device failure (stale pre-key, invalid key material, missing
+         * session, untrusted identity) is logged and skipped so that delivery
+         * to other devices still succeeds. Global failures — notably a missing
+         * or unfetchable sender certificate — propagate to the caller so the
+         * outbound state machine can requeue instead of shipping an empty
+         * device list.
          *
          * @param plaintext The raw message bytes to encrypt.
          * @param recipientId The recipient's user ID.
          * @return A list of [DeviceEncryptedMessage], one entry per recipient device
-         *         for which encryption succeeded.
+         *         for which encryption succeeded. Never empty when `devices` is
+         *         non-empty: if every per-device encrypt fails this throws
+         *         [EncryptFanOutEmptyException].
+         *
+         * @throws EncryptFanOutEmptyException when at least one key-capable
+         *   device was discovered but every per-device encrypt failed. Treated
+         *   as a transient send failure by [com.sanchr.domain.messaging.SendMessageUseCase].
          */
         suspend fun encryptForAllDevices(
             plaintext: ByteArray,
@@ -184,6 +198,17 @@ class SignalSessionManager
                 Log.w(TAG, "No key-capable devices for recipient $recipientId")
                 return emptyList()
             }
+
+            // Prime the sender-certificate cache BEFORE the per-device loop.
+            // SealedSenderCipher.sealedEncrypt calls SenderCertificateManager.current()
+            // internally on every invocation. If the cert is missing and the
+            // refresh RPC is down, every device iteration would fail the same
+            // way and the old broad catch (t: Throwable) would swallow each
+            // one, returning an empty list that the send path then shipped to
+            // the server — dropping the message. Hoisting the fetch here lets
+            // a cert-unavailable failure propagate instead of degrading into
+            // silent dataloss.
+            senderCertificateManager.current()
 
             val registrationId =
                 withContext(dispatchers.signalDispatcher) {
@@ -211,10 +236,29 @@ class SignalSessionManager
                             registrationId = registrationId,
                         ),
                     )
-                } catch (t: Throwable) {
-                    // Skip this device; other devices remain deliverable.
+                } catch (t: InvalidKeyException) {
+                    // Per-device: stale / malformed prekey bundle. Other devices
+                    // remain deliverable.
+                    Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
+                } catch (t: NoSessionException) {
+                    // Per-device: session disappeared between hasSession() and
+                    // the encrypt call (concurrent reset, store corruption).
+                    Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
+                } catch (t: UntrustedIdentityException) {
+                    // Per-device: identity key rotated without a trust prompt.
+                    // TODO(safety-numbers): surface to UI once safety-number flow lands.
                     Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
                 }
+                // Any other exception (I/O, sender-cert failure, cancellation,
+                // programmer error) propagates so the caller can make an
+                // informed decision rather than silently dropping the fanout.
+            }
+            if (results.isEmpty()) {
+                // devices was non-empty (checked above) and every per-device
+                // encrypt failed. Surface this instead of returning an empty
+                // list so SendMessageUseCase does not ship an empty fan-out to
+                // the server.
+                throw EncryptFanOutEmptyException(recipientId, devices.size)
             }
             return results
         }
@@ -362,6 +406,23 @@ data class DeviceEncryptedMessage(
 
     override fun hashCode(): Int = deviceId * 31 + ciphertext.contentHashCode()
 }
+
+/**
+ * Thrown by [SignalSessionManager.encryptForAllDevices] when at least one
+ * key-capable device was discovered but every per-device encrypt attempt
+ * failed. Treated as a transient send failure by
+ * [com.sanchr.domain.messaging.SendMessageUseCase] — the outbound row stays
+ * QUEUED and `SendRetryWorker` will re-attempt.
+ *
+ * The send path MUST NOT ship a `SendMessage` RPC with an empty device list:
+ * the server treats that as a successful send and the message is lost.
+ */
+class EncryptFanOutEmptyException(
+    val recipientId: String,
+    val deviceCount: Int,
+) : RuntimeException(
+        "All $deviceCount device encrypt attempts for recipient $recipientId failed",
+    )
 
 /**
  * The result of decrypting an [EncryptedEnvelope] -- contains the plaintext

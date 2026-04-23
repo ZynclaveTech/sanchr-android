@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.crypto.sealed.SenderCertificateManager
 import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
 import com.sanchr.core.crypto.store.SanchrKyberPreKeyStore
 import com.sanchr.core.crypto.store.SanchrPreKeyStore
@@ -30,6 +31,7 @@ import com.sanchr.proto.keys.UploadOneTimePreKeysRequest
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
@@ -70,6 +72,8 @@ class SignalSessionManagerTest {
     private lateinit var aliceKeyManager: SignalKeyManager
     private lateinit var aliceSessionManager: SignalSessionManager
     private lateinit var aliceFakeClient: FakeKeyServiceClient
+    private lateinit var aliceCertManager: SenderCertificateManager
+    private lateinit var aliceSealedCipher: SealedSenderCipher
 
     // ----- Bob (recipient) -----
     private lateinit var bobDb: SanchrDatabase
@@ -138,18 +142,22 @@ class SignalSessionManagerTest {
 
         // Outbound is sealed-only (no non-sealed fallback), so provide a
         // deterministic non-empty envelope for every sealedEncrypt call.
-        val sealed = mockk<SealedSenderCipher>(relaxed = true)
-        coEvery { sealed.sealedEncrypt(any(), any()) } answers {
+        aliceSealedCipher = mockk<SealedSenderCipher>(relaxed = true)
+        coEvery { aliceSealedCipher.sealedEncrypt(any(), any()) } answers {
             val plaintext = secondArg<ByteArray>()
             byteArrayOf(0x55) + plaintext + byteArrayOf(0x55)
         }
+        // Default: cert manager succeeds. Individual tests reconfigure when
+        // they need to exercise the failure path.
+        aliceCertManager = mockk<SenderCertificateManager>(relaxed = true)
 
         aliceSessionManager =
             SignalSessionManager(
                 store = aliceStore,
                 keyManager = aliceKeyManager,
                 dispatchers = dispatchers,
-                sealedSenderCipher = sealed,
+                sealedSenderCipher = aliceSealedCipher,
+                senderCertificateManager = aliceCertManager,
                 keyServiceClient = aliceFakeClient,
             )
 
@@ -306,6 +314,31 @@ class SignalSessionManagerTest {
             assertEquals(2, results.size)
             assertEquals(setOf(1, 2), results.map { it.deviceId }.toSet())
             results.forEach { assertTrue(it.ciphertext.isNotEmpty()) }
+        }
+
+    @Test
+    fun `encryptForAllDevices propagates sender certificate failure instead of returning empty`() =
+        runTest {
+            // Recipient has one key-capable device so we get past the early
+            // empty-device return.
+            aliceFakeClient.userDevicesResponse =
+                GetUserDevicesResponse(
+                    devices = listOf(DeviceInfo(deviceId = 1, platform = "android", keyCapable = true)),
+                )
+            // Cert fetch is unavailable (e.g. network down on both cached
+            // lookup and refresh). Prior to the fix this manifested as every
+            // per-device sealedEncrypt throwing IllegalStateException, being
+            // swallowed by the broad catch, and the method returning
+            // emptyList() — which the send path then shipped to the server as
+            // a valid SendMessage RPC with zero recipients.
+            val certFailure = IllegalStateException("GetSenderCertificate returned empty")
+            coEvery { aliceCertManager.current() } throws certFailure
+
+            val thrown =
+                assertFailsWith<IllegalStateException> {
+                    aliceSessionManager.encryptForAllDevices("hi".toByteArray(), bobUserId)
+                }
+            assertEquals(certFailure, thrown)
         }
 
     // ------------------------------------------------------------------

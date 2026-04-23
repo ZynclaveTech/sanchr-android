@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.crypto.sealed.SenderCertificateManager
 import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
 import com.sanchr.core.crypto.store.SanchrKyberPreKeyStore
 import com.sanchr.core.crypto.store.SanchrPreKeyStore
@@ -267,6 +268,7 @@ class RoundTripIntegrationTest {
                 keyManager = keyManager,
                 dispatchers = dispatchers,
                 sealedSenderCipher = sealed,
+                senderCertificateManager = mockk<SenderCertificateManager>(relaxed = true),
                 keyServiceClient = fakeBackend,
             )
 

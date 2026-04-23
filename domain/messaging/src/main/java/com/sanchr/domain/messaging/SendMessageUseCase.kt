@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.common.Result
 import com.sanchr.core.common.runCatchingResult
+import com.sanchr.core.crypto.EncryptFanOutEmptyException
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
@@ -142,6 +143,17 @@ class SendMessageUseCase
                     status = MessageStatus.SENT,
                     timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
                 )
+            } catch (error: EncryptFanOutEmptyException) {
+                // Transient: no ciphertext was produced for any recipient device
+                // (typically a sender-certificate fetch failure). NEVER mark
+                // FAILED on this branch — the row must remain eligible for
+                // SendRetryWorker indefinitely, otherwise the message is lost.
+                // The `attempts` counter has already been incremented by
+                // recordSendAttempt; we deliberately skip the MAX_ATTEMPTS
+                // gate here because a cert outage is not the user's fault and
+                // is expected to clear on its own.
+                messageRepository.requeueAfterFailure(entity.id)
+                throw error
             } catch (error: Exception) {
                 if (attempts >= MAX_ATTEMPTS) {
                     messageRepository.markSendFailed(entity.id)
