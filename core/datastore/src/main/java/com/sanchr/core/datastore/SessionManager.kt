@@ -39,6 +39,7 @@ class SessionManager
             const val KEY_BACKUP_CONFIRMED_AT = "backup_confirmed_at"
             const val KEY_BACKUP_LAST_AT = "backup_last_at"
             const val KEY_BACKUP_LAST_CONTENT_HASH = "backup_last_content_hash"
+            const val KEY_SENDER_CERTIFICATE = "sender_certificate_b64"
         }
 
         private val masterKey =
@@ -150,6 +151,29 @@ class SessionManager
                 .putLong(KEY_BACKUP_LAST_AT, configuration.lastBackupAtMillis ?: -1L)
                 .putString(KEY_BACKUP_LAST_CONTENT_HASH, configuration.lastBackupContentHash)
                 .apply()
+        }
+
+        /**
+         * Returns the persisted sealed-sender certificate bytes, or null.
+         *
+         * Stored so [com.sanchr.core.crypto.sealed.SenderCertificateManager]
+         * can re-hydrate its in-memory cache after a cold start without
+         * round-tripping to the backend.
+         */
+        fun getSenderCertificate(): ByteArray? {
+            val encoded = encryptedPrefs.getString(KEY_SENDER_CERTIFICATE, null) ?: return null
+            return Base64.decode(encoded, Base64.NO_WRAP)
+        }
+
+        fun saveSenderCertificate(bytes: ByteArray) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_SENDER_CERTIFICATE, Base64.encodeToString(bytes, Base64.NO_WRAP))
+                .apply()
+        }
+
+        fun clearSenderCertificate() {
+            encryptedPrefs.edit().remove(KEY_SENDER_CERTIFICATE).apply()
         }
 
         fun clearDeviceSecrets() {

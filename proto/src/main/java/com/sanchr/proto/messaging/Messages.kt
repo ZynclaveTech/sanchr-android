@@ -215,3 +215,20 @@ data class Participant(
     val displayName: String = "",
     val avatarUrl: String = "",
 )
+
+data class SenderCertificateRequest(
+    val placeholder: Unit = Unit,
+)
+
+data class SenderCertificateResponse(
+    val certificate: ByteArray = ByteArray(0),
+    val expiration: Long = 0L,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SenderCertificateResponse) return false
+        return certificate.contentEquals(other.certificate) && expiration == other.expiration
+    }
+
+    override fun hashCode(): Int = certificate.contentHashCode() * 31 + expiration.hashCode()
+}

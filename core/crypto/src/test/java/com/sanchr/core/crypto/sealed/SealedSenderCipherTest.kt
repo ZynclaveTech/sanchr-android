@@ -12,6 +12,27 @@ import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import com.sanchr.core.crypto.store.SanchrSignedPreKeyStore
 import com.sanchr.core.database.SanchrDatabase
 import com.sanchr.core.database.entity.AccountEntity
+import com.sanchr.core.datastore.SessionManager
+import com.sanchr.proto.messaging.AckMessagesRequest
+import com.sanchr.proto.messaging.AckMessagesResponse
+import com.sanchr.proto.messaging.ClientEvent
+import com.sanchr.proto.messaging.Conversation
+import com.sanchr.proto.messaging.DeleteMessageRequest
+import com.sanchr.proto.messaging.DeleteMessageResponse
+import com.sanchr.proto.messaging.EncryptedEnvelope
+import com.sanchr.proto.messaging.GetConversationsRequest
+import com.sanchr.proto.messaging.GetConversationsResponse
+import com.sanchr.proto.messaging.MessagingServiceClient
+import com.sanchr.proto.messaging.ReceiptRequest
+import com.sanchr.proto.messaging.ReceiptResponse
+import com.sanchr.proto.messaging.SendMessageRequest
+import com.sanchr.proto.messaging.SendMessageResponse
+import com.sanchr.proto.messaging.SenderCertificateRequest
+import com.sanchr.proto.messaging.SenderCertificateResponse
+import com.sanchr.proto.messaging.ServerEvent
+import com.sanchr.proto.messaging.StartDirectConversationRequest
+import com.sanchr.proto.messaging.SyncRequest
+import io.mockk.mockk
 import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -22,6 +43,8 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -158,16 +181,42 @@ class SealedSenderCipherTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `SenderCertificateManager refresh throws — M2 stub`() =
+    fun `SenderCertificateManager refresh fetches over MessagingService and caches`() =
         runTest {
-            val mgr = SenderCertificateManager(dispatchers)
-            assertFailsWith<UnsupportedOperationException> { mgr.refresh() }
+            val cert = issueAliceCertificate(expiresInMs = TimeUnit.DAYS.toMillis(7))
+            val fakeClient = FakeMessagingClient(certificateBytes = cert.serialized)
+            val fakeSession = mockk<SessionManager>(relaxed = true)
+
+            val mgr = SenderCertificateManager(dispatchers, fakeClient, fakeSession)
+            val got = mgr.refresh()
+
+            assertEquals(1, fakeClient.getSenderCertificateCalls)
+            assertEquals(cert.senderUuid, got.senderUuid)
+            // A second `current()` inside the grace window must serve from cache.
+            val again = mgr.current()
+            assertEquals(cert.senderUuid, again.senderUuid)
+            assertEquals(1, fakeClient.getSenderCertificateCalls)
+        }
+
+    @Test
+    fun `SenderCertificateManager refresh throws on empty certificate response`() =
+        runTest {
+            val fakeClient = FakeMessagingClient(certificateBytes = ByteArray(0))
+            val fakeSession = mockk<SessionManager>(relaxed = true)
+            val mgr = SenderCertificateManager(dispatchers, fakeClient, fakeSession)
+
+            assertFailsWith<IllegalStateException> { mgr.refresh() }
         }
 
     @Test
     fun `SenderCertificateManager returns cached cert while not near expiry`() =
         runTest {
-            val mgr = SenderCertificateManager(dispatchers)
+            val mgr =
+                SenderCertificateManager(
+                    dispatchers,
+                    FakeMessagingClient(),
+                    mockk<SessionManager>(relaxed = true),
+                )
             val cert = issueAliceCertificate(expiresInMs = TimeUnit.DAYS.toMillis(7))
             mgr.setForTest(cert)
 
@@ -179,13 +228,20 @@ class SealedSenderCipherTest {
     @Test
     fun `SenderCertificateManager refreshes when cached cert is within 24h of expiry`() =
         runTest {
-            val mgr = SenderCertificateManager(dispatchers)
-            // Expires in 1h — well inside the 24h grace window, so `current()` must
-            // attempt refresh. The stubbed refresh RPC throws; that's the signal.
+            val fresh = issueAliceCertificate(expiresInMs = TimeUnit.DAYS.toMillis(7))
+            val fakeClient = FakeMessagingClient(certificateBytes = fresh.serialized)
+            val mgr =
+                SenderCertificateManager(
+                    dispatchers,
+                    fakeClient,
+                    mockk<SessionManager>(relaxed = true),
+                )
             val expiringCert = issueAliceCertificate(expiresInMs = TimeUnit.HOURS.toMillis(1))
             mgr.setForTest(expiringCert)
 
-            assertFailsWith<UnsupportedOperationException> { mgr.current() }
+            val got = mgr.current()
+            assertEquals(1, fakeClient.getSenderCertificateCalls)
+            assertEquals(fresh.senderUuid, got.senderUuid)
         }
 
     // ------------------------------------------------------------------
@@ -200,7 +256,12 @@ class SealedSenderCipherTest {
             val bobBundle = buildBobPreKeyBundle()
             SessionBuilder(store, bobAddress).process(bobBundle)
 
-            val certManager = SenderCertificateManager(dispatchers)
+            val certManager =
+                SenderCertificateManager(
+                    dispatchers,
+                    FakeMessagingClient(),
+                    mockk<SessionManager>(relaxed = true),
+                )
             certManager.setForTest(issueAliceCertificate(expiresInMs = TimeUnit.DAYS.toMillis(7)))
 
             val cipher =
@@ -224,7 +285,12 @@ class SealedSenderCipherTest {
     @Test
     fun `sealedDecrypt throws when TrustRoot is not configured`() =
         runTest {
-            val certManager = SenderCertificateManager(dispatchers)
+            val certManager =
+                SenderCertificateManager(
+                    dispatchers,
+                    FakeMessagingClient(),
+                    mockk<SessionManager>(relaxed = true),
+                )
             val cipher =
                 SealedSenderCipher(
                     store = store,
@@ -302,4 +368,39 @@ class SealedSenderCipherTest {
         account: AccountEntity,
         key: ECPublicKey,
     ) = Unit
+
+    /**
+     * Minimal in-test [MessagingServiceClient]. Only [getSenderCertificate]
+     * is relevant to this suite — all other calls throw so accidental use in
+     * a future test produces an unambiguous failure.
+     */
+    private class FakeMessagingClient(
+        private val certificateBytes: ByteArray = ByteArray(0),
+    ) : MessagingServiceClient {
+        var getSenderCertificateCalls: Int = 0
+
+        override suspend fun getSenderCertificate(request: SenderCertificateRequest): SenderCertificateResponse {
+            getSenderCertificateCalls++
+            return SenderCertificateResponse(
+                certificate = certificateBytes,
+                expiration = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(7),
+            )
+        }
+
+        override suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse = error("not used")
+
+        override suspend fun startDirectConversation(request: StartDirectConversationRequest): Conversation = error("not used")
+
+        override fun messageStream(requests: Flow<ClientEvent>): Flow<ServerEvent> = emptyFlow()
+
+        override fun syncMessages(request: SyncRequest): Flow<EncryptedEnvelope> = emptyFlow()
+
+        override suspend fun ackMessages(request: AckMessagesRequest): AckMessagesResponse = error("not used")
+
+        override suspend fun deleteMessage(request: DeleteMessageRequest): DeleteMessageResponse = error("not used")
+
+        override suspend fun sendReceipt(request: ReceiptRequest): ReceiptResponse = error("not used")
+
+        override suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse = error("not used")
+    }
 }

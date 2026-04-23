@@ -28,6 +28,8 @@ interface MessagingServiceClient {
     suspend fun sendReceipt(request: ReceiptRequest): ReceiptResponse
 
     suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse
+
+    suspend fun getSenderCertificate(request: SenderCertificateRequest): SenderCertificateResponse
 }
 
 class MessagingServiceGrpcClient(
@@ -64,6 +66,15 @@ class MessagingServiceGrpcClient(
 
     override suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse =
         stub.getConversations(Messaging.GetConversationsRequest.getDefaultInstance()).toManual()
+
+    override suspend fun getSenderCertificate(request: SenderCertificateRequest): SenderCertificateResponse {
+        val response =
+            stub.getSenderCertificate(Messaging.SenderCertificateRequest.getDefaultInstance())
+        return SenderCertificateResponse(
+            certificate = response.certificate.toByteArray(),
+            expiration = response.expiration,
+        )
+    }
 }
 
 private fun StartDirectConversationRequest.toProto(): Messaging.StartDirectConversationRequest =
