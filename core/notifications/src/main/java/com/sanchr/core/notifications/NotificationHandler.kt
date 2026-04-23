@@ -2,11 +2,13 @@ package com.sanchr.core.notifications
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.sanchr.core.database.entity.MessageEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -96,15 +98,85 @@ class NotificationHandler
         // Message notifications
         // -----------------------------------------------------------------------
 
-        // showMessageNotification(...) is reintroduced in Phase C.4 as an
-        // entity-based overload sourced from the decrypted local DB row.
-        // The legacy PushPayload-based body has been deleted along with
-        // the PushPayload content fields (Phase C.1).
-        //
-        // showCallNotification(...) was also PushPayload-driven and is
-        // deleted here; the call-offer path is out of scope for M3 and
-        // will be rebuilt on top of the sealed call-offer wire in a later
-        // milestone.
+        /**
+         * Posts a notification for a freshly-decrypted inbound message.
+         *
+         * Called by [NewMessageNotifier] from the local DB flow — never
+         * from FCM data. Honors the metadata-privacy rule from Phase C.5:
+         * by default the notification uses [NotificationCompat.VISIBILITY_PRIVATE]
+         * plus a generic public version so nothing sensitive shows on the
+         * lockscreen; the unlocked/expanded version carries the sender and
+         * preview.
+         *
+         * @param entity the decrypted message row from Room.
+         * @param senderDisplayName resolved externally (ContactDao /
+         *   participant lookup) — can be null when unknown, in which case
+         *   the notification falls back to "New message".
+         * @param showPreviewOnLockscreen when true, upgrades visibility to
+         *   [NotificationCompat.VISIBILITY_PUBLIC] so the unlocked preview
+         *   is also rendered on the lockscreen. Defaults to false; the
+         *   UserPreferences wiring lives in the notifier (C.5).
+         */
+        fun showMessageNotification(
+            entity: MessageEntity,
+            senderDisplayName: String?,
+            showPreviewOnLockscreen: Boolean = false,
+        ) {
+            val notificationId = entity.conversationId.hashCode()
+            val contentPendingIntent =
+                PendingIntent.getActivity(
+                    context,
+                    notificationId,
+                    buildDeepLinkIntent(entity.conversationId),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+
+            val displayTitle = senderDisplayName?.takeIf { it.isNotBlank() } ?: "New message"
+            val preview =
+                if (entity.contentType.equals("text", ignoreCase = true)) {
+                    entity.contentBody
+                } else {
+                    // Non-text content types get a generic label; do not leak
+                    // binary blobs or URLs into the system notification.
+                    entity.contentType.lowercase().replaceFirstChar { it.uppercase() }
+                }
+
+            val publicVersion =
+                NotificationCompat
+                    .Builder(context, CHANNEL_MESSAGES)
+                    .setSmallIcon(android.R.drawable.ic_dialog_email)
+                    .setContentTitle("New message")
+                    .setContentText("")
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                    .setGroup(NOTIFICATION_GROUP_MESSAGES)
+                    .build()
+
+            val visibility =
+                if (showPreviewOnLockscreen) {
+                    NotificationCompat.VISIBILITY_PUBLIC
+                } else {
+                    NotificationCompat.VISIBILITY_PRIVATE
+                }
+
+            val notification =
+                NotificationCompat
+                    .Builder(context, CHANNEL_MESSAGES)
+                    .setSmallIcon(android.R.drawable.ic_dialog_email)
+                    .setContentTitle(displayTitle)
+                    .setContentText(preview)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
+                    .setAutoCancel(true)
+                    .setGroup(NOTIFICATION_GROUP_MESSAGES)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                    .setContentIntent(contentPendingIntent)
+                    .setVisibility(visibility)
+                    .setPublicVersion(publicVersion)
+                    .setWhen(entity.timestamp)
+                    .build()
+
+            notifyIfAllowed(notificationId, notification)
+        }
 
         // -----------------------------------------------------------------------
         // System notifications

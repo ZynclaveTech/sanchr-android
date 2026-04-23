@@ -73,4 +73,33 @@ interface MessageDao {
 
     @Query("SELECT COUNT(*) FROM messages WHERE conversation_id = :conversationId AND status != 'READ'")
     fun observeUnreadCount(conversationId: String): Flow<Int>
+
+    /**
+     * Observes incoming (non-self) messages inserted after [timestamp] epoch
+     * millis. Used by `NewMessageNotifier` in `core:notifications` to render
+     * a system notification for each freshly-delivered message without
+     * reading any content from the FCM payload.
+     *
+     * The query filters by `sender_id != :selfUserId` so the observer does
+     * not fire for the user's own outbound rows landing in the DB, and by
+     * `timestamp > :afterTimestamp` so notifications only fire for messages
+     * newer than when the notifier started (no catch-up floods across a
+     * process restart).
+     *
+     * Room turns this into a Flow that re-emits on every insert/update —
+     * the notifier applies its own de-dupe by message id.
+     */
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE timestamp > :afterTimestamp
+          AND sender_id != :selfUserId
+          AND is_deleted = 0
+        ORDER BY timestamp ASC
+        """,
+    )
+    fun observeIncomingMessagesAfter(
+        afterTimestamp: Long,
+        selfUserId: String,
+    ): Flow<List<MessageEntity>>
 }

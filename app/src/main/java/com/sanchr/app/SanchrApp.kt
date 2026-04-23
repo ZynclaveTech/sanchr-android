@@ -4,11 +4,15 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.sanchr.core.notifications.NewMessageNotifier
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.sync.SyncWorker
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 @HiltAndroidApp
 class SanchrApp :
@@ -22,6 +26,15 @@ class SanchrApp :
 
     @Inject
     lateinit var realtimeManager: RealtimeManager
+
+    @Inject
+    lateinit var newMessageNotifier: NewMessageNotifier
+
+    /**
+     * Long-lived application scope used for background observers that
+     * outlive any Activity — e.g. [NewMessageNotifier].
+     */
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override val workManagerConfiguration: Configuration
         get() =
@@ -38,6 +51,7 @@ class SanchrApp :
         // before any push notification arrives.
         notificationHandler.createNotificationChannels()
         realtimeManager.initialize()
+        newMessageNotifier.start(applicationScope)
 
         // Schedule periodic background sync (every 15 minutes).
         // This is a fallback; SyncInitializer via App Startup also schedules
