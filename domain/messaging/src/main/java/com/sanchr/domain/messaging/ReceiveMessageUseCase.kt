@@ -100,12 +100,21 @@ class ReceiveMessageUseCase
         private val sessionRecoveryScope: CoroutineScope =
             CoroutineScope(SupervisorJob() + dispatchers.io)
 
+        /**
+         * @param flushAckImmediately If true (default), successful decrypts
+         *        synchronously flush the pending-ack batch to the server —
+         *        right for single-shot callers (`RealtimeManager`). Batched
+         *        drain paths (`MessageDrainWorker`) should pass `false` and
+         *        call [MessageRepository.flushPendingAcks] once after the
+         *        loop so the ack RPC count is O(1), not O(N).
+         */
         suspend fun receive(
             envelopeBytes: ByteArray,
             kind: EnvelopeKind,
             serverTimestamp: Long,
             declaredSender: ServerProvidedSender?,
             envelopeContext: IncomingEnvelopeContext? = null,
+            flushAckImmediately: Boolean = true,
         ): EnvelopeDecryptResult =
             withContext(dispatchers.io) {
                 try {
@@ -118,6 +127,7 @@ class ReceiveMessageUseCase
                             content = String(success.plaintext, Charsets.UTF_8),
                             contentType = ctx.contentType,
                             timestamp = success.serverTimestamp,
+                            flushAckImmediately = flushAckImmediately,
                         )
                     }
                     success

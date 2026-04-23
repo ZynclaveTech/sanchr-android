@@ -16,19 +16,17 @@ import androidx.work.WorkerParameters
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
-import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
+import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.RefreshTokenRequest
-import com.sanchr.proto.messaging.AckMessagesRequest
-import com.sanchr.proto.messaging.AckedMessageRef
 import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
@@ -69,7 +67,7 @@ class SyncWorker
         private val notificationHandler: NotificationHandler,
         private val conversationDao: ConversationDao,
         private val messageDao: MessageDao,
-        private val pendingMessageAckDao: PendingMessageAckDao,
+        private val messageRepository: MessageRepository,
         private val chatBackupManager: ChatBackupManager,
         private val syncState: SyncState,
     ) : CoroutineWorker(appContext, params) {
@@ -287,7 +285,7 @@ class SyncWorker
                     ).toList()
 
             if (envelopes.isEmpty()) {
-                flushPendingAcks()
+                messageRepository.flushPendingAcks()
                 return 0
             }
 
@@ -306,6 +304,8 @@ class SyncWorker
                                 messageId = envelope.messageId,
                                 contentType = envelope.contentType,
                             ),
+                        // Batch acks — one RPC after the drain loop, not N per envelope.
+                        flushAckImmediately = false,
                     )
                 if (result is EnvelopeDecryptResult.Success) {
                     persistedCount += 1
@@ -314,33 +314,9 @@ class SyncWorker
                 }
             }
 
-            flushPendingAcks()
+            messageRepository.flushPendingAcks()
             Log.d(TAG, "Synced and persisted $persistedCount message envelope(s)")
             return persistedCount
-        }
-
-        private suspend fun flushPendingAcks() {
-            val pendingAcks = pendingMessageAckDao.getPendingAcks(limit = 100)
-            if (pendingAcks.isEmpty()) return
-
-            messagingClient.ackMessages(
-                AckMessagesRequest(
-                    messages =
-                        pendingAcks.map { ack ->
-                            AckedMessageRef(
-                                conversationId = ack.conversationId,
-                                messageId = ack.messageId,
-                            )
-                        },
-                ),
-            )
-
-            pendingAcks.forEach { ack ->
-                pendingMessageAckDao.deleteAck(
-                    conversationId = ack.conversationId,
-                    messageId = ack.messageId,
-                )
-            }
         }
 
         // ------------------------------------------------------------------

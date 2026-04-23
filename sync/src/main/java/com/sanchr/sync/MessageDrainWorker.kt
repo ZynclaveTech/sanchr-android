@@ -12,15 +12,12 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.sanchr.core.common.DispatcherProvider
-import com.sanchr.core.database.dao.PendingMessageAckDao
-import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
+import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
-import com.sanchr.proto.messaging.AckMessagesRequest
-import com.sanchr.proto.messaging.AckedMessageRef
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
 import dagger.assisted.Assisted
@@ -51,7 +48,7 @@ class MessageDrainWorker
         @Assisted params: WorkerParameters,
         private val messagingClient: MessagingServiceClient,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
-        private val pendingMessageAckDao: PendingMessageAckDao,
+        private val messageRepository: MessageRepository,
         private val dispatchers: DispatcherProvider,
     ) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result =
@@ -80,7 +77,7 @@ class MessageDrainWorker
                     .toList()
 
             if (envelopes.isEmpty()) {
-                flushPendingAcks()
+                messageRepository.flushPendingAcks()
                 return 0
             }
 
@@ -102,6 +99,9 @@ class MessageDrainWorker
                                 messageId = envelope.messageId,
                                 contentType = envelope.contentType,
                             ),
+                        // Defer ack RPC until after the drain loop so a burst of N
+                        // envelopes produces one batched AckMessages call, not N.
+                        flushAckImmediately = false,
                     )
                 if (result !is EnvelopeDecryptResult.Success) {
                     // On non-success the repository did not insert a pending ack; log
@@ -110,31 +110,8 @@ class MessageDrainWorker
                 }
             }
 
-            flushPendingAcks()
+            messageRepository.flushPendingAcks()
             return envelopes.size
-        }
-
-        private suspend fun flushPendingAcks() {
-            val pending = pendingMessageAckDao.getPendingAcks(limit = ACK_BATCH_SIZE)
-            if (pending.isEmpty()) return
-
-            messagingClient.ackMessages(
-                AckMessagesRequest(
-                    messages =
-                        pending.map { ack: PendingMessageAckEntity ->
-                            AckedMessageRef(
-                                conversationId = ack.conversationId,
-                                messageId = ack.messageId,
-                            )
-                        },
-                ),
-            )
-            pending.forEach { ack ->
-                pendingMessageAckDao.deleteAck(
-                    conversationId = ack.conversationId,
-                    messageId = ack.messageId,
-                )
-            }
         }
 
         companion object {
@@ -142,7 +119,6 @@ class MessageDrainWorker
             const val WORK_NAME = "message-drain"
             private const val MAX_RETRIES = 3
             private const val DRAIN_TIMEOUT_MS = 30_000L
-            private const val ACK_BATCH_SIZE = 100
 
             /**
              * Enqueue an expedited drain. Uses [ExistingWorkPolicy.KEEP] so that

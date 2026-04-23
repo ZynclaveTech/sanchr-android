@@ -56,8 +56,14 @@ interface MessageRepository {
     )
 
     /**
-     * Inserts a decrypted incoming message into local storage.
-     * Called after successfully decrypting an [EncryptedEnvelope] from the server.
+     * Inserts a decrypted incoming message into local storage and stages a
+     * pending ack. When [flushAckImmediately] is true (the default), the
+     * pending ack batch is flushed to the server synchronously — that is the
+     * right behavior for single-shot decrypt paths such as `RealtimeManager`.
+     * Callers that drain many envelopes in a tight loop (e.g.
+     * [com.sanchr.sync.MessageDrainWorker]) should pass `false` and call
+     * [flushPendingAcks] once after the loop so the RPC count is O(1) in the
+     * batch, not O(N) in envelopes.
      *
      * @param conversationId The conversation this message belongs to.
      * @param messageId The server-assigned message ID.
@@ -65,6 +71,8 @@ interface MessageRepository {
      * @param content The decrypted plaintext content.
      * @param contentType The message content type (e.g., "text", "image").
      * @param timestamp The server timestamp in epoch milliseconds.
+     * @param flushAckImmediately If true, fires the ack RPC now; if false,
+     *        stages a pending-ack row and defers the flush to the caller.
      */
     suspend fun insertDecryptedMessage(
         conversationId: String,
@@ -73,5 +81,13 @@ interface MessageRepository {
         content: String,
         contentType: String,
         timestamp: Long,
+        flushAckImmediately: Boolean = true,
     )
+
+    /**
+     * Flushes any pending message acks to the server in a single batched RPC.
+     * Safe to call when there are no pending rows (no-op). Exposed so batch
+     * callers can decouple ack flushing from individual insert calls.
+     */
+    suspend fun flushPendingAcks()
 }

@@ -189,6 +189,7 @@ class MessageRepositoryImpl
             content: String,
             contentType: String,
             timestamp: Long,
+            flushAckImmediately: Boolean,
         ) {
             val entity =
                 MessageEntity(
@@ -208,10 +209,10 @@ class MessageRepositoryImpl
                     createdAt = System.currentTimeMillis(),
                 ),
             )
-            flushPendingAcks()
+            if (flushAckImmediately) flushPendingAcks()
         }
 
-        private suspend fun flushPendingAcks() {
+        override suspend fun flushPendingAcks() {
             val pendingAcks = pendingMessageAckDao.getPendingAcks(limit = 100)
             if (pendingAcks.isEmpty()) return
 
