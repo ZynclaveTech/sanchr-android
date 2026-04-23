@@ -20,6 +20,7 @@ import androidx.room.PrimaryKey
         Index(value = ["conversation_id", "timestamp"]),
         Index(value = ["sender_id"]),
         Index(value = ["status"]),
+        Index(value = ["status", "last_attempt_at"]),
     ],
 )
 data class MessageEntity(
@@ -45,4 +46,8 @@ data class MessageEntity(
     val expiresAt: Long? = null,
     @ColumnInfo(name = "is_deleted")
     val isDeleted: Boolean = false,
+    @ColumnInfo(name = "attempts", defaultValue = "0")
+    val attempts: Int = 0,
+    @ColumnInfo(name = "last_attempt_at")
+    val lastAttemptAt: Long? = null,
 )

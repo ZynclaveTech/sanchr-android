@@ -162,6 +162,7 @@ class ChatDetailViewModel
                 isFromMe = senderId == currentUser,
                 status =
                     when (status) {
+                        com.sanchr.core.model.MessageStatus.QUEUED -> MessageStatus.SENDING
                         com.sanchr.core.model.MessageStatus.SENDING -> MessageStatus.SENDING
                         com.sanchr.core.model.MessageStatus.SENT -> MessageStatus.SENT
                         com.sanchr.core.model.MessageStatus.DELIVERED -> MessageStatus.DELIVERED

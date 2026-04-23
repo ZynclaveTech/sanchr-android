@@ -54,6 +54,53 @@ interface MessageDao {
         status: String,
     )
 
+    /**
+     * Marks an attempt on a QUEUED row. Bumps `attempts`, stamps
+     * `last_attempt_at`, and optionally transitions status (e.g. to FAILED
+     * once attempts cap is reached). Returns the number of rows affected so
+     * callers can detect a race with a concurrent in-flight send.
+     */
+    @Query(
+        """
+        UPDATE messages
+        SET attempts = attempts + 1,
+            last_attempt_at = :attemptedAt,
+            status = :newStatus
+        WHERE id = :messageId
+        """,
+    )
+    suspend fun recordSendAttempt(
+        messageId: String,
+        attemptedAt: Long,
+        newStatus: String,
+    ): Int
+
+    /**
+     * Rows waiting to be (re)sent: status = QUEUED, attempts below cap, and
+     * either never attempted or their backoff window has elapsed. Ordered by
+     * oldest-first so a burst drain fires in insertion order.
+     */
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE status = 'QUEUED'
+          AND attempts < :maxAttempts
+          AND (last_attempt_at IS NULL OR last_attempt_at + :minBackoffMillis <= :now)
+          AND is_deleted = 0
+        ORDER BY timestamp ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getRetryableQueued(
+        now: Long,
+        maxAttempts: Int,
+        minBackoffMillis: Long,
+        limit: Int,
+    ): List<MessageEntity>
+
+    @Query("SELECT COUNT(*) FROM messages WHERE status = 'QUEUED' AND is_deleted = 0")
+    suspend fun countQueued(): Int
+
     @Query("UPDATE messages SET is_deleted = 1 WHERE id = :messageId")
     suspend fun softDeleteMessage(messageId: String)
 

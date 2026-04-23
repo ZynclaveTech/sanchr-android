@@ -57,6 +57,7 @@ sealed interface MessageContent {
 
 @Serializable
 enum class MessageStatus {
+    QUEUED,
     SENDING,
     SENT,
     DELIVERED,

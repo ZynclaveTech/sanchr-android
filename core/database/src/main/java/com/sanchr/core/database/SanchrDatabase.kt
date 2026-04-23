@@ -53,7 +53,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         EnvelopeQueueEntity::class,
         QuarantinedEnvelopeEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -212,6 +212,25 @@ object DatabaseModule {
             }
         }
 
+    // Adds send-retry bookkeeping to `messages`. The existing `status` TEXT column
+    // already carries the state machine (now extended with QUEUED in core:model);
+    // we only need `attempts` + `last_attempt_at` for backoff scheduling.
+    private val migration4To5 =
+        object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE `messages` ADD COLUMN `attempts` INTEGER NOT NULL DEFAULT 0",
+                )
+                database.execSQL(
+                    "ALTER TABLE `messages` ADD COLUMN `last_attempt_at` INTEGER",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_messages_status_last_attempt_at` " +
+                        "ON `messages` (`status`, `last_attempt_at`)",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -225,7 +244,7 @@ object DatabaseModule {
                 SanchrDatabase::class.java,
                 "sanchr-database",
             ).openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))
-            .addMigrations(migration1To2, migration2To3, migration3To4)
+            .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5)
             .build()
     }
 
