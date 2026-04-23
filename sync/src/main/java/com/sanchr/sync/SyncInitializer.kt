@@ -22,8 +22,10 @@ class SyncInitializer : Initializer<Unit> {
     }
 
     override fun create(context: Context) {
-        SyncWorker.schedulePeriodic(WorkManager.getInstance(context))
-        Log.i(TAG, "Periodic sync initialized via App Startup")
+        val workManager = WorkManager.getInstance(context)
+        SyncWorker.schedulePeriodic(workManager)
+        SendRetryWorker.schedulePeriodic(workManager)
+        Log.i(TAG, "Periodic sync + send-retry initialized via App Startup")
     }
 
     override fun dependencies(): List<Class<out Initializer<*>>> =
