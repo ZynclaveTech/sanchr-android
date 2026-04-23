@@ -186,7 +186,7 @@ class NotificationHandler @Inject constructor(
             .addAction(markReadAction)
             .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        notifyIfAllowed(notificationId, notification)
     }
 
     // -----------------------------------------------------------------------
@@ -263,7 +263,7 @@ class NotificationHandler @Inject constructor(
             .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent)
             .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        notifyIfAllowed(notificationId, notification)
     }
 
     // -----------------------------------------------------------------------
@@ -286,7 +286,7 @@ class NotificationHandler @Inject constructor(
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        notifyIfAllowed(notificationId, notification)
     }
 
     // -----------------------------------------------------------------------
@@ -328,12 +328,27 @@ class NotificationHandler @Inject constructor(
             .setAutoCancel(true)
             .build()
 
-        NotificationManagerCompat.from(context).notify(SUMMARY_NOTIFICATION_ID, summary)
+        notifyIfAllowed(SUMMARY_NOTIFICATION_ID, summary)
     }
 
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Posts a notification only if the user has not revoked the POST_NOTIFICATIONS
+     * runtime permission (Android 13+). Swallows [SecurityException] in the rare
+     * race where permission is revoked between the check and the call.
+     */
+    private fun notifyIfAllowed(id: Int, notification: android.app.Notification) {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+        try {
+            manager.notify(id, notification)
+        } catch (_: SecurityException) {
+            // Permission revoked between check and call; swallow.
+        }
+    }
 
     private fun buildDeepLinkIntent(conversationId: String): Intent {
         return Intent(context, Class.forName("com.sanchr.app.MainActivity")).apply {
