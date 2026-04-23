@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SRC="$ANDROID_ROOT/../../backend/crates/sanchr-proto/proto"
+SRC="$ANDROID_ROOT/../../backend-oss/crates/sanchr-proto/proto"
 DST="$ANDROID_ROOT/proto/src/main/proto/sanchr"
 
 if [[ ! -d "$SRC" ]]; then

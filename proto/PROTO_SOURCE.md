@@ -1,7 +1,7 @@
 # Proto Source of Truth
 
 The `.proto` files in this directory are **mirrored** from
-`backend/crates/sanchr-proto/proto/`. Do not edit them here.
+`backend-oss/crates/sanchr-proto/proto/`. Do not edit them here.
 
 To re-sync after backend protos change:
 
