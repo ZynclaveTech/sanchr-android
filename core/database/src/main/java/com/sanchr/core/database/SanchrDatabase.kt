@@ -9,14 +9,26 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
+import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ConversationDao
+import com.sanchr.core.database.dao.EnvelopeQueueDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
+import com.sanchr.core.database.dao.SignalIdentityDao
+import com.sanchr.core.database.dao.SignalPreKeyDao
+import com.sanchr.core.database.dao.SignalSessionDao
+import com.sanchr.core.database.dao.SignalSignedPreKeyDao
+import com.sanchr.core.database.entity.AccountEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ConversationEntity
+import com.sanchr.core.database.entity.EnvelopeQueueEntity
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
+import com.sanchr.core.database.entity.SignalIdentityEntity
+import com.sanchr.core.database.entity.SignalPreKeyEntity
+import com.sanchr.core.database.entity.SignalSessionEntity
+import com.sanchr.core.database.entity.SignalSignedPreKeyEntity
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -31,8 +43,14 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         ConversationEntity::class,
         ContactEntity::class,
         PendingMessageAckEntity::class,
+        AccountEntity::class,
+        SignalIdentityEntity::class,
+        SignalSessionEntity::class,
+        SignalPreKeyEntity::class,
+        SignalSignedPreKeyEntity::class,
+        EnvelopeQueueEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -44,6 +62,18 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun contactDao(): ContactDao
 
     abstract fun pendingMessageAckDao(): PendingMessageAckDao
+
+    abstract fun accountDao(): AccountDao
+
+    abstract fun signalIdentityDao(): SignalIdentityDao
+
+    abstract fun signalSessionDao(): SignalSessionDao
+
+    abstract fun signalPreKeyDao(): SignalPreKeyDao
+
+    abstract fun signalSignedPreKeyDao(): SignalSignedPreKeyDao
+
+    abstract fun envelopeQueueDao(): EnvelopeQueueDao
 }
 
 /**
@@ -108,6 +138,57 @@ object DatabaseModule {
             }
         }
 
+    private val migration2To3 =
+        object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `accounts` (" +
+                        "`user_id` TEXT NOT NULL, " +
+                        "`device_id` TEXT NOT NULL, " +
+                        "`phone_e164` TEXT NOT NULL, " +
+                        "`registration_id` INTEGER NOT NULL, " +
+                        "`identity_private_key` BLOB, " +
+                        "PRIMARY KEY(`user_id`))",
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `signal_identities` (" +
+                        "`address` TEXT NOT NULL, " +
+                        "`identity_key` BLOB NOT NULL, " +
+                        "`trust_level` INTEGER NOT NULL, " +
+                        "`first_seen_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`address`))",
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `signal_sessions` (" +
+                        "`address` TEXT NOT NULL, " +
+                        "`session_record` BLOB NOT NULL, " +
+                        "PRIMARY KEY(`address`))",
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `signal_prekeys` (" +
+                        "`prekey_id` INTEGER NOT NULL, " +
+                        "`record` BLOB NOT NULL, " +
+                        "PRIMARY KEY(`prekey_id`))",
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `signal_signed_prekeys` (" +
+                        "`prekey_id` INTEGER NOT NULL, " +
+                        "`record` BLOB NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`prekey_id`))",
+                )
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `envelope_queue` (" +
+                        "`envelope_id` TEXT NOT NULL, " +
+                        "`received_at` INTEGER NOT NULL, " +
+                        "`processed` INTEGER NOT NULL, " +
+                        "`attempts` INTEGER NOT NULL, " +
+                        "`payload` BLOB NOT NULL, " +
+                        "PRIMARY KEY(`envelope_id`))",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -121,7 +202,7 @@ object DatabaseModule {
                 SanchrDatabase::class.java,
                 "sanchr-database",
             ).openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))
-            .addMigrations(migration1To2)
+            .addMigrations(migration1To2, migration2To3)
             .build()
     }
 
@@ -136,4 +217,22 @@ object DatabaseModule {
 
     @Provides
     fun providePendingMessageAckDao(database: SanchrDatabase): PendingMessageAckDao = database.pendingMessageAckDao()
+
+    @Provides
+    fun provideAccountDao(database: SanchrDatabase): AccountDao = database.accountDao()
+
+    @Provides
+    fun provideSignalIdentityDao(database: SanchrDatabase): SignalIdentityDao = database.signalIdentityDao()
+
+    @Provides
+    fun provideSignalSessionDao(database: SanchrDatabase): SignalSessionDao = database.signalSessionDao()
+
+    @Provides
+    fun provideSignalPreKeyDao(database: SanchrDatabase): SignalPreKeyDao = database.signalPreKeyDao()
+
+    @Provides
+    fun provideSignalSignedPreKeyDao(database: SanchrDatabase): SignalSignedPreKeyDao = database.signalSignedPreKeyDao()
+
+    @Provides
+    fun provideEnvelopeQueueDao(database: SanchrDatabase): EnvelopeQueueDao = database.envelopeQueueDao()
 }
