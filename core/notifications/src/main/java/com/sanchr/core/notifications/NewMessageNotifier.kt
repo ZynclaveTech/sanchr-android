@@ -2,8 +2,10 @@ package com.sanchr.core.notifications
 
 import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.datastore.NotifierState
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import javax.inject.Inject
@@ -16,7 +18,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Observes the local messages table and renders a notification for each
- * incoming (non-self) message that lands after the notifier starts.
+ * incoming (non-self) message that lands after the last-notified high-water
+ * mark.
  *
  * This is the only code path that produces user-visible "new message"
  * notifications in Phase C — the FCM transport no longer carries content
@@ -25,9 +28,16 @@ import kotlinx.coroutines.launch
  * decrypted row via [com.sanchr.domain.messaging.ReceiveMessageUseCase],
  * this observer fires.
  *
- * De-dupe: messages are keyed by id, and the notifier remembers the last
- * rendered id set so a Flow re-emission (e.g. a status update) does not
- * re-post the same notification.
+ * **De-dupe** is bounded and restart-safe:
+ *  - [renderedIds] is a bounded LRU so a pathologically long-running
+ *    notifier does not accumulate an unbounded Set.
+ *  - The last-rendered timestamp is persisted via [NotifierState] so a
+ *    cold start resumes at the correct high-water mark and does not
+ *    re-notify for messages the user already saw.
+ *
+ * **Display-name resolution** is cached per batch — contacts rarely
+ * change within a notification burst, so the blocking DAO call fires at
+ * most once per unique sender per batch instead of once per envelope.
  */
 @Singleton
 class NewMessageNotifier
@@ -37,46 +47,77 @@ class NewMessageNotifier
         private val contactDao: ContactDao,
         private val sessionManager: SessionManager,
         private val userPreferences: UserPreferences,
+        private val notifierState: NotifierState,
         private val notificationHandler: NotificationHandler,
         private val dispatchers: DispatcherProvider,
+        @ApplicationScope private val applicationScope: CoroutineScope,
     ) {
         private var startJob: Job? = null
-        private val renderedIds = mutableSetOf<String>()
 
         /**
-         * Starts the observer on [scope]. Idempotent — a second call is a
-         * no-op while the first observer is still running. Emits
-         * notifications only for messages with `timestamp > now`, so a
-         * restart does not re-notify for pre-start history.
+         * Bounded LRU of message ids that have already produced a
+         * notification. Bounded to [RENDERED_ID_CAPACITY] so a long-running
+         * notifier cannot leak memory on a chatty account. Room's Flow can
+         * re-emit the same batch when unrelated columns update (e.g. read
+         * receipts), and we need to suppress those duplicates.
+         *
+         * [LinkedHashMap] with `accessOrder = true` makes eviction LRU.
          */
-        fun start(scope: CoroutineScope) {
+        private val renderedIds: MutableMap<String, Boolean> =
+            object : LinkedHashMap<String, Boolean>(RENDERED_ID_CAPACITY, 0.75f, /* accessOrder */ true) {
+                override fun removeEldestEntry(eldest: Map.Entry<String, Boolean>): Boolean =
+                    size > RENDERED_ID_CAPACITY
+            }
+
+        /**
+         * Starts the observer on the app-wide scope. Idempotent — a second
+         * call is a no-op while the first observer is still running.
+         *
+         * The observer resumes from the persisted high-water mark
+         * ([NotifierState.getLastNotifiedTimestamp]), falling back to
+         * "now" when there is no prior mark (fresh install).
+         */
+        fun start() {
             if (startJob?.isActive == true) return
             val selfUserId = sessionManager.getUserId()
             if (selfUserId.isNullOrBlank()) {
                 Log.d(TAG, "notifier not started: no user id")
                 return
             }
-            val startTime = System.currentTimeMillis()
             startJob =
-                scope.launch(dispatchers.io) {
+                applicationScope.launch(dispatchers.io) {
                     runCatching {
+                        val resumeFrom =
+                            notifierState.getLastNotifiedTimestamp() ?: System.currentTimeMillis()
                         messageDao
-                            .observeIncomingMessagesAfter(startTime, selfUserId)
+                            .observeIncomingMessagesAfter(resumeFrom, selfUserId)
                             .collectLatest { batch ->
+                                if (batch.isEmpty()) return@collectLatest
                                 // Read the preference once per batch — cheap and
                                 // avoids re-renders when the toggle flips mid-flow.
                                 val showPreview =
                                     runCatching { userPreferences.showPreviewOnLockscreen.first() }
                                         .getOrDefault(false)
+                                val nameCache = mutableMapOf<String, String?>()
+                                var maxTimestamp = 0L
                                 batch.forEach { entity ->
-                                    if (renderedIds.add(entity.id)) {
-                                        val senderName = resolveSenderName(entity.senderId)
+                                    if (renderedIds.put(entity.id, true) == null) {
+                                        val senderName =
+                                            nameCache.getOrPut(entity.senderId) {
+                                                resolveSenderName(entity.senderId)
+                                            }
                                         notificationHandler.showMessageNotification(
                                             entity = entity,
                                             senderDisplayName = senderName,
                                             showPreviewOnLockscreen = showPreview,
                                         )
+                                        if (entity.timestamp > maxTimestamp) {
+                                            maxTimestamp = entity.timestamp
+                                        }
                                     }
+                                }
+                                if (maxTimestamp > 0L) {
+                                    notifierState.advanceLastNotifiedTimestamp(maxTimestamp)
                                 }
                             }
                     }.onFailure { error ->
@@ -97,5 +138,13 @@ class NewMessageNotifier
 
         private companion object {
             const val TAG = "NewMessageNotifier"
+
+            /**
+             * Upper bound on the in-memory de-dupe set. ~256 entries is
+             * roughly two days of mid-volume chat traffic before the LRU
+             * starts evicting — well past the window in which Room could
+             * re-emit a stale row for the same message.
+             */
+            const val RENDERED_ID_CAPACITY = 256
         }
     }
