@@ -25,10 +25,6 @@ interface MessagingServiceClient {
     suspend fun sendReceipt(request: ReceiptRequest): ReceiptResponse
 
     suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse
-
-    suspend fun getPresenceSnapshot(
-        request: GetPresenceSnapshotRequest,
-    ): GetPresenceSnapshotResponse
 }
 
 class MessagingServiceGrpcClient(
@@ -75,12 +71,6 @@ class MessagingServiceGrpcClient(
     ): GetConversationsResponse {
         return stub.getConversations(Messaging.GetConversationsRequest.getDefaultInstance()).toManual()
     }
-
-    override suspend fun getPresenceSnapshot(
-        request: GetPresenceSnapshotRequest,
-    ): GetPresenceSnapshotResponse {
-        return stub.getPresenceSnapshot(request.toProto()).toManual()
-    }
 }
 
 private fun StartDirectConversationRequest.toProto(): Messaging.StartDirectConversationRequest =
@@ -113,21 +103,6 @@ private fun ClientEvent.toProto(): Messaging.ClientEvent =
                 .build()
             Messaging.ClientEvent.newBuilder().setTyping(typing).build()
         }
-        is ClientEvent.Receipt -> {
-            val receipt = Messaging.ReceiptRequest.newBuilder()
-                .setConversationId(conversationId)
-                .setMessageId(messageId)
-                .setStatus(status)
-                .build()
-            Messaging.ClientEvent.newBuilder().setReceipt(receipt).build()
-        }
-        is ClientEvent.Heartbeat -> {
-            val heartbeat = Messaging.PresenceHeartbeat.newBuilder()
-                .setDeviceState(deviceState.toProto())
-                .setSentAtMs(sentAtMs)
-                .build()
-            Messaging.ClientEvent.newBuilder().setHeartbeat(heartbeat).build()
-        }
     }
 
 private fun SyncRequest.toProto(): Messaging.SyncRequest =
@@ -158,20 +133,6 @@ private fun ReceiptRequest.toProto(): Messaging.ReceiptRequest =
         .setMessageId(messageId)
         .setStatus(status)
         .build()
-
-private fun GetPresenceSnapshotRequest.toProto(): Messaging.GetPresenceSnapshotRequest =
-    Messaging.GetPresenceSnapshotRequest.newBuilder()
-        .addAllUserIds(userIds)
-        .build()
-
-private fun DevicePresenceState.toProto(): Messaging.DevicePresenceState =
-    when (this) {
-        DevicePresenceState.FOREGROUND -> Messaging.DevicePresenceState.FOREGROUND
-        DevicePresenceState.BACKGROUND -> Messaging.DevicePresenceState.BACKGROUND
-        DevicePresenceState.OFFLINE_DEVICE -> Messaging.DevicePresenceState.OFFLINE_DEVICE
-        DevicePresenceState.DEVICE_STATE_UNSPECIFIED ->
-            Messaging.DevicePresenceState.DEVICE_STATE_UNSPECIFIED
-    }
 
 private fun Messaging.SendMessageResponse.toManual(): SendMessageResponse =
     SendMessageResponse(
@@ -229,23 +190,6 @@ private fun Messaging.ReceiptUpdate.toManual(): ReceiptUpdate =
         timestamp = timestamp,
     )
 
-private fun Messaging.PresenceStatus.toManual(): PresenceStatus =
-    when (this) {
-        Messaging.PresenceStatus.ONLINE -> PresenceStatus.ONLINE
-        Messaging.PresenceStatus.OFFLINE -> PresenceStatus.OFFLINE
-        Messaging.PresenceStatus.HIDDEN -> PresenceStatus.HIDDEN
-        Messaging.PresenceStatus.PRESENCE_STATUS_UNSPECIFIED,
-        Messaging.PresenceStatus.UNRECOGNIZED -> PresenceStatus.PRESENCE_STATUS_UNSPECIFIED
-    }
-
-private fun Messaging.PresenceUpdate.toManual(): PresenceUpdate =
-    PresenceUpdate(
-        userId = userId,
-        status = status,
-        lastSeen = lastSeen,
-        statusCode = statusCode.toManual(),
-    )
-
 private fun Messaging.PreKeyCountLow.toManual(): PreKeyCountLow =
     PreKeyCountLow(
         deviceId = deviceId,
@@ -274,7 +218,6 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent =
         Messaging.ServerEvent.EventCase.MESSAGE -> ServerEvent.Message(message.toManual())
         Messaging.ServerEvent.EventCase.TYPING -> ServerEvent.Typing(typing.toManual())
         Messaging.ServerEvent.EventCase.RECEIPT -> ServerEvent.Receipt(receipt.toManual())
-        Messaging.ServerEvent.EventCase.PRESENCE -> ServerEvent.Presence(presence.toManual())
         Messaging.ServerEvent.EventCase.PRE_KEY_COUNT_LOW ->
             ServerEvent.PreKeyCountLow(preKeyCountLow.toManual())
         Messaging.ServerEvent.EventCase.CALL_OFFER -> ServerEvent.CallOffer(callOffer.toManual())
@@ -282,11 +225,7 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent =
             ServerEvent.CallLifecycle(callLifecycle.toManual())
         Messaging.ServerEvent.EventCase.REACTION,
         Messaging.ServerEvent.EventCase.SEALED_MESSAGE,
+        Messaging.ServerEvent.EventCase.MESSAGE_EDITED,
         Messaging.ServerEvent.EventCase.EVENT_NOT_SET ->
-            ServerEvent.Presence(PresenceUpdate())
+            throw IllegalStateException("Unhandled ServerEvent case: $eventCase")
     }
-
-private fun Messaging.GetPresenceSnapshotResponse.toManual(): GetPresenceSnapshotResponse =
-    GetPresenceSnapshotResponse(
-        users = usersList.map(Messaging.PresenceUpdate::toManual),
-    )

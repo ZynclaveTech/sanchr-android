@@ -43,17 +43,6 @@ sealed interface ClientEvent {
         val userId: String = "",
         val isTyping: Boolean = false,
     ) : ClientEvent
-
-    data class Receipt(
-        val conversationId: String = "",
-        val messageId: String = "",
-        val status: String = "delivered",
-    ) : ClientEvent
-
-    data class Heartbeat(
-        val deviceState: DevicePresenceState = DevicePresenceState.DEVICE_STATE_UNSPECIFIED,
-        val sentAtMs: Long = 0L,
-    ) : ClientEvent
 }
 
 sealed interface ServerEvent {
@@ -67,10 +56,6 @@ sealed interface ServerEvent {
 
     data class Receipt(
         val update: ReceiptUpdate? = null,
-    ) : ServerEvent
-
-    data class Presence(
-        val update: PresenceUpdate? = null,
     ) : ServerEvent
 
     data class PreKeyCountLow(
@@ -207,14 +192,6 @@ data class GetConversationsRequest(
 
 data class GetConversationsResponse(
     val conversations: List<Conversation> = emptyList(),
-)
-
-data class GetPresenceSnapshotRequest(
-    val userIds: List<String> = emptyList(),
-)
-
-data class GetPresenceSnapshotResponse(
-    val users: List<PresenceUpdate> = emptyList(),
 )
 
 data class Conversation(

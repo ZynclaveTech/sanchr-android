@@ -12,7 +12,6 @@ import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.DevicePresenceState
 import com.sanchr.proto.messaging.EncryptedEnvelope
-import com.sanchr.proto.messaging.GetPresenceSnapshotRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.PresenceUpdate
 import com.sanchr.proto.messaging.ServerEvent
@@ -162,30 +161,14 @@ class RealtimeManager @Inject constructor(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun emitHeartbeat(state: DevicePresenceState) {
-        outboundEvents.send(
-            ClientEvent.Heartbeat(
-                deviceState = state,
-                sentAtMs = System.currentTimeMillis(),
-            ),
-        )
+        // TODO(M3): presence heartbeat removed from messaging.proto; rework via new path.
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun refreshPresenceSnapshot(peerIds: Collection<String> = trackedPeerIds.value) {
-        val uniquePeers = peerIds.filter { it.isNotBlank() }.distinct()
-        if (uniquePeers.isEmpty() || sessionManager.getAccessToken().isNullOrEmpty()) return
-
-        runCatching {
-            messagingClient.getPresenceSnapshot(GetPresenceSnapshotRequest(userIds = uniquePeers))
-        }.onSuccess { response ->
-            _presenceCache.update { current ->
-                current.toMutableMap().apply {
-                    response.users.forEach { put(it.userId, it) }
-                }
-            }
-        }.onFailure { error ->
-            Log.w(TAG, "Presence snapshot failed", error)
-        }
+        // TODO(M3): GetPresenceSnapshot RPC removed from messaging.proto; rework via new path.
     }
 
     private suspend fun handleServerEvent(event: ServerEvent) {
@@ -193,7 +176,6 @@ class RealtimeManager @Inject constructor(
             is ServerEvent.Message -> event.envelope?.let { persistIncomingEnvelope(it) }
             is ServerEvent.Typing -> handleTyping(event.indicator)
             is ServerEvent.Receipt -> handleReceipt(event.update)
-            is ServerEvent.Presence -> handlePresence(event.update)
             is ServerEvent.PreKeyCountLow -> signalKeyManager.checkAndReplenishPreKeys()
             is ServerEvent.CallOffer -> {
                 Log.d(TAG, "Received call offer event ${event.offer?.callId.orEmpty()}")
@@ -243,12 +225,4 @@ class RealtimeManager @Inject constructor(
         }
     }
 
-    private fun handlePresence(update: PresenceUpdate?) {
-        if (update == null || update.userId.isBlank()) return
-        _presenceCache.update { current ->
-            current.toMutableMap().apply {
-                put(update.userId, update)
-            }
-        }
-    }
 }
