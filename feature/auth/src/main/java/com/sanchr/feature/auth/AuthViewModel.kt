@@ -293,14 +293,6 @@ class AuthViewModel
                         return@launch
                     }
 
-                    sessionManager.saveSession(
-                        accessToken = response.accessToken,
-                        refreshToken = response.refreshToken,
-                        userId = userId,
-                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
-                    )
-                    sessionManager.saveDeviceId(response.deviceId.toString())
-
                     val serverDisplayName = response.user?.displayName.orEmpty()
                     val resolvedDisplayName =
                         if (serverDisplayName.isNotBlank() && serverDisplayName != current.displayName) {
@@ -308,7 +300,23 @@ class AuthViewModel
                         } else {
                             current.displayName
                         }
+
+                    // Order matters: displayName must land in EncryptedSharedPreferences
+                    // before saveSession flips _isAuthenticated, because
+                    // AppBootstrapViewModel.hasCompletedOnboarding reads getDisplayName()
+                    // in its combine(...) on the isAuthenticated trigger. If we flip
+                    // auth first, the combine re-reads a stale null and emits false
+                    // for returning users who already have a server-side display name,
+                    // silently dropping them back into onboarding. Review finding
+                    // P1#1 (Phase 8).
                     sessionManager.saveDisplayName(resolvedDisplayName)
+                    sessionManager.saveDeviceId(response.deviceId.toString())
+                    sessionManager.saveSession(
+                        accessToken = response.accessToken,
+                        refreshToken = response.refreshToken,
+                        userId = userId,
+                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
+                    )
 
                     runRegistrationPipeline(
                         phoneE164 = current.phoneE164,
@@ -439,17 +447,21 @@ class AuthViewModel
                         Log.w("AuthViewModel", "Fast-login response missing session data; staying on Home")
                         return@launch
                     }
+                    // Order matters: see submitOtp for the full rationale. Persist
+                    // displayName before saveSession flips _isAuthenticated, so
+                    // AppBootstrapViewModel.hasCompletedOnboarding's isAuthenticated-
+                    // triggered re-read of getDisplayName() sees the fresh value.
+                    val serverDisplayName = response.user?.displayName.orEmpty()
+                    if (serverDisplayName.isNotBlank()) {
+                        sessionManager.saveDisplayName(serverDisplayName)
+                    }
+                    sessionManager.saveDeviceId(response.deviceId.toString())
                     sessionManager.saveSession(
                         accessToken = response.accessToken,
                         refreshToken = response.refreshToken,
                         userId = userId,
                         expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
                     )
-                    sessionManager.saveDeviceId(response.deviceId.toString())
-                    val serverDisplayName = response.user?.displayName.orEmpty()
-                    if (serverDisplayName.isNotBlank()) {
-                        sessionManager.saveDisplayName(serverDisplayName)
-                    }
                     _state.value = AuthState.Done
                 } catch (e: Exception) {
                     // Silent by design — user sees Home and can continue manually.

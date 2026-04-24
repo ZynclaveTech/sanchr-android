@@ -17,6 +17,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -271,6 +272,56 @@ class AuthViewModelStateTest {
                 )
                 sessionManager.saveDeviceId("7")
                 sessionManager.saveDisplayName("Alice")
+            }
+        }
+
+    /**
+     * Regression guard for review finding P1#1 (Phase 8).
+     *
+     * [AppBootstrapViewModel.hasCompletedOnboarding] piggy-backs on
+     * [SessionManager.isAuthenticated] as a trigger to re-read
+     * `getDisplayName()`. If `saveSession` (which flips `_isAuthenticated`)
+     * runs before `saveDisplayName`, the combine re-reads a stale null and
+     * emits `false` — silently bouncing returning users into onboarding
+     * despite a server-side display name being present.
+     *
+     * This test locks in the fix: `saveDisplayName` must be persisted
+     * BEFORE `saveSession` during OTP verification.
+     */
+    @Test
+    fun submitOtp_persistsDisplayName_beforeFlippingSession() =
+        runTest {
+            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
+                AuthResponse(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    expiresIn = 3600,
+                    user = User(id = "user-42", displayName = "Alice"),
+                    deviceId = 7,
+                )
+
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.chooseRegister()
+            vm.onRegisterChanged("+1", "4155551234", "Alice")
+            vm.submitRegister()
+            advanceUntilIdle()
+            vm.onOtpChanged("123456")
+            vm.submitOtp()
+            advanceUntilIdle()
+
+            // Strict ordering: displayName to disk BEFORE saveSession flips
+            // _isAuthenticated. verifyOrder allows other calls between these
+            // (e.g. saveDeviceId) but enforces relative order.
+            verifyOrder {
+                sessionManager.saveDisplayName("Alice")
+                sessionManager.saveSession(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    userId = "user-42",
+                    expiresAtMillis = any(),
+                )
             }
         }
 
