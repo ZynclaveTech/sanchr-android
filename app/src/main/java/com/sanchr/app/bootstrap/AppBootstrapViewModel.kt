@@ -48,6 +48,14 @@ class AppBootstrapViewModel
         private val _startDestination = MutableStateFlow<StartDestination>(StartDestination.Loading)
         val startDestination: StateFlow<StartDestination> = _startDestination.asStateFlow()
 
+        /**
+         * Live authentication state. `SanchrNavHost` collects this to react to
+         * logout — when it flips `false` while the user is inside the main
+         * graph, the nav host pops back to the auth graph without requiring a
+         * process restart.
+         */
+        val sessionActive: StateFlow<Boolean> = sessionManager.sessionActive
+
         init {
             viewModelScope.launch(dispatchers.io) {
                 _startDestination.value = resolve()

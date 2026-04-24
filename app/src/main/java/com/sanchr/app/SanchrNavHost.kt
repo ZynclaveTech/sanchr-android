@@ -21,6 +21,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -98,6 +99,7 @@ fun SanchrNavHost(
         is StartDestination.Auth, is StartDestination.Main -> {
             ResolvedNavHost(
                 startRoute = if (state is StartDestination.Main) "main" else "auth",
+                bootstrapViewModel = bootstrapViewModel,
                 modifier = modifier,
             )
         }
@@ -107,11 +109,29 @@ fun SanchrNavHost(
 @Composable
 private fun ResolvedNavHost(
     startRoute: String,
+    bootstrapViewModel: AppBootstrapViewModel,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val sessionActive by bootstrapViewModel.sessionActive.collectAsState()
+
+    // Reactive logout: if the session flips off while we're inside the main
+    // graph, pop back to the auth graph. This covers logout from any screen
+    // (Settings, a future force-logout on 401, etc.) without a process restart.
+    LaunchedEffect(sessionActive) {
+        if (!sessionActive) {
+            val inMain =
+                currentDestination?.hierarchy?.any { it.route == "main" } == true
+            if (inMain) {
+                navController.navigate("auth") {
+                    popUpTo("main") { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
 
     val topLevelDestinations = remember { TopLevelDestination.entries }
 
