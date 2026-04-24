@@ -93,3 +93,28 @@ dependencies {
     kover(project(":feature:settings"))
     kover(project(":sync"))
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Kover line-coverage verification — DEFERRED (see note)
+//
+// The M6 plan (Phase 5.3) calls for a 70% line-coverage floor on
+// `:domain:messaging` and `:core:crypto`. Current baseline on 2026-04-24:
+//
+//   :domain:messaging  51.4% (148/288 lines)
+//   :core:crypto       46.6% (447/959 lines)
+//
+// Enforcing 70% today turns CI red; we'd need to ratchet from current
+// coverage and raise the floor incrementally. Kover 0.9.0's
+// `KoverVerifyRule` API, however, has no per-rule `filters { }` method
+// (verified via `javap` on `kover-gradle-plugin-0.9.0.jar` — only
+// `bound`/`minBound`/`maxBound`/`disabled`/`groupBy` are exposed). The
+// only 0.9-supported way to gate a specific module is to put the verify
+// rule inside that module's own `build.gradle.kts` — which would push
+// Phase 5 over the 5-file cap (CLAUDE.md #2).
+//
+// Decision: ship Phase 5 without threshold enforcement. The
+// `koverXmlReport` task still runs in CI and the coverage artifact is
+// uploaded (see `android-ci.yml`), so coverage is visible in every PR —
+// we just don't block the merge on it. Adding per-module verify blocks
+// is a post-M6 follow-up tracked in the plan self-review.
+// ─────────────────────────────────────────────────────────────────────────────

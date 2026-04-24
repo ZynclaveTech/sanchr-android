@@ -1,0 +1,5 @@
+# Release keystore directory.
+#
+# Populated locally (and on release machines) with `sanchr-upload.jks`.
+# The *.jks pattern in .gitignore keeps any keystore out of version control.
+# See ../../../docs/android-release-signing.md for generation steps.

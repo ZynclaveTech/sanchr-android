@@ -18,7 +18,18 @@ Thumbs.db
 *.dex
 
 # Secrets
+# Keystores and passphrases MUST NEVER be committed. The `keystore/`
+# directory is a local workspace for the release upload key — only its
+# `.gitkeep` marker is tracked.
+#
+# Single exception: `ci-assets/dummy-upload.jks` is a DELIBERATELY COMMITTED
+# keystore with a public passphrase, used only by CI to prove that
+# `assembleRelease` completes (minification + packaging). It is never used
+# to sign anything that ships. See `ci-assets/README.md`.
 *.keystore
 *.jks
 *.env
 google-services.json
+keystore/*
+!keystore/.gitkeep
+!ci-assets/dummy-upload.jks

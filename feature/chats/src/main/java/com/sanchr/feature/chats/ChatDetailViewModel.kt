@@ -16,6 +16,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -50,24 +51,28 @@ class ChatDetailViewModel
 
         private fun observeConversation() {
             viewModelScope.launch {
-                messageRepository.observeConversation(conversationId).collect { conversation ->
-                    _uiState.update { state ->
-                        state.copy(conversation = conversation)
+                messageRepository.observeConversation(conversationId)
+                    .catch { /* DB closed during logout — nav teardown cancels this scope */ }
+                    .collect { conversation ->
+                        _uiState.update { state ->
+                            state.copy(conversation = conversation)
+                        }
                     }
-                }
             }
         }
 
         private fun observeMessages() {
             viewModelScope.launch {
-                messageRepository.observeMessages(conversationId).collect { messages ->
-                    _uiState.update { state ->
-                        state.copy(
-                            messages = messages.map { message -> message.toUiModel() },
-                            isLoading = false,
-                        )
+                messageRepository.observeMessages(conversationId)
+                    .catch { /* DB closed during logout — nav teardown cancels this scope */ }
+                    .collect { messages ->
+                        _uiState.update { state ->
+                            state.copy(
+                                messages = messages.map { message -> message.toUiModel() },
+                                isLoading = false,
+                            )
+                        }
                     }
-                }
             }
         }
 

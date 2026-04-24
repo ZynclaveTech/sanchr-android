@@ -120,7 +120,11 @@ private fun ResolvedNavHost(
     // Reactive logout: if the session flips off while we're inside the main
     // graph, pop back to the auth graph. This covers logout from any screen
     // (Settings, a future force-logout on 401, etc.) without a process restart.
-    LaunchedEffect(sessionActive) {
+    //
+    // currentDestination is included as a second key so the effect re-fires
+    // if it was transiently null when sessionActive first flipped false — the
+    // retry happens on the next recomposition once the back-stack entry settles.
+    LaunchedEffect(sessionActive, currentDestination) {
         if (!sessionActive) {
             val inMain =
                 currentDestination?.hierarchy?.any { it.route == "main" } == true

@@ -1,0 +1,9 @@
+Sanchr 1.0.0 — internal release.
+
+Android↔iOS end-to-end encrypted 1:1 text messaging, built on libsignal +
+sealed sender. Phone-number registration, SMS OTP, new-chat lookup,
+reactive logout with full local-key wipe.
+
+This build is an internal-track preview for testing only. Expect short
+sessions and occasional restarts; please report issues with your device
+model, Android version, and a reproduction timeline.

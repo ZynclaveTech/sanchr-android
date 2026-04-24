@@ -42,14 +42,17 @@ class LogoutUseCase
     ) {
         suspend operator fun invoke() =
             withContext(dispatchers.io) {
-                // 1. Clear in-flight staged identity (if any)
-                runCatching { stagedIdentityStore.clear() }
-                // 2. Close SQLCipher DB so its file handles release
-                runCatching { database.close() }
-                // 3. Delete DB file — includes journal & wal
-                runCatching { context.deleteDatabase(DATABASE_FILE_NAME) }
-                // 4. Clear encrypted session prefs (tokens, password, display name)
+                // 1. Flip sessionActive → false first so the UI navigates away and
+                //    cancels any ViewModel coroutines that are collecting DAO Flows.
+                //    All subsequent steps run after nav teardown has been signalled,
+                //    so the DB is never closed while live collectors are still active.
                 runCatching { sessionManager.clearSession() }
+                // 2. Clear in-flight staged identity (if any)
+                runCatching { stagedIdentityStore.clear() }
+                // 3. Close SQLCipher DB so its file handles release
+                runCatching { database.close() }
+                // 4. Delete DB file — includes journal & wal
+                runCatching { context.deleteDatabase(DATABASE_FILE_NAME) }
                 // 5. Wipe Keystore-wrapped DB passphrase
                 runCatching { databasePassphraseProvider.wipe() }
             }

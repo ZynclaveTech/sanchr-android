@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,6 +9,34 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// App version
+//
+// Source of truth: `app/version.properties`. The file is checked in and
+// human-editable; every release (including hotfixes) bumps `versionCode`
+// monotonically and updates `versionName` per SemVer.
+//
+// CI can override without touching the file by setting `SANCHR_VERSION_CODE`
+// / `SANCHR_VERSION_NAME` — useful for deterministic builds off a tag.
+//
+// See `CHANGELOG.md` for the human-readable history and
+// `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` for the
+// Play-console internal-track release notes that ship with each upload.
+// ─────────────────────────────────────────────────────────────────────────────
+val appVersionProps =
+    Properties().apply {
+        val f = rootProject.file("app/version.properties")
+        if (f.exists()) {
+            f.inputStream().use { load(it) }
+        }
+    }
+
+val appVersionCode: Int =
+    (System.getenv("SANCHR_VERSION_CODE") ?: appVersionProps.getProperty("versionCode", "1")).toInt()
+
+val appVersionName: String =
+    System.getenv("SANCHR_VERSION_NAME") ?: appVersionProps.getProperty("versionName", "1.0.0")
+
 android {
     namespace = "com.sanchr.app"
     compileSdk = 35
@@ -15,10 +45,40 @@ android {
         applicationId = "com.sanchr.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Release signing is driven entirely by environment variables so no
+    // key material or passphrase is ever committed. All four vars must be
+    // set; if any are missing we leave signingConfig unset and a guard task
+    // (see bottom of file) fails `assembleRelease` with a clear message
+    // rather than silently producing an unsigned APK. See
+    // `docs/android/release-signing.md`.
+    signingConfigs {
+        create("release") {
+            val storeFilePath = System.getenv("SANCHR_RELEASE_STORE_FILE")
+            val storePasswordEnv = System.getenv("SANCHR_RELEASE_STORE_PASSWORD")
+            val keyAliasEnv = System.getenv("SANCHR_RELEASE_KEY_ALIAS")
+            val keyPasswordEnv = System.getenv("SANCHR_RELEASE_KEY_PASSWORD")
+            if (!storeFilePath.isNullOrBlank() &&
+                !storePasswordEnv.isNullOrBlank() &&
+                !keyAliasEnv.isNullOrBlank() &&
+                !keyPasswordEnv.isNullOrBlank()
+            ) {
+                storeFile = file(storeFilePath)
+                storePassword = storePasswordEnv
+                keyAlias = keyAliasEnv
+                keyPassword = keyPasswordEnv
+                // v1 + v2 + v3 scheme so the APK is accepted by Play and
+                // verifiable on pre-Pie devices.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -34,6 +94,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Only attach the release signing config when env vars populated
+            // it (storeFile is non-null). Otherwise the guard task below
+            // aborts the build before an unsigned APK can be produced.
+            signingConfigs.findByName("release")?.takeIf { it.storeFile != null }?.let {
+                signingConfig = it
+            }
         }
     }
 
@@ -131,3 +197,47 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.test.manifest)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Release-signing guard
+//
+// If `assembleRelease`, `bundleRelease`, or `packageRelease` is invoked
+// without the four `SANCHR_RELEASE_*` environment variables populated, fail
+// early with a clear message pointing at the docs. Without this guard AGP
+// would silently produce an unsigned APK which is unshippable AND easy to
+// miss in local workflows.
+//
+// Configuration-cache safe: the `doFirst` below reads the four env vars
+// directly via `System.getenv` at execution time — capturing no script
+// references or Project-level state.
+// ─────────────────────────────────────────────────────────────────────────────
+val releaseSigningTasks = setOf("assembleRelease", "bundleRelease", "packageRelease")
+
+tasks
+    .matching { it.name in releaseSigningTasks }
+    .configureEach {
+        doFirst {
+            val required =
+                listOf(
+                    "SANCHR_RELEASE_STORE_FILE",
+                    "SANCHR_RELEASE_STORE_PASSWORD",
+                    "SANCHR_RELEASE_KEY_ALIAS",
+                    "SANCHR_RELEASE_KEY_PASSWORD",
+                )
+            val missing = required.filter { System.getenv(it).isNullOrBlank() }
+            if (missing.isNotEmpty()) {
+                throw GradleException(
+                    """
+                    Release signing config is not populated.
+                    Missing environment variables: ${missing.joinToString()}.
+                    Set all four before running a release build:
+                      • SANCHR_RELEASE_STORE_FILE     (absolute path to the .jks keystore)
+                      • SANCHR_RELEASE_STORE_PASSWORD
+                      • SANCHR_RELEASE_KEY_ALIAS
+                      • SANCHR_RELEASE_KEY_PASSWORD
+                    See docs/android/release-signing.md for generation + rotation steps.
+                    """.trimIndent(),
+                )
+            }
+        }
+    }
