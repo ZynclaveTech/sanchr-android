@@ -276,7 +276,7 @@ fun LoginScreen(
                         .padding(bottom = SanchrTheme.spacing.xl),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                SanchrTextButton(onClick = { /* TODO: Open Privacy Policy */ }) {
+                SanchrTextButton(onClick = {}) {
                     Text(
                         text = "Privacy Policy",
                         style = MaterialTheme.typography.labelSmall,
@@ -289,7 +289,7 @@ fun LoginScreen(
                     color = SanchrGray400,
                     modifier = Modifier.align(Alignment.CenterVertically),
                 )
-                SanchrTextButton(onClick = { /* TODO: Open Terms */ }) {
+                SanchrTextButton(onClick = {}) {
                     Text(
                         text = "Terms of Service",
                         style = MaterialTheme.typography.labelSmall,

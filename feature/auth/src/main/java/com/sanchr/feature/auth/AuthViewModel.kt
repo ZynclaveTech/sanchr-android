@@ -221,10 +221,6 @@ class AuthViewModel
 
         // region ── Permissions / Registering pipeline ───────────────────────
 
-        /** No-op placeholder; kept so callers can plumb results in later. */
-        @Suppress("UNUSED_PARAMETER")
-        fun onPermissionsResult(granted: Set<String>) { /* diagnostics only */ }
-
         fun submitPermissions() {
             val permissions = _state.value as? AuthState.Permissions ?: return
             runRegistrationPipeline(permissions)

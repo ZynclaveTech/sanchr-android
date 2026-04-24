@@ -84,10 +84,9 @@ private fun buildPermissionSpecs(): List<AuthPermissionSpec> =
     }
 
 /**
- * Permissions step. Requests POST_NOTIFICATIONS (API 33+) and READ_CONTACTS and
- * reports the outcome to [AuthViewModel.onPermissionsResult]. Submit is always
- * enabled — mirroring the iOS flow, we let the user continue even if they deny,
- * and ask again contextually later.
+ * Permissions step. Requests POST_NOTIFICATIONS (API 33+) and READ_CONTACTS.
+ * Submit is always enabled — mirroring the iOS flow, we let the user continue
+ * even if they deny, and ask again contextually later.
  */
 @Composable
 fun PermissionsScreen(
@@ -125,8 +124,6 @@ fun PermissionsScreen(
     val launcher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             result.forEach { (perm, granted) -> grantMap[perm] = granted }
-            val grantedSet = grantMap.filterValues { it }.keys
-            viewModel.onPermissionsResult(grantedSet)
         }
 
     val unrequested = specs.map { it.manifest }.filter { grantMap[it] != true }
