@@ -24,6 +24,19 @@ import javax.inject.Singleton
  * The passphrase is a 256-bit random value generated once on first launch. It is
  * AES-GCM-wrapped with a key held in the AndroidKeyStore (StrongBox preferred,
  * TEE fallback), and the wrapped blob is stored in [EncryptedSharedPreferences].
+ *
+ * ## Memory hygiene
+ *
+ * Plaintext passphrase bytes are exposed **only** via the block-scoped
+ * [withPassphrase] API. The provider holds no cached plaintext between calls
+ * and zero-fills its own working buffer in a `finally` block before returning,
+ * even if the caller throws. After [withPassphrase] returns the only remaining
+ * live copy of the plaintext is the one retained by
+ * [net.zetetic.database.sqlcipher.SupportOpenHelperFactory] (which stores the
+ * reference as a `private final byte[]` and re-uses it to reopen connections
+ * after WAL checkpoints / forced close). That single copy is an upstream
+ * limitation of sqlcipher-android 4.6.1 and is documented in the M6 security
+ * checklist; we cannot zero it without breaking Room's connection pool.
  */
 @Singleton
 class DatabasePassphraseProvider
@@ -47,19 +60,21 @@ class DatabasePassphraseProvider
         }
 
         /**
-         * Returns the database passphrase, generating + persisting one on first call.
+         * Runs [block] with the raw 32-byte passphrase and zero-fills the buffer
+         * in a `finally` clause before returning.
+         *
+         * The caller MUST NOT retain the reference outside [block]. If the
+         * consumer (e.g. SQLCipher's `SupportOpenHelperFactory`) needs to keep a
+         * long-lived copy, it must `copyOf()` the bytes inside [block] — this
+         * provider will overwrite the array on exit regardless.
          */
         @Synchronized
-        fun obtainPassphrase(): ByteArray {
-            val wrapped = prefs.getString(KEY_WRAPPED_PASSPHRASE, null)
-            val iv = prefs.getString(KEY_WRAP_IV, null)
-            return if (wrapped != null && iv != null) {
-                unwrap(
-                    Base64.decode(wrapped, Base64.NO_WRAP),
-                    Base64.decode(iv, Base64.NO_WRAP),
-                )
-            } else {
-                generateAndStore()
+        fun <T> withPassphrase(block: (ByteArray) -> T): T {
+            val bytes = loadOrGeneratePassphrase()
+            try {
+                return block(bytes)
+            } finally {
+                bytes.fill(0)
             }
         }
 
@@ -71,6 +86,19 @@ class DatabasePassphraseProvider
             prefs.edit().clear().apply()
             runCatching {
                 KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(KEY_ALIAS)
+            }
+        }
+
+        private fun loadOrGeneratePassphrase(): ByteArray {
+            val wrapped = prefs.getString(KEY_WRAPPED_PASSPHRASE, null)
+            val iv = prefs.getString(KEY_WRAP_IV, null)
+            return if (wrapped != null && iv != null) {
+                unwrap(
+                    Base64.decode(wrapped, Base64.NO_WRAP),
+                    Base64.decode(iv, Base64.NO_WRAP),
+                )
+            } else {
+                generateAndStore()
             }
         }
 

@@ -23,15 +23,16 @@ release manager.
   Action: wire the toggle (and unconditionally for OTP + recovery-key screens)
   into `MainActivity.onCreate` / a `DisposableEffect` in the screen composables.
 
-- **SQLCipher passphrase is never zeroed in memory.**
-  `DatabasePassphraseProvider.obtainPassphrase()` returns a `ByteArray` that is
-  held by `SupportOpenHelperFactory` for the lifetime of the process; the
-  provider's `wipe()` (`core/database/.../DatabasePassphraseProvider.kt:70`)
-  clears the wrapped blob from `EncryptedSharedPreferences` but does not
-  overwrite the plaintext buffer with zeros after it has been consumed.
-  Action: after the `SupportOpenHelperFactory` is constructed, call
-  `passphrase.fill(0)` on the copy held by the provider, and document that the
-  factory now owns the single live copy.
+- **(RESOLVED) SQLCipher passphrase is never zeroed in memory.**
+  `DatabasePassphraseProvider` now exposes only a block-scoped
+  `withPassphrase { bytes -> ... }` API which zero-fills the plaintext buffer
+  in a `finally` clause. `DatabaseModule.provideSanchrDatabase`
+  (`core/database/.../SanchrDatabase.kt`) uses it to hand a `copyOf()` to
+  `SupportOpenHelperFactory`. The factory-retained copy is the single
+  unavoidable live plaintext (sqlcipher-android 4.6.1 stores the byte[] by
+  reference and reuses it across WAL checkpoint reopens; zeroing it breaks
+  the connection pool). No `clearPassphrase` ctor parameter is available in
+  this SQLCipher version.
 
 ## Checklist
 
@@ -63,21 +64,21 @@ release manager.
   `core/database/.../SanchrDatabase.kt:40` imports
   `net.zetetic.database.sqlcipher.SupportOpenHelperFactory`; it is wired into
   the Room builder at `SanchrDatabase.kt:263`
-  (`.openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))`).
+  (`.openHelperFactory(...)` inside `passphraseProvider.withPassphrase { ... }`).
   Native lib is loaded via `System.loadLibrary("sqlcipher")` at
   `SanchrDatabase.kt:119`. Dependency declared in
   `core/database/build.gradle.kts:45` (`libs.sqlcipher.android`, pinned to
   `4.6.1` in `libs.versions.toml:46`).
 
-- [ ] **4. DB passphrase is Keystore-wrapped AND zeroed after use.**
+- [x] **4. DB passphrase is Keystore-wrapped AND zeroed after use.**
   Wrapping is correct: AES-256-GCM under an AndroidKeyStore key, StrongBox
   preferred with TEE fallback, `setUnlockedDeviceRequired(true)` on P+
-  (`core/database/.../DatabasePassphraseProvider.kt:112-144`). Wrapped blob
-  stored in `EncryptedSharedPreferences`
-  (`DatabasePassphraseProvider.kt:34-47`).
-  **Zeroing is missing**: the plaintext `ByteArray` returned from
-  `obtainPassphrase()` (`DatabasePassphraseProvider.kt:53-64`) is never
-  `.fill(0)`-ed after SQLCipher consumes it. See BLOCKERS above.
+  (`core/database/.../DatabasePassphraseProvider.kt`). Wrapped blob stored in
+  `EncryptedSharedPreferences`. Zeroing: the provider now exposes only
+  `withPassphrase { ... }`, which `.fill(0)`-s the plaintext buffer in a
+  `finally` clause. The only residual plaintext is the reference held
+  internally by `SupportOpenHelperFactory` (documented upstream limitation of
+  sqlcipher-android 4.6.1).
 
 - [x] **5. Logout order is audited and each step is independent.**
   `domain/messaging/.../LogoutUseCase.kt:43-58` runs five steps under

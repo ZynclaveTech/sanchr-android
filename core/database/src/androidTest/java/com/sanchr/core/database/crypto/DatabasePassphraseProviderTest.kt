@@ -18,14 +18,30 @@ class DatabasePassphraseProviderTest {
 
     @Test
     fun passphrase_is_32_bytes() {
-        val pass = provider.obtainPassphrase()
-        assertEquals(32, pass.size)
+        val size = provider.withPassphrase { it.size }
+        assertEquals(32, size)
     }
 
     @Test
     fun passphrase_is_stable_across_calls() {
-        val a = provider.obtainPassphrase()
-        val b = provider.obtainPassphrase()
-        assertTrue(a.contentEquals(b))
+        val a = provider.withPassphrase { it.copyOf() }
+        val b = provider.withPassphrase { it.copyOf() }
+        try {
+            assertTrue(a.contentEquals(b))
+        } finally {
+            a.fill(0)
+            b.fill(0)
+        }
+    }
+
+    @Test
+    fun passphrase_buffer_is_zeroed_after_block_returns() {
+        lateinit var leaked: ByteArray
+        provider.withPassphrase { bytes ->
+            // Intentionally escape the reference to verify the provider
+            // zero-fills it after the block returns.
+            leaked = bytes
+        }
+        assertTrue(leaked.all { it == 0.toByte() }, "passphrase buffer must be zeroed on exit")
     }
 }

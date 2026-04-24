@@ -255,14 +255,25 @@ object DatabaseModule {
         passphraseProvider: DatabasePassphraseProvider,
     ): SanchrDatabase {
         ensureSqlCipherLoaded(context)
-        return Room
-            .databaseBuilder(
-                context,
-                SanchrDatabase::class.java,
-                "sanchr-database",
-            ).openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))
-            .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6)
-            .build()
+        // SECURITY (M6 checklist #4): the passphrase plaintext is visible only
+        // inside `withPassphrase { ... }`; the provider zero-fills its buffer
+        // in a finally block on exit. We hand the factory a `copyOf()` because
+        // sqlcipher-android 4.6.1's `SupportOpenHelperFactory` retains the
+        // byte[] by reference and reuses it to reopen connections after WAL
+        // checkpoints / forced close — if we zero the array the factory holds,
+        // every subsequent reopen fails with "file is not a database". The
+        // factory-owned copy is therefore the single unavoidable plaintext
+        // residue in the process heap, documented as an upstream limitation.
+        return passphraseProvider.withPassphrase { passphrase ->
+            Room
+                .databaseBuilder(
+                    context,
+                    SanchrDatabase::class.java,
+                    "sanchr-database",
+                ).openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
+                .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6)
+                .build()
+        }
     }
 
     @Provides

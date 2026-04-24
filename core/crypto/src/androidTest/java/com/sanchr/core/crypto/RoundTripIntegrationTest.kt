@@ -208,12 +208,14 @@ class RoundTripIntegrationTest {
         // but we also touch it defensively to mirror production initialization.
         System.loadLibrary("sqlcipher")
 
-        val passphrase = passphraseProvider.obtainPassphrase()
+        // Scoped access: the provider zeroes its buffer on block exit; we hand a
+        // copyOf() to the factory because it retains the byte[] by reference.
         val db =
             Room
                 .databaseBuilder(context, SanchrDatabase::class.java, dbFilename)
-                .openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
-                .allowMainThreadQueries()
+                .openHelperFactory(
+                    passphraseProvider.withPassphrase { passphrase -> SupportOpenHelperFactory(passphrase.copyOf()) },
+                ).allowMainThreadQueries()
                 .fallbackToDestructiveMigration()
                 .build()
 
