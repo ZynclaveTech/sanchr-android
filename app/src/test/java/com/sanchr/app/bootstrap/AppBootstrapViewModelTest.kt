@@ -158,6 +158,24 @@ class AppBootstrapViewModelTest {
         }
 
     @Test
+    fun hasCompletedOnboarding_falseWhenDisplayNameIsSanchrUserPlaceholder() =
+        runTest(testDispatcher) {
+            // Regression guard for review finding P2 (Phase 8): iOS parity with
+            // SanchrApp.swift:340-343 which gates on
+            // '!name.isEmpty && name != "Sanchr User"'. The backend returns
+            // 'Sanchr User' as a default for accounts that never set a real
+            // display name; treating that value as 'onboarded' would let those
+            // users silently skip the Name step.
+            onboardingFlagFlow.value = false
+            every { sessionManager.getDisplayName() } returns "Sanchr User"
+
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            assertFalse(vm.hasCompletedOnboarding.value)
+        }
+
+    @Test
     fun hasCompletedOnboarding_reemitsWhenFlagFlipsFalseToTrue() =
         runTest(testDispatcher) {
             onboardingFlagFlow.value = false

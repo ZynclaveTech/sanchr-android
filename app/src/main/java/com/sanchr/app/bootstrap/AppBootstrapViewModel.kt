@@ -81,12 +81,20 @@ class AppBootstrapViewModel
          *     flipped true when the user finishes the in-app onboarding flow
          *     (Welcome → Name → Avatar → ContactSync).
          *
-         *  2. A non-blank [SessionManager.getDisplayName] — covers the
-         *     returning-user-on-a-new-device path: the server already has a
-         *     display name on file, so there is no useful onboarding to
-         *     re-run. Without this fallback, a re-install or device swap would
-         *     force an existing user back through onboarding, which iOS
-         *     explicitly avoids.
+         *  2. A "real" (non-blank, non-placeholder) [SessionManager.getDisplayName]
+         *     — covers the returning-user-on-a-new-device path: the server
+         *     already has a display name on file, so there is no useful
+         *     onboarding to re-run. Without this fallback, a re-install or
+         *     device swap would force an existing user back through
+         *     onboarding, which iOS explicitly avoids.
+         *
+         *     The [PLACEHOLDER_DISPLAY_NAME] guard matches iOS
+         *     `SanchrApp.swift:340-343`, which gates on
+         *     `!name.isEmpty && name != "Sanchr User"`. The backend returns
+         *     `"Sanchr User"` as a default for accounts that never set a real
+         *     display name — treating that value as "onboarded" would let
+         *     those users skip the Name step and never get prompted to pick
+         *     their own name, diverging from iOS behaviour.
          *
          * The display-name check is a one-shot read (EncryptedSharedPreferences
          * has no `Flow` surface), so we piggy-back on
@@ -117,7 +125,9 @@ class AppBootstrapViewModel
                 userPreferences.hasCompletedOnboardingFlow,
                 sessionManager.isAuthenticated,
             ) { flagValue, _ ->
-                flagValue || !sessionManager.getDisplayName().isNullOrBlank()
+                val name = sessionManager.getDisplayName()
+                val hasRealName = !name.isNullOrBlank() && name != PLACEHOLDER_DISPLAY_NAME
+                flagValue || hasRealName
             }.catch { throwable ->
                 emit(false)
                 runCatching {
@@ -141,5 +151,12 @@ class AppBootstrapViewModel
 
         private companion object {
             const val TAG = "AppBootstrap"
+
+            /**
+             * Backend default display name for accounts that never set one.
+             * Mirrors iOS `SanchrApp.swift:340-343`, which treats this value
+             * as "not really onboarded" in its onboarding-skip heuristic.
+             */
+            const val PLACEHOLDER_DISPLAY_NAME = "Sanchr User"
         }
     }
