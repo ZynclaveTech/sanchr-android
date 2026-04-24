@@ -11,6 +11,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
@@ -64,6 +65,9 @@ class SessionManager
 
         /** Observable authentication state. */
         val isAuthenticated: Flow<Boolean> = _isAuthenticated.asStateFlow()
+
+        /** Observable session state as a [StateFlow] for collectors that need `.value` access. */
+        val sessionActive: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
 
         /** Returns the current access token, or null if not authenticated. */
         fun getAccessToken(): String? = encryptedPrefs.getString(KEY_ACCESS_TOKEN, null)
