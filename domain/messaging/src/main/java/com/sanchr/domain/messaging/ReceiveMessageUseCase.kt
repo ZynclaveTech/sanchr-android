@@ -18,11 +18,13 @@ import org.signal.libsignal.metadata.ProtocolInvalidMessageException
 import org.signal.libsignal.metadata.ProtocolInvalidVersionException
 import org.signal.libsignal.metadata.ProtocolLegacyMessageException
 import org.signal.libsignal.metadata.ProtocolNoSessionException
+import org.signal.libsignal.metadata.ProtocolUntrustedIdentityException
 import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.InvalidMessageException
 import org.signal.libsignal.protocol.InvalidVersionException
 import org.signal.libsignal.protocol.LegacyMessageException
 import org.signal.libsignal.protocol.NoSessionException
+import org.signal.libsignal.protocol.UntrustedIdentityException
 
 /**
  * How an inbound envelope reached the device. Derived from the RPC channel
@@ -163,6 +165,17 @@ class ReceiveMessageUseCase
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.INVALID_MESSAGE, e)
                 } catch (e: ProtocolLegacyMessageException) {
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.INVALID_MESSAGE, e)
+                } catch (e: UntrustedIdentityException) {
+                    // Peer's identity key rotated (non-sealed path). A
+                    // catch-all CRYPTO_OTHER would let the UI conflate this
+                    // with a transient crypto failure; quarantine
+                    // distinctly so ops tooling / future safety-number UI
+                    // can surface it as a trust decision rather than a
+                    // retryable error.
+                    quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.UNTRUSTED_IDENTITY, e)
+                } catch (e: ProtocolUntrustedIdentityException) {
+                    // Same treatment on the sealed-sender path.
+                    quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.UNTRUSTED_IDENTITY, e)
                 } catch (e: Exception) {
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.CRYPTO_OTHER, e)
                 }

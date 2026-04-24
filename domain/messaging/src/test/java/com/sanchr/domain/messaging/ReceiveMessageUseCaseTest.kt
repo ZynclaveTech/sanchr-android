@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.InvalidMessageException
 import org.signal.libsignal.protocol.NoSessionException
+import org.signal.libsignal.protocol.UntrustedIdentityException
 
 class ReceiveMessageUseCaseTest {
     private val sealedSenderCipher = mockk<SealedSenderCipher>()
@@ -138,6 +139,32 @@ class ReceiveMessageUseCaseTest {
                     senderDeviceId = 2,
                     failureClass = FailureClass.INVALID_MESSAGE,
                     failureMessage = "bad MAC",
+                )
+            }
+        }
+
+    @Test
+    fun receive_quarantines_envelope_with_UNTRUSTED_IDENTITY_when_peer_identity_changed() =
+        runTest {
+            coEvery { signalSessionManager.decrypt(any(), any(), any()) } throws
+                UntrustedIdentityException("bob-uuid", mockk(relaxed = true))
+            coJustRun {
+                quarantineUseCase.quarantine(any(), any(), any(), any(), any(), any(), any())
+            }
+
+            val result = useCase.receive(bytes, EnvelopeKind.NON_SEALED, 77L, senderHint)
+
+            assertTrue(result is EnvelopeDecryptResult.Quarantined)
+            assertEquals(FailureClass.UNTRUSTED_IDENTITY, result.failureClass)
+            coVerify {
+                quarantineUseCase.quarantine(
+                    envelopeId = any(),
+                    payload = bytes,
+                    receivedAt = 77L,
+                    senderUserId = "bob-uuid",
+                    senderDeviceId = 2,
+                    failureClass = FailureClass.UNTRUSTED_IDENTITY,
+                    failureMessage = any(),
                 )
             }
         }
