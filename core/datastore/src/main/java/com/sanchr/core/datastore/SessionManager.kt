@@ -291,6 +291,15 @@ class SessionManager
 
         /**
          * Clears all session data (logout).
+         *
+         * Uses `.commit()` (not `.apply()`) so the disk wipe is guaranteed to
+         * have landed before we flip the in-memory auth flag. Prevents an
+         * inconsistent state where a crash between the flag flip and the
+         * async disk write would leave tokens on disk while `NavHost` believes
+         * logout completed — the next cold start would then silently re-auth
+         * the "logged-out" user. `.commit()` is synchronous and returns only
+         * after fsync completes, making the ordering `disk wipe → RAM flip`
+         * crash-safe. Review finding P1#2 (Phase 8).
          */
         fun clearSession() {
             encryptedPrefs
@@ -313,7 +322,7 @@ class SessionManager
                 .remove(KEY_BACKUP_CONFIRMED_AT)
                 .remove(KEY_BACKUP_LAST_AT)
                 .remove(KEY_BACKUP_LAST_CONTENT_HASH)
-                .apply()
+                .commit()
             _isAuthenticated.value = false
         }
     }
