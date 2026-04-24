@@ -6,14 +6,12 @@ import com.sanchr.core.crypto.StagedIdentityStore
 import com.sanchr.core.database.SanchrDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
 import com.sanchr.core.datastore.SessionManager
-import io.mockk.Ordering
-import io.mockk.Runs
-import io.mockk.coEvery
 import io.mockk.coVerifyOrder
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
-import io.mockk.slot
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,13 +20,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
-import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LogoutUseCaseTest {
-
     private val context = mockk<Context>(relaxed = true)
     private val sessionManager = mockk<SessionManager>(relaxed = true)
     private val database = mockk<SanchrDatabase>(relaxed = true)

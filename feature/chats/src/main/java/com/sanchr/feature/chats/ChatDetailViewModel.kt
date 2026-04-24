@@ -51,7 +51,8 @@ class ChatDetailViewModel
 
         private fun observeConversation() {
             viewModelScope.launch {
-                messageRepository.observeConversation(conversationId)
+                messageRepository
+                    .observeConversation(conversationId)
                     .catch { /* DB closed during logout — nav teardown cancels this scope */ }
                     .collect { conversation ->
                         _uiState.update { state ->
@@ -63,7 +64,8 @@ class ChatDetailViewModel
 
         private fun observeMessages() {
             viewModelScope.launch {
-                messageRepository.observeMessages(conversationId)
+                messageRepository
+                    .observeMessages(conversationId)
                     .catch { /* DB closed during logout — nav teardown cancels this scope */ }
                     .collect { messages ->
                         _uiState.update { state ->
