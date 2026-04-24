@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -15,6 +16,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkManager
+import com.sanchr.app.bootstrap.AppBootstrapViewModel
+import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -23,6 +26,8 @@ import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -39,6 +44,8 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var sessionManager: SessionManager
 
+    private val bootstrapViewModel: AppBootstrapViewModel by viewModels()
+
     /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
      * The result is intentionally ignored -- if the user denies the permission,
@@ -53,13 +60,16 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // TODO: Keep splash screen visible while checking auth state
-        // splashScreen.setKeepOnScreenCondition { !viewModel.isReady.value }
+        // Keep splash visible until the bootstrap VM resolves auth vs main, so we
+        // don't flash a loading spinner before the first real frame.
+        splashScreen.setKeepOnScreenCondition {
+            bootstrapViewModel.startDestination.value is StartDestination.Loading
+        }
 
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         handleNotificationIntent(intent)
-        bootstrapSignalKeys()
+        bootstrapSignalKeysWhenAuthenticated()
 
         setContent {
             SanchrTheme {
@@ -70,11 +80,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun bootstrapSignalKeys() {
-        val userId = sessionManager.getUserId() ?: return
-        val deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: return
-
+    /**
+     * Runs the Signal key bootstrap exactly once, and only after
+     * [AppBootstrapViewModel] has confirmed the app is starting in the Main
+     * destination (i.e. a token AND an identity private key are persisted).
+     *
+     * This avoids a race for half-registered accounts where the legacy
+     * "got a token but no identity key yet" path would otherwise fire
+     * `generateIdentity()` / `uploadInitialKeyBundle()` in parallel with the
+     * auth flow rebuilding them.
+     */
+    private fun bootstrapSignalKeysWhenAuthenticated() {
         lifecycleScope.launch {
+            bootstrapViewModel.startDestination
+                .filterIsInstance<StartDestination.Main>()
+                .first()
+
+            val userId = sessionManager.getUserId() ?: return@launch
+            val deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: return@launch
+
             runCatching {
                 if (!signalKeyManager.hasIdentity()) {
                     signalKeyManager.generateIdentity()
