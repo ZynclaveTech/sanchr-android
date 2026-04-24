@@ -19,21 +19,25 @@ interface VaultServiceClient {
 
 /**
  * Implementation shell that will delegate to the actual gRPC-generated stubs
- * once protobuf-gradle-plugin codegen runs.
+ * once the vault feature lands.
  */
 class VaultServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : VaultServiceClient {
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
     override suspend fun getVaultItems(request: GetVaultItemsRequest): GetVaultItemsResponse =
-        throw NotImplementedError("Awaiting protobuf codegen")
+        throw NotImplementedError("Awaiting vault feature in M6+")
 
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
     override suspend fun createVaultItem(request: CreateVaultItemRequest): VaultItem =
-        throw NotImplementedError("Awaiting protobuf codegen")
+        throw NotImplementedError("Awaiting vault feature in M6+")
 
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
     override suspend fun deleteVaultItem(request: DeleteVaultItemRequest): DeleteVaultItemResponse =
-        throw NotImplementedError("Awaiting protobuf codegen")
+        throw NotImplementedError("Awaiting vault feature in M6+")
 
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
     override suspend fun shareVaultItem(request: ShareVaultItemRequest): ShareVaultItemResponse =
-        throw NotImplementedError("Awaiting protobuf codegen")
+        throw NotImplementedError("Awaiting vault feature in M6+")
 }
