@@ -41,6 +41,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.datetime)
 
+    // Required so LogoutUseCase can call RoomDatabase#close() on SanchrDatabase.
+    implementation(libs.room.runtime)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
