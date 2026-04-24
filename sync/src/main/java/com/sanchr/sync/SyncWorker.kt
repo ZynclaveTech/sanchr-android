@@ -243,15 +243,11 @@ class SyncWorker
             }
 
             val refreshToken = sessionManager.getRefreshToken() ?: return false
-            val deviceId = sessionManager.getDeviceId() ?: ""
 
             return try {
                 val response =
                     authClient.refreshToken(
-                        RefreshTokenRequest(
-                            refreshToken = refreshToken,
-                            deviceId = deviceId,
-                        ),
+                        RefreshTokenRequest(refreshToken = refreshToken),
                     )
 
                 val newExpiry = now + (response.expiresIn * 1000L)

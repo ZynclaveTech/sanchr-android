@@ -168,7 +168,7 @@ class AuthViewModel
                             authServiceClient.verifyOtp(
                                 VerifyOTPRequest(
                                     phoneNumber = current.phoneE164,
-                                    code = current.otp,
+                                    otpCode = current.otp,
                                     device = buildDeviceInfo(),
                                 ),
                             )
