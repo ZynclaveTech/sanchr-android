@@ -146,38 +146,43 @@ class ChatDetailViewModel
             _uiState.update { it.copy(error = null) }
         }
 
-        @Suppress("CyclomaticComplexMethod")
         private fun Message.toUiModel(): MessageUiModel {
             val currentUser = sessionManager.getUserId() ?: ""
             return MessageUiModel(
                 id = id,
-                text =
-                    when (content) {
-                        is MessageContent.Text -> (content as MessageContent.Text).body
-                        is MessageContent.Image -> (content as MessageContent.Image).caption ?: "[Image]"
-                        is MessageContent.Voice -> "[Voice message]"
-                        is MessageContent.File -> (content as MessageContent.File).fileName
-                        is MessageContent.Location -> (content as MessageContent.Location).label ?: "[Location]"
-                    },
+                text = content.displayText(),
                 timestamp = timestamp.toEpochMilliseconds(),
                 isFromMe = senderId == currentUser,
-                status =
-                    when (status) {
-                        com.sanchr.core.model.MessageStatus.QUEUED -> MessageStatus.SENDING
-                        com.sanchr.core.model.MessageStatus.SENDING -> MessageStatus.SENDING
-                        com.sanchr.core.model.MessageStatus.SENT -> MessageStatus.SENT
-                        com.sanchr.core.model.MessageStatus.DELIVERED -> MessageStatus.DELIVERED
-                        com.sanchr.core.model.MessageStatus.READ -> MessageStatus.READ
-                        com.sanchr.core.model.MessageStatus.FAILED -> MessageStatus.FAILED
-                    },
-                contentType =
-                    when (content) {
-                        is MessageContent.Text -> "text"
-                        is MessageContent.Image -> "image"
-                        is MessageContent.Voice -> "voice"
-                        is MessageContent.File -> "file"
-                        is MessageContent.Location -> "location"
-                    },
+                status = status.toUiStatus(),
+                contentType = content.contentTypeTag(),
             )
         }
+
+        private fun MessageContent.displayText(): String =
+            when (this) {
+                is MessageContent.Text -> body
+                is MessageContent.Image -> caption ?: "[Image]"
+                is MessageContent.Voice -> "[Voice message]"
+                is MessageContent.File -> fileName
+                is MessageContent.Location -> label ?: "[Location]"
+            }
+
+        private fun MessageContent.contentTypeTag(): String =
+            when (this) {
+                is MessageContent.Text -> "text"
+                is MessageContent.Image -> "image"
+                is MessageContent.Voice -> "voice"
+                is MessageContent.File -> "file"
+                is MessageContent.Location -> "location"
+            }
+
+        private fun com.sanchr.core.model.MessageStatus.toUiStatus(): MessageStatus =
+            when (this) {
+                com.sanchr.core.model.MessageStatus.QUEUED -> MessageStatus.SENDING
+                com.sanchr.core.model.MessageStatus.SENDING -> MessageStatus.SENDING
+                com.sanchr.core.model.MessageStatus.SENT -> MessageStatus.SENT
+                com.sanchr.core.model.MessageStatus.DELIVERED -> MessageStatus.DELIVERED
+                com.sanchr.core.model.MessageStatus.READ -> MessageStatus.READ
+                com.sanchr.core.model.MessageStatus.FAILED -> MessageStatus.FAILED
+            }
     }
