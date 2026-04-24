@@ -36,24 +36,19 @@ import kotlinx.coroutines.withContext
  * iOS sentinel pattern (AuthRepository.swift:61-86) so both clients hit the
  * same code path.
  */
-private const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
+internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
 
 /**
  * Drives the onboarding state machine defined in [AuthState]:
  *
  * ```
- * Splash -> Home -> (LoginPhone | RegisterPhoneAndName) -> OtpEntry -> ... -> Done   (new, iOS-parity)
- * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done       (legacy)
+ * Splash -> Home -> (LoginPhone | RegisterPhoneAndName) -> OtpEntry
+ *                -> Registering -> Done
  * ```
  *
- * Phase 3 of the realignment has wired the RPC dispatch for
- * `submitLoginPhone()` and `submitRegister()` and added [attemptFastLogin]
- * which restores the session silently using the cached phone + password when
- * we have them, so warm-start returning users skip the Home chooser entirely.
- *
- * Legacy `submitPhone` / `submitProfile` / `onPhoneChanged` / `onDisplayNameChanged`
- * handlers remain live and are covered by `AuthViewModelStateTest`. They will be
- * removed in Phase 4 once the legacy routes are deleted from the NavHost.
+ * [attemptFastLogin] restores the session silently using the cached phone +
+ * password when we have them, so warm-start returning users skip the Home
+ * chooser entirely.
  */
 @HiltViewModel
 class AuthViewModel
@@ -67,249 +62,10 @@ class AuthViewModel
         private val pushTokenManager: PushTokenManager,
         private val identityKeyStore: SanchrIdentityKeyStore,
     ) : ViewModel() {
-        // Initial state is [AuthState.Splash] so cold launch enters the new
-        // Phase-2 flow. Legacy unit tests call `onPhoneChanged(...)` before any
-        // assertions, which unconditionally pins state to `PhoneEntry`, so this
-        // switch is source-compatible with the existing `AuthViewModelStateTest`.
         private val _state = MutableStateFlow<AuthState>(AuthState.Splash)
         val state: StateFlow<AuthState> = _state.asStateFlow()
 
-        // region ── PhoneEntry (legacy) ───────────────────────────────────────
-        fun onPhoneChanged(
-            countryCode: String,
-            phone: String,
-        ) {
-            val digitsOnly = phone.filter { it.isDigit() }
-            _state.value = AuthState.PhoneEntry(countryCode = countryCode, phone = digitsOnly)
-        }
-
-        fun submitPhone() {
-            val current = _state.value as? AuthState.PhoneEntry ?: return
-            if (!isValidCountryCode(current.countryCode) || !isValidSubscriber(current.phone)) {
-                _state.value = AuthState.Error(current, "Please enter a valid phone number")
-                return
-            }
-            _state.value = AuthState.ProfileEntry(phoneE164 = current.countryCode + current.phone)
-        }
-
-        // endregion
-
-        // region ── ProfileEntry (legacy) ─────────────────────────────────────
-        fun onDisplayNameChanged(name: String) {
-            val current = _state.value as? AuthState.ProfileEntry ?: return
-            _state.value = current.copy(displayName = name)
-        }
-
-        fun submitProfile() {
-            val current = _state.value as? AuthState.ProfileEntry ?: return
-            val trimmed = current.displayName.trim()
-            if (trimmed.isEmpty() || trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
-                _state.value = AuthState.Error(current, "Display name must be 1-128 characters")
-                return
-            }
-
-            _state.value = current.copy(displayName = trimmed, isSubmitting = true)
-            viewModelScope.launch {
-                try {
-                    val password = generateAccountPassword()
-                    sessionManager.saveAccountPassword(password)
-
-                    // Backend responds with an OTP-pending payload; tokens aren't
-                    // issued until VerifyOTP succeeds, so nothing to persist here.
-                    withContext(dispatchers.io) {
-                        authServiceClient.register(
-                            RegisterRequest(
-                                phoneNumber = current.phoneE164,
-                                displayName = trimmed,
-                                password = password,
-                                device = buildDeviceInfo(),
-                            ),
-                        )
-                    }
-                    _state.value =
-                        AuthState.OtpEntry(
-                            phoneE164 = current.phoneE164,
-                            displayName = trimmed,
-                        )
-                } catch (e: Exception) {
-                    _state.value =
-                        AuthState.Error(
-                            current.copy(displayName = trimmed, isSubmitting = false),
-                            e.message ?: "Failed to request verification code",
-                        )
-                }
-            }
-        }
-
-        /**
-         * Re-request OTP from the backend using the cached profile data. Register is
-         * idempotent on `pending_registrations` so calling it again simply refreshes
-         * the code. Cached password is reused so the user sees the same session.
-         */
-        fun resendOtp() {
-            val current = _state.value as? AuthState.OtpEntry ?: return
-            _state.value = current.copy(otp = "", isSubmitting = true)
-            viewModelScope.launch {
-                try {
-                    val password =
-                        sessionManager.getAccountPassword()
-                            ?: generateAccountPassword().also { sessionManager.saveAccountPassword(it) }
-                    withContext(dispatchers.io) {
-                        authServiceClient.register(
-                            RegisterRequest(
-                                phoneNumber = current.phoneE164,
-                                displayName = current.displayName,
-                                password = password,
-                                device = buildDeviceInfo(),
-                            ),
-                        )
-                    }
-                    _state.value = current.copy(otp = "", isSubmitting = false)
-                } catch (e: Exception) {
-                    _state.value =
-                        AuthState.Error(
-                            current.copy(isSubmitting = false),
-                            e.message ?: "Failed to resend verification code",
-                        )
-                }
-            }
-        }
-        // endregion
-
-        // region ── OtpEntry ──────────────────────────────────────────────────
-        fun onOtpChanged(otp: String) {
-            val current = _state.value as? AuthState.OtpEntry ?: return
-            _state.value = current.copy(otp = otp.filter { it.isDigit() }.take(OTP_LENGTH))
-        }
-
-        fun submitOtp() {
-            val current = _state.value as? AuthState.OtpEntry ?: return
-            if (current.otp.length != OTP_LENGTH) {
-                _state.value = AuthState.Error(current, "Enter the 6-digit code")
-                return
-            }
-
-            _state.value = current.copy(isSubmitting = true)
-            viewModelScope.launch {
-                try {
-                    val response =
-                        withContext(dispatchers.io) {
-                            authServiceClient.verifyOtp(
-                                VerifyOTPRequest(
-                                    phoneNumber = current.phoneE164,
-                                    otpCode = current.otp,
-                                    device = buildDeviceInfo(),
-                                ),
-                            )
-                        }
-
-                    val userId = response.user?.id.orEmpty()
-                    if (response.accessToken.isEmpty() || userId.isEmpty() || response.deviceId <= 0) {
-                        _state.value =
-                            AuthState.Error(
-                                current.copy(isSubmitting = false),
-                                "Verification response missing session data",
-                            )
-                        return@launch
-                    }
-
-                    sessionManager.saveSession(
-                        accessToken = response.accessToken,
-                        refreshToken = response.refreshToken,
-                        userId = userId,
-                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
-                    )
-                    sessionManager.saveDeviceId(response.deviceId.toString())
-
-                    val serverDisplayName = response.user?.displayName.orEmpty()
-                    val resolvedDisplayName =
-                        if (serverDisplayName.isNotBlank() && serverDisplayName != current.displayName) {
-                            serverDisplayName
-                        } else {
-                            current.displayName
-                        }
-                    sessionManager.saveDisplayName(resolvedDisplayName)
-
-                    _state.value =
-                        AuthState.Permissions(
-                            phoneE164 = current.phoneE164,
-                            displayName = resolvedDisplayName,
-                            userId = userId,
-                            deviceId = response.deviceId,
-                        )
-                } catch (e: Exception) {
-                    _state.value =
-                        AuthState.Error(
-                            current.copy(isSubmitting = false),
-                            e.message ?: "Failed to verify code",
-                        )
-                }
-            }
-        }
-        // endregion
-
-        // region ── Permissions / Registering pipeline ───────────────────────
-
-        fun submitPermissions() {
-            val permissions = _state.value as? AuthState.Permissions ?: return
-            runRegistrationPipeline(permissions)
-        }
-
-        private fun runRegistrationPipeline(permissions: AuthState.Permissions) {
-            viewModelScope.launch {
-                try {
-                    _state.value = AuthState.Registering(RegistrationStep.GENERATING_KEYS, permissions)
-                    signalKeyManager.generateIdentity()
-
-                    _state.value = AuthState.Registering(RegistrationStep.UPLOADING_KEYS, permissions)
-                    signalKeyManager.uploadInitialKeyBundle()
-
-                    _state.value = AuthState.Registering(RegistrationStep.FETCHING_SENDER_CERT, permissions)
-                    senderCertificateManager.refresh()
-
-                    _state.value = AuthState.Registering(RegistrationStep.REGISTERING_PUSH, permissions)
-                    // Best-effort: FCM token upload must not block registration. If Play
-                    // Services are missing or the backend rejects the token we log and
-                    // continue; SyncInitializer's periodic refresh will retry later.
-                    try {
-                        pushTokenManager.uploadToken()
-                    } catch (e: Exception) {
-                        Log.w(
-                            "AuthViewModel",
-                            "Push token upload failed; continuing registration",
-                            e,
-                        )
-                    }
-
-                    _state.value = AuthState.Registering(RegistrationStep.PERSISTING, permissions)
-                    withContext(dispatchers.io) {
-                        identityKeyStore.initializeAccount(
-                            userId = permissions.userId,
-                            deviceId = permissions.deviceId.toString(),
-                            phoneE164 = permissions.phoneE164,
-                        )
-                    }
-
-                    _state.value = AuthState.Done
-                } catch (e: Exception) {
-                    _state.value =
-                        AuthState.Error(
-                            previousState = permissions,
-                            message = e.message ?: "Registration failed",
-                        )
-                }
-            }
-        }
-        // endregion
-
-        // region ── Error recovery ───────────────────────────────────────────
-        fun retry() {
-            val err = _state.value as? AuthState.Error ?: return
-            _state.value = err.previousState
-        }
-        // endregion
-
-        // region ── New iOS-parity transitions (Splash / Home / Login / Register)
+        // region ── Splash / Home chooser ────────────────────────────────────
 
         /** Splash -> Home; no-op if we're already past the splash. */
         fun onSplashComplete() {
@@ -329,6 +85,10 @@ class AuthViewModel
             val home = _state.value as? AuthState.Home ?: return
             _state.value = AuthState.RegisterPhoneAndName(phone = home.prefilledPhone)
         }
+
+        // endregion
+
+        // region ── LoginPhone ────────────────────────────────────────────────
 
         fun onLoginPhoneChanged(
             countryCode: String,
@@ -386,6 +146,10 @@ class AuthViewModel
                 }
             }
         }
+
+        // endregion
+
+        // region ── RegisterPhoneAndName ─────────────────────────────────────
 
         fun onRegisterChanged(
             countryCode: String,
@@ -449,6 +213,193 @@ class AuthViewModel
             }
         }
 
+        // endregion
+
+        // region ── OtpEntry ──────────────────────────────────────────────────
+
+        fun onOtpChanged(otp: String) {
+            val current = _state.value as? AuthState.OtpEntry ?: return
+            _state.value = current.copy(otp = otp.filter { it.isDigit() }.take(OTP_LENGTH))
+        }
+
+        /**
+         * Re-request OTP from the backend using the cached session data. Register
+         * is idempotent on `pending_registrations` so calling it again simply
+         * refreshes the code.
+         */
+        fun resendOtp() {
+            val current = _state.value as? AuthState.OtpEntry ?: return
+            _state.value = current.copy(otp = "", isSubmitting = true)
+            viewModelScope.launch {
+                try {
+                    // Login path: empty displayName uses the bootstrap sentinel so
+                    // the backend short-circuits without mutating the stored pw.
+                    val password =
+                        if (current.displayName.isEmpty()) {
+                            BOOTSTRAP_PASSWORD
+                        } else {
+                            sessionManager.getAccountPassword()
+                                ?: generateAccountPassword().also { sessionManager.saveAccountPassword(it) }
+                        }
+                    withContext(dispatchers.io) {
+                        authServiceClient.register(
+                            RegisterRequest(
+                                phoneNumber = current.phoneE164,
+                                displayName = current.displayName,
+                                password = password,
+                                device = buildDeviceInfo(),
+                            ),
+                        )
+                    }
+                    _state.value = current.copy(otp = "", isSubmitting = false)
+                } catch (e: Exception) {
+                    _state.value =
+                        AuthState.Error(
+                            current.copy(isSubmitting = false),
+                            e.message ?: "Failed to resend verification code",
+                        )
+                }
+            }
+        }
+
+        fun submitOtp() {
+            val current = _state.value as? AuthState.OtpEntry ?: return
+            if (current.otp.length != OTP_LENGTH) {
+                _state.value = AuthState.Error(current, "Enter the 6-digit code")
+                return
+            }
+
+            _state.value = current.copy(isSubmitting = true)
+            viewModelScope.launch {
+                try {
+                    val response =
+                        withContext(dispatchers.io) {
+                            authServiceClient.verifyOtp(
+                                VerifyOTPRequest(
+                                    phoneNumber = current.phoneE164,
+                                    otpCode = current.otp,
+                                    device = buildDeviceInfo(),
+                                ),
+                            )
+                        }
+
+                    val userId = response.user?.id.orEmpty()
+                    if (response.accessToken.isEmpty() || userId.isEmpty() || response.deviceId <= 0) {
+                        _state.value =
+                            AuthState.Error(
+                                current.copy(isSubmitting = false),
+                                "Verification response missing session data",
+                            )
+                        return@launch
+                    }
+
+                    sessionManager.saveSession(
+                        accessToken = response.accessToken,
+                        refreshToken = response.refreshToken,
+                        userId = userId,
+                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
+                    )
+                    sessionManager.saveDeviceId(response.deviceId.toString())
+
+                    val serverDisplayName = response.user?.displayName.orEmpty()
+                    val resolvedDisplayName =
+                        if (serverDisplayName.isNotBlank() && serverDisplayName != current.displayName) {
+                            serverDisplayName
+                        } else {
+                            current.displayName
+                        }
+                    sessionManager.saveDisplayName(resolvedDisplayName)
+
+                    runRegistrationPipeline(
+                        phoneE164 = current.phoneE164,
+                        displayName = resolvedDisplayName,
+                        userId = userId,
+                        deviceId = response.deviceId,
+                    )
+                } catch (e: Exception) {
+                    _state.value =
+                        AuthState.Error(
+                            current.copy(isSubmitting = false),
+                            e.message ?: "Failed to verify code",
+                        )
+                }
+            }
+        }
+
+        // endregion
+
+        // region ── Registering pipeline ──────────────────────────────────────
+
+        private suspend fun runRegistrationPipeline(
+            phoneE164: String,
+            displayName: String,
+            userId: String,
+            deviceId: Int,
+        ) {
+            fun stage(step: RegistrationStep) =
+                AuthState.Registering(
+                    step = step,
+                    phoneE164 = phoneE164,
+                    displayName = displayName,
+                    userId = userId,
+                    deviceId = deviceId,
+                )
+            try {
+                _state.value = stage(RegistrationStep.GENERATING_KEYS)
+                signalKeyManager.generateIdentity()
+
+                _state.value = stage(RegistrationStep.UPLOADING_KEYS)
+                signalKeyManager.uploadInitialKeyBundle()
+
+                _state.value = stage(RegistrationStep.FETCHING_SENDER_CERT)
+                senderCertificateManager.refresh()
+
+                _state.value = stage(RegistrationStep.REGISTERING_PUSH)
+                // Best-effort: FCM token upload must not block registration. If
+                // Play Services are missing or the backend rejects the token we
+                // log and continue; SyncInitializer's periodic refresh retries later.
+                try {
+                    pushTokenManager.uploadToken()
+                } catch (e: Exception) {
+                    Log.w(
+                        "AuthViewModel",
+                        "Push token upload failed; continuing registration",
+                        e,
+                    )
+                }
+
+                _state.value = stage(RegistrationStep.PERSISTING)
+                withContext(dispatchers.io) {
+                    identityKeyStore.initializeAccount(
+                        userId = userId,
+                        deviceId = deviceId.toString(),
+                        phoneE164 = phoneE164,
+                    )
+                }
+
+                _state.value = AuthState.Done
+            } catch (e: Exception) {
+                _state.value =
+                    AuthState.Error(
+                        previousState = stage(RegistrationStep.GENERATING_KEYS),
+                        message = e.message ?: "Registration failed",
+                    )
+            }
+        }
+
+        // endregion
+
+        // region ── Error recovery ───────────────────────────────────────────
+
+        fun retry() {
+            val err = _state.value as? AuthState.Error ?: return
+            _state.value = err.previousState
+        }
+
+        // endregion
+
+        // region ── Fast-login ───────────────────────────────────────────────
+
         /**
          * Best-effort silent session restore. Called from the Home screen on
          * first composition. Three paths:
@@ -506,9 +457,11 @@ class AuthViewModel
                 }
             }
         }
+
         // endregion
 
         // region ── Helpers ──────────────────────────────────────────────────
+
         private fun buildDeviceInfo(): DeviceInfo =
             DeviceInfo(
                 deviceName = Build.MODEL ?: "Android",
@@ -526,6 +479,7 @@ class AuthViewModel
 
         private fun isValidSubscriber(phone: String): Boolean =
             phone.all { it.isDigit() } && phone.length in MIN_SUBSCRIBER_DIGITS..MAX_SUBSCRIBER_DIGITS
+
         // endregion
 
         private companion object {

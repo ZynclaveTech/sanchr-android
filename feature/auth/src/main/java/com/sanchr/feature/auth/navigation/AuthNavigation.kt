@@ -30,31 +30,28 @@ import com.sanchr.feature.auth.AuthViewModel
 import com.sanchr.feature.auth.HomeScreen
 import com.sanchr.feature.auth.LoginPhoneScreen
 import com.sanchr.feature.auth.OtpScreen
-import com.sanchr.feature.auth.PermissionsScreen
 import com.sanchr.feature.auth.RegisterScreen
 import com.sanchr.feature.auth.RegistrationStep
 import com.sanchr.feature.auth.SplashScreen
 
 const val AUTH_GRAPH_ROUTE = "auth"
 
-// Live routes for the Phase-2 iOS-parity flow. `startDestination` is
-// `SPLASH_ROUTE`; from there the `AuthFlowHost` observer drives route
-// transitions based on `AuthState`. `OTP_ROUTE` + `PERMISSIONS_ROUTE` are
-// shared by both login and register paths.
+// Live routes for the iOS-parity flow. `startDestination` is `SPLASH_ROUTE`;
+// from there the `AuthFlowHost` observer drives route transitions based on
+// `AuthState`. `OTP_ROUTE` is shared by both login and register paths.
 const val SPLASH_ROUTE = "auth/splash"
 const val HOME_ROUTE = "auth/home"
 const val APP_LOCK_ROUTE = "auth/applock"
 const val LOGIN_PHONE_ROUTE = "auth/login"
 const val REGISTER_ROUTE = "auth/register"
 const val OTP_ROUTE = "auth/otp"
-const val PERMISSIONS_ROUTE = "auth/permissions"
 
 /**
  * Authentication graph, driven by [AuthState]. All screens share a single
  * [AuthViewModel] scoped to the `auth` nav graph (via `getBackStackEntry`), so
  * the flow's state survives route transitions.
  *
- * Route mapping (Phase 3):
+ * Route mapping:
  *
  *   Splash               -> SPLASH_ROUTE              (startDestination)
  *   Home                 -> HOME_ROUTE
@@ -62,15 +59,9 @@ const val PERMISSIONS_ROUTE = "auth/permissions"
  *   LoginPhone           -> LOGIN_PHONE_ROUTE
  *   RegisterPhoneAndName -> REGISTER_ROUTE
  *   OtpEntry             -> OTP_ROUTE
- *   Permissions          -> PERMISSIONS_ROUTE
  *   Registering          -> stays on current route; overlay renders on top
  *   Done                 -> fires [onAuthSuccess]
  *   Error                -> stays on current route; screens render inline error
- *
- * Legacy `PhoneEntry` / `ProfileEntry` states are no longer routed — the new
- * flow only reaches `OtpEntry` via `submitLoginPhone` / `submitRegister`. The
- * legacy states still exist in [AuthState] because [AuthViewModelStateTest]
- * exercises them; Phase 4 removes them entirely.
  */
 fun NavGraphBuilder.authGraph(
     navController: NavController,
@@ -88,9 +79,8 @@ fun NavGraphBuilder.authGraph(
             val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
             val vm: AuthViewModel = hiltViewModel(parent)
             AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
-                // Phase-2: AppLockGate is a stub; unlocking hands control back to the
-                // NavHost which routes to Home (the default authenticated-but-no-session
-                // landing under the Phase-2 state machine).
+                // AppLockGate is a stub; unlocking hands control back to the
+                // NavHost which routes to Home.
                 AppLockGateScreen(onUnlocked = onAuthSuccess)
             }
         }
@@ -123,13 +113,6 @@ fun NavGraphBuilder.authGraph(
                     onNavigateBack = { navController.popBackStack() },
                     viewModel = vm,
                 )
-            }
-        }
-        composable(PERMISSIONS_ROUTE) { entry ->
-            val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
-            val vm: AuthViewModel = hiltViewModel(parent)
-            AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
-                PermissionsScreen(viewModel = vm)
             }
         }
     }
@@ -165,14 +148,7 @@ private fun AuthState.toRouteTarget(): RouteTarget =
         is AuthState.LoginPhone -> RouteTarget(route = LOGIN_PHONE_ROUTE)
         is AuthState.RegisterPhoneAndName -> RouteTarget(route = REGISTER_ROUTE)
         is AuthState.OtpEntry -> RouteTarget(route = OTP_ROUTE)
-        is AuthState.Permissions ->
-            // OTP is verified by this point; prevent back-nav into completed steps.
-            RouteTarget(route = PERMISSIONS_ROUTE, popUpTo = AUTH_GRAPH_ROUTE, popInclusive = false)
         AuthState.Done -> RouteTarget(route = null, terminal = true)
-        // Legacy states are not reachable under the Phase-3 flow; they remain
-        // in [AuthState] only so `AuthViewModelStateTest` keeps compiling.
-        // Phase 4 removes them.
-        is AuthState.PhoneEntry, is AuthState.ProfileEntry -> RouteTarget(route = null)
         is AuthState.Registering, is AuthState.Error -> RouteTarget(route = null)
     }
 
