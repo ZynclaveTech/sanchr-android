@@ -184,6 +184,16 @@ class SendMessageUseCase
                 // the user's fault and is expected to clear on its own.
                 messageRepository.requeueAfterFailure(entity.id)
                 throw error
+            } catch (error: org.signal.libsignal.metadata.ProtocolUntrustedIdentityException) {
+                // Sealed-sender variant of the same condition — libsignal
+                // emits this type from SealedSessionCipher paths rather than
+                // the protocol-level [UntrustedIdentityException] caught below.
+                messageRepository.markSendFailed(
+                    messageId = entity.id,
+                    failureReason = UNTRUSTED_IDENTITY_REASON,
+                    failureClass = FailureClass.UNTRUSTED_IDENTITY,
+                )
+                throw error
             } catch (error: UntrustedIdentityException) {
                 // Peer's identity key rotated. Retrying will fail the
                 // same way until the user explicitly re-trusts the new
