@@ -57,12 +57,10 @@ class PushTokenManager
             }
 
             try {
-                val deviceId = sessionManager.getDeviceId() ?: ""
                 notificationClient.registerPushToken(
                     RegisterPushTokenRequest(
                         token = token,
-                        platform = "ANDROID",
-                        deviceId = deviceId,
+                        platform = "android",
                     ),
                 )
                 // Persist the token locally so we can detect changes

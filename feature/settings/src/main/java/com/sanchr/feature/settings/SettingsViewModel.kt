@@ -534,11 +534,18 @@ class SettingsViewModel
             try {
                 notificationServiceClient.updateNotificationPrefs(
                     UpdateNotificationPrefsRequest(
-                        messagesEnabled = messagesEnabled ?: current.messageNotificationsEnabled,
-                        callsEnabled = callsEnabled ?: current.callNotificationsEnabled,
+                        messageNotifications = messagesEnabled ?: current.messageNotificationsEnabled,
+                        callNotifications = callsEnabled ?: current.callNotificationsEnabled,
+                        // Proto does not distinguish group vs direct-message notifications on
+                        // the Android client today; re-use the messages toggle until a
+                        // dedicated UI setting lands.
+                        groupNotifications = groupEnabled ?: messagesEnabled ?: current.messageNotificationsEnabled,
                         showPreview = showPreview ?: (current.notificationPreview != "never"),
-                        soundEnabled = soundEnabled ?: current.notificationSoundEnabled,
-                        vibrationEnabled = vibrationEnabled ?: current.notificationVibrationEnabled,
+                        // The proto carries a platform sound name instead of a boolean.
+                        // Empty string = silent, non-empty = use that sound. Map the
+                        // local boolean to the platform default name for now.
+                        notificationSound = if (soundEnabled ?: current.notificationSoundEnabled) "default" else "",
+                        vibrate = vibrationEnabled ?: current.notificationVibrationEnabled,
                     ),
                 )
             } catch (e: Exception) {
