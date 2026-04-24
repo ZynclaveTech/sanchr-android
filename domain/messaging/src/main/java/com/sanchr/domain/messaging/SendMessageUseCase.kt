@@ -15,6 +15,7 @@ import com.sanchr.proto.messaging.SendMessageRequest
 import javax.inject.Inject
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
+import org.signal.libsignal.protocol.UntrustedIdentityException
 
 /**
  * Owns the outbound-message state machine.
@@ -106,31 +107,7 @@ class SendMessageUseCase
                     selfUserId = selfUserId,
                 )
 
-            val deviceMessages =
-                try {
-                    val plaintext = entity.contentBody.toByteArray(Charsets.UTF_8)
-                    recipients.flatMap { recipientId ->
-                        signalSessionManager
-                            .encryptForAllDevices(plaintext, recipientId)
-                            .map { encrypted ->
-                                DeviceMessage(
-                                    recipientId = recipientId,
-                                    deviceId = encrypted.deviceId,
-                                    cipherText = encrypted.ciphertext,
-                                )
-                            }
-                    }
-                } catch (error: EncryptFanOutEmptyException) {
-                    // Transient: no ciphertext was produced for any recipient
-                    // device (typically a sender-certificate fetch failure).
-                    // NEVER mark FAILED on this branch — the row must remain
-                    // eligible for SendRetryWorker indefinitely, otherwise
-                    // the message is lost. We deliberately skip the
-                    // MAX_ATTEMPTS gate here because a cert outage is not
-                    // the user's fault and is expected to clear on its own.
-                    messageRepository.requeueAfterFailure(entity.id)
-                    throw error
-                }
+            val deviceMessages = encryptFanOut(entity, recipients)
 
             guardZeroRecipients(entity, recipients, deviceMessages)
 
@@ -173,6 +150,57 @@ class SendMessageUseCase
         }
 
         /**
+         * Fans the plaintext out to every recipient's key-capable devices
+         * and returns the combined `DeviceMessage` list. Extracted from
+         * [attemptSendOrThrow] so two non-retriable branches
+         * ([EncryptFanOutEmptyException], [UntrustedIdentityException]) can
+         * be handled distinctly without exceeding the sibling function's
+         * throws budget.
+         */
+        private suspend fun encryptFanOut(
+            entity: MessageEntity,
+            recipients: List<String>,
+        ): List<DeviceMessage> =
+            try {
+                val plaintext = entity.contentBody.toByteArray(Charsets.UTF_8)
+                recipients.flatMap { recipientId ->
+                    signalSessionManager
+                        .encryptForAllDevices(plaintext, recipientId)
+                        .map { encrypted ->
+                            DeviceMessage(
+                                recipientId = recipientId,
+                                deviceId = encrypted.deviceId,
+                                cipherText = encrypted.ciphertext,
+                            )
+                        }
+                }
+            } catch (error: EncryptFanOutEmptyException) {
+                // Transient: no ciphertext was produced for any recipient
+                // device (typically a sender-certificate fetch failure).
+                // NEVER mark FAILED on this branch — the row must remain
+                // eligible for SendRetryWorker indefinitely, otherwise
+                // the message is lost. We deliberately skip the
+                // MAX_ATTEMPTS gate here because a cert outage is not
+                // the user's fault and is expected to clear on its own.
+                messageRepository.requeueAfterFailure(entity.id)
+                throw error
+            } catch (error: UntrustedIdentityException) {
+                // Peer's identity key rotated. Retrying will fail the
+                // same way until the user explicitly re-trusts the new
+                // key via a safety-number screen (M6). Mark the row
+                // terminally FAILED with a typed class so the UI renders
+                // a distinct affordance (warning icon + "Peer's safety
+                // number changed" tooltip) instead of the generic
+                // retry-me error icon.
+                messageRepository.markSendFailed(
+                    messageId = entity.id,
+                    failureReason = UNTRUSTED_IDENTITY_REASON,
+                    failureClass = FailureClass.UNTRUSTED_IDENTITY,
+                )
+                throw error
+            }
+
+        /**
          * Zero-recipient guard. Never ship a `SendMessage` RPC with an
          * empty device list — the server treats it as a successful no-op
          * send and the message is silently lost (the "silent SENT" bug
@@ -207,6 +235,7 @@ class SendMessageUseCase
             const val MAX_ATTEMPTS = 3
 
             const val NO_RECIPIENTS_REASON = "No recipients reachable"
+            const val UNTRUSTED_IDENTITY_REASON = "Peer's safety number changed"
         }
     }
 

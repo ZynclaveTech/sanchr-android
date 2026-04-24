@@ -18,6 +18,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
+import org.signal.libsignal.protocol.UntrustedIdentityException
 
 class SendMessageUseCaseTest {
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
@@ -96,6 +97,33 @@ class SendMessageUseCaseTest {
             }
             coVerify(exactly = 0) {
                 messageRepository.requeueAfterFailure(any())
+            }
+        }
+
+    @Test
+    fun `attemptSend marks FAILED with UNTRUSTED_IDENTITY when peer identity rotates`() =
+        runTest {
+            primeCommonMocks()
+            coEvery {
+                signalSessionManager.encryptForAllDevices(any(), "peer-uuid")
+            } throws UntrustedIdentityException("peer-uuid", mockk(relaxed = true))
+
+            val result = useCase.attemptSend(entity)
+
+            assertTrue(result is Result.Error)
+            assertTrue(result.exception is UntrustedIdentityException)
+            coVerify(exactly = 1) {
+                messageRepository.markSendFailed(
+                    messageId = "msg-1",
+                    failureReason = "Peer's safety number changed",
+                    failureClass = FailureClass.UNTRUSTED_IDENTITY,
+                )
+            }
+            coVerify(exactly = 0) {
+                messageRepository.requeueAfterFailure(any())
+            }
+            coVerify(exactly = 0) {
+                messagingClient.sendMessage(any())
             }
         }
 }

@@ -16,7 +16,6 @@ import org.signal.libsignal.protocol.NoSessionException
 import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
-import org.signal.libsignal.protocol.UntrustedIdentityException
 import org.signal.libsignal.protocol.message.CiphertextMessage
 import org.signal.libsignal.protocol.message.PreKeySignalMessage
 import org.signal.libsignal.protocol.message.SignalMessage
@@ -244,11 +243,16 @@ class SignalSessionManager
                     // Per-device: session disappeared between hasSession() and
                     // the encrypt call (concurrent reset, store corruption).
                     Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
-                } catch (t: UntrustedIdentityException) {
-                    // Per-device: identity key rotated without a trust prompt.
-                    // TODO(safety-numbers): surface to UI once safety-number flow lands.
-                    Log.w(TAG, "Failed to encrypt for $recipientId:$deviceId — skipping", t)
                 }
+                // UntrustedIdentityException is deliberately NOT caught here:
+                // it signals that the peer's identity key has rotated, which
+                // is a user-facing trust decision (safety-number screen in
+                // M6) — retrying blindly will fail the same way. Propagate
+                // so SendMessageUseCase can mark the outbound row FAILED
+                // with FailureClass.UNTRUSTED_IDENTITY and surface a
+                // distinct UI affordance rather than silently dropping the
+                // message on this recipient while happily sending to
+                // others.
                 // Any other exception (I/O, sender-cert failure, cancellation,
                 // programmer error) propagates so the caller can make an
                 // informed decision rather than silently dropping the fanout.
