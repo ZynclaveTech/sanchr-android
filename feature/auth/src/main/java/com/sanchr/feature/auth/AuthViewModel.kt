@@ -29,6 +29,11 @@ import kotlinx.coroutines.withContext
  * ```
  * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done
  * ```
+ *
+ * Phase 1 of the auth/onboarding realignment has appended transition stubs for
+ * the new iOS-parity flow (`Splash -> Home -> LoginPhone|RegisterPhoneAndName`)
+ * below. Those handlers are intentionally unreferenced by the live navigation
+ * graph in this phase — Phase 2 will migrate screens onto them.
  */
 @HiltViewModel
 class AuthViewModel
@@ -277,6 +282,58 @@ class AuthViewModel
         fun retry() {
             val err = _state.value as? AuthState.Error ?: return
             _state.value = err.previousState
+        }
+        // endregion
+
+        // region ── Phase 1 realignment stubs (iOS-parity flow) ──────────────
+        //
+        // These transitions drive the new Splash/Home/LoginPhone/RegisterPhoneAndName
+        // states. They are intentionally *not* wired into the running nav graph
+        // yet — Phase 2 migrates screens onto them, Phase 5 migrates the graph.
+        // Keeping them here means Phase 2 can introduce screens without
+        // re-touching this file and risking a merge-conflict with the legacy
+        // handlers above.
+
+        /** Splash -> Home; no-op if we're already past the splash. */
+        fun onSplashComplete() {
+            if (_state.value is AuthState.Splash) {
+                _state.value = AuthState.Home()
+            }
+        }
+
+        /** Home -> LoginPhone. Carries over any pre-filled phone for continuity. */
+        fun chooseLogin() {
+            val home = _state.value as? AuthState.Home ?: return
+            _state.value = AuthState.LoginPhone(phone = home.prefilledPhone)
+        }
+
+        /** Home -> RegisterPhoneAndName. Carries over any pre-filled phone. */
+        fun chooseRegister() {
+            val home = _state.value as? AuthState.Home ?: return
+            _state.value = AuthState.RegisterPhoneAndName(phone = home.prefilledPhone)
+        }
+
+        fun onLoginPhoneChanged(
+            @Suppress("UNUSED_PARAMETER") countryCode: String,
+            @Suppress("UNUSED_PARAMETER") phone: String,
+        ) {
+            TODO("Phase-3: apply to AuthState.LoginPhone")
+        }
+
+        fun submitLoginPhone() {
+            TODO("Phase-3: dispatch Register RPC with empty displayName + bootstrap password")
+        }
+
+        fun onRegisterChanged(
+            @Suppress("UNUSED_PARAMETER") countryCode: String,
+            @Suppress("UNUSED_PARAMETER") phone: String,
+            @Suppress("UNUSED_PARAMETER") displayName: String,
+        ) {
+            TODO("Phase-3: apply to AuthState.RegisterPhoneAndName")
+        }
+
+        fun submitRegister() {
+            TODO("Phase-3: dispatch Register RPC with generated password")
         }
         // endregion
 

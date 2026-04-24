@@ -23,6 +23,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
+import com.sanchr.feature.auth.AppLockGateScreen
 import com.sanchr.feature.auth.AuthState
 import com.sanchr.feature.auth.AuthViewModel
 import com.sanchr.feature.auth.LoginScreen
@@ -30,12 +31,23 @@ import com.sanchr.feature.auth.OtpScreen
 import com.sanchr.feature.auth.PermissionsScreen
 import com.sanchr.feature.auth.ProfileScreen
 import com.sanchr.feature.auth.RegistrationStep
+import com.sanchr.feature.auth.SplashScreen
 
 const val AUTH_GRAPH_ROUTE = "auth"
 const val LOGIN_ROUTE = "auth/phone"
 const val PROFILE_ROUTE = "auth/profile"
 const val OTP_ROUTE = "auth/otp"
 const val PERMISSIONS_ROUTE = "auth/permissions"
+
+// --- Phase 1 realignment route constants (registered but unreachable) ------
+// Real transitions land in Phase 5; these are declared now so Phase 2 screen
+// stubs can reference stable route names and sub-agents working on navigation
+// don't have to touch this file again.
+const val SPLASH_ROUTE = "auth/splash"
+const val HOME_ROUTE = "auth/home"
+const val APP_LOCK_ROUTE = "auth/applock"
+const val LOGIN_PHONE_ROUTE = "auth/login"
+const val REGISTER_ROUTE = "auth/register"
 
 /**
  * Authentication graph, driven by [AuthState]. All four screens share a single
@@ -52,6 +64,15 @@ const val PERMISSIONS_ROUTE = "auth/permissions"
  *
  * Each state screen is also responsible for rendering when its state is wrapped
  * in [AuthState.Error], so popping on error isn't required.
+ *
+ * ## Phase 1 realignment
+ *
+ * The `SPLASH_ROUTE`, `HOME_ROUTE`, `APP_LOCK_ROUTE`, `LOGIN_PHONE_ROUTE`, and
+ * `REGISTER_ROUTE` destinations below are registered but **unreachable** —
+ * `startDestination` is still [LOGIN_ROUTE] and nothing navigates to them.
+ * Phase 5 will flip the start destination and wire `AuthFlowHost` to the new
+ * [AuthState] subclasses. Screens attached to the new routes are placeholders
+ * marked "TODO Phase 2" so a typo won't accidentally ship to users.
  */
 fun NavGraphBuilder.authGraph(
     navController: NavController,
@@ -92,6 +113,28 @@ fun NavGraphBuilder.authGraph(
                 PermissionsScreen(viewModel = vm)
             }
         }
+
+        // --- Phase 1 realignment scaffolds (registered, not reachable) ---
+        composable(SPLASH_ROUTE) {
+            SplashScreen(onSplashComplete = {})
+        }
+        composable(APP_LOCK_ROUTE) {
+            AppLockGateScreen(onUnlocked = {})
+        }
+        composable(HOME_ROUTE) { PhasePlaceholder(label = "Home") }
+        composable(LOGIN_PHONE_ROUTE) { PhasePlaceholder(label = "LoginPhone") }
+        composable(REGISTER_ROUTE) { PhasePlaceholder(label = "Register") }
+    }
+}
+
+/** Placeholder for Phase-2 screens. Never rendered in Phase 1 because nothing navigates here. */
+@Composable
+private fun PhasePlaceholder(label: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = "TODO Phase 2 — $label")
     }
 }
 
@@ -139,6 +182,15 @@ private fun AuthFlowHost(
             is AuthState.Registering -> Unit // overlay handles UX
             AuthState.Done -> onAuthSuccess()
             is AuthState.Error -> Unit // screens render inline
+            // Phase 1 realignment states — unreachable today; Phase 5 will
+            // extend this when statement with real routing. Listed explicitly
+            // so the compiler's exhaustiveness check catches future additions.
+            AuthState.Splash,
+            AuthState.AppLocked,
+            is AuthState.Home,
+            is AuthState.LoginPhone,
+            is AuthState.RegisterPhoneAndName,
+            -> Unit
         }
     }
 
