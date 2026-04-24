@@ -40,6 +40,8 @@ class SessionManager
             const val KEY_BACKUP_LAST_AT = "backup_last_at"
             const val KEY_BACKUP_LAST_CONTENT_HASH = "backup_last_content_hash"
             const val KEY_SENDER_CERTIFICATE = "sender_certificate_b64"
+            const val KEY_ACCOUNT_PASSWORD = "account_password"
+            const val KEY_DISPLAY_NAME = "display_name"
         }
 
         private val masterKey =
@@ -169,6 +171,31 @@ class SessionManager
             encryptedPrefs
                 .edit()
                 .putString(KEY_SENDER_CERTIFICATE, Base64.encodeToString(bytes, Base64.NO_WRAP))
+                .apply()
+        }
+
+        /**
+         * Returns the randomly-generated per-account password issued at
+         * Register time. Stored encrypted because the backend identifies the
+         * device on subsequent `Login` calls via this secret (we never prompt
+         * the user for it).
+         */
+        fun getAccountPassword(): String? = encryptedPrefs.getString(KEY_ACCOUNT_PASSWORD, null)
+
+        fun saveAccountPassword(password: String) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_ACCOUNT_PASSWORD, password)
+                .apply()
+        }
+
+        /** Display name, persisted locally after OTP verification. */
+        fun getDisplayName(): String? = encryptedPrefs.getString(KEY_DISPLAY_NAME, null)
+
+        fun saveDisplayName(displayName: String) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_DISPLAY_NAME, displayName)
                 .apply()
         }
 
