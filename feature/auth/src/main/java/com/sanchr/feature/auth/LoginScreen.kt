@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,18 +29,24 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sanchr.core.designsystem.component.CountryCodePicker
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextButton
+import com.sanchr.core.designsystem.component.findCountryByDialCode
+import com.sanchr.core.designsystem.component.resolveDefaultCountry
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
@@ -65,6 +70,10 @@ fun LoginScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // One-shot device-locale resolution. Memoized by Context so config
+    // changes (theme etc.) don't thrash the TelephonyManager lookup.
+    val deviceDefault = remember(context) { resolveDefaultCountry(context) }
 
     // Resolve the PhoneEntry snapshot we need to render. If the current state is an
     // Error whose previousState is PhoneEntry, we render that PhoneEntry + inline
@@ -75,6 +84,27 @@ fun LoginScreen(
             is AuthState.Error -> s.previousState as? AuthState.PhoneEntry ?: return
             else -> return // NavHost will navigate away; render nothing to avoid flicker.
         }
+
+    // Seed the VM's country code from the device SIM/network on first
+    // composition, but only if the user hasn't typed yet AND the current
+    // country is still the PhoneEntry default "+1" (US). This avoids
+    // stomping a user-selected country on screen rotation.
+    LaunchedEffect(deviceDefault.dialCode) {
+        if (phoneEntry.phone.isEmpty() &&
+            phoneEntry.countryCode == "+1" &&
+            deviceDefault.dialCode != "+1"
+        ) {
+            viewModel.onPhoneChanged(deviceDefault.dialCode, "")
+        }
+    }
+
+    // Resolve the Country to display in the picker pill. Prefer an exact
+    // single match on dial code; fall back to the device default when the
+    // dial code is shared (e.g. "+1" covers US and CA).
+    val selectedCountry =
+        findCountryByDialCode(phoneEntry.countryCode)
+            ?: deviceDefault.takeIf { it.dialCode == phoneEntry.countryCode }
+            ?: deviceDefault
 
     val errorMessage = (state as? AuthState.Error)?.message
 
@@ -147,20 +177,15 @@ fun LoginScreen(
                 leadingIcon = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 12.dp),
+                        modifier = Modifier.padding(start = 8.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Public,
-                            contentDescription = "Country",
-                            tint = SanchrGray500,
-                            modifier = Modifier.size(20.dp),
+                        CountryCodePicker(
+                            selected = selectedCountry,
+                            onSelected = { country ->
+                                viewModel.onPhoneChanged(country.dialCode, phoneEntry.phone)
+                            },
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = phoneEntry.countryCode,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                        )
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
