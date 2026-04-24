@@ -14,17 +14,20 @@ sealed interface AuthState {
     data class PhoneEntry(
         val countryCode: String = "+1",
         val phone: String = "",
+        val isSubmitting: Boolean = false,
     ) : AuthState
 
     data class ProfileEntry(
         val phoneE164: String,
         val displayName: String = "",
+        val isSubmitting: Boolean = false,
     ) : AuthState
 
     data class OtpEntry(
         val phoneE164: String,
         val displayName: String,
         val otp: String = "",
+        val isSubmitting: Boolean = false,
     ) : AuthState
 
     data class Permissions(

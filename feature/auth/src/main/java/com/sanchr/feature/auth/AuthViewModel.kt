@@ -82,6 +82,7 @@ class AuthViewModel
                 return
             }
 
+            _state.value = current.copy(displayName = trimmed, isSubmitting = true)
             viewModelScope.launch {
                 try {
                     val password = generateAccountPassword()
@@ -107,8 +108,42 @@ class AuthViewModel
                 } catch (e: Exception) {
                     _state.value =
                         AuthState.Error(
-                            current,
+                            current.copy(displayName = trimmed, isSubmitting = false),
                             e.message ?: "Failed to request verification code",
+                        )
+                }
+            }
+        }
+
+        /**
+         * Re-request OTP from the backend using the cached profile data. Register is
+         * idempotent on `pending_registrations` so calling it again simply refreshes
+         * the code. Cached password is reused so the user sees the same session.
+         */
+        fun resendOtp() {
+            val current = _state.value as? AuthState.OtpEntry ?: return
+            _state.value = current.copy(otp = "", isSubmitting = true)
+            viewModelScope.launch {
+                try {
+                    val password =
+                        sessionManager.getAccountPassword()
+                            ?: generateAccountPassword().also { sessionManager.saveAccountPassword(it) }
+                    withContext(dispatchers.io) {
+                        authServiceClient.register(
+                            RegisterRequest(
+                                phoneNumber = current.phoneE164,
+                                displayName = current.displayName,
+                                password = password,
+                                device = buildDeviceInfo(),
+                            ),
+                        )
+                    }
+                    _state.value = current.copy(otp = "", isSubmitting = false)
+                } catch (e: Exception) {
+                    _state.value =
+                        AuthState.Error(
+                            current.copy(isSubmitting = false),
+                            e.message ?: "Failed to resend verification code",
                         )
                 }
             }
@@ -128,6 +163,7 @@ class AuthViewModel
                 return
             }
 
+            _state.value = current.copy(isSubmitting = true)
             viewModelScope.launch {
                 try {
                     val response =
@@ -143,7 +179,11 @@ class AuthViewModel
 
                     val userId = response.user?.id.orEmpty()
                     if (response.accessToken.isEmpty() || userId.isEmpty() || response.deviceId <= 0) {
-                        _state.value = AuthState.Error(current, "Verification response missing session data")
+                        _state.value =
+                            AuthState.Error(
+                                current.copy(isSubmitting = false),
+                                "Verification response missing session data",
+                            )
                         return@launch
                     }
 
@@ -173,7 +213,10 @@ class AuthViewModel
                         )
                 } catch (e: Exception) {
                     _state.value =
-                        AuthState.Error(current, e.message ?: "Failed to verify code")
+                        AuthState.Error(
+                            current.copy(isSubmitting = false),
+                            e.message ?: "Failed to verify code",
+                        )
                 }
             }
         }

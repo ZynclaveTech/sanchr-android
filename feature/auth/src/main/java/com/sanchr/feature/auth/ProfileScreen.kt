@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -30,33 +29,42 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
-import com.sanchr.core.designsystem.theme.SanchrGradients
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWhite
 
+/**
+ * Profile-entry step: collects the user's display name prior to OTP dispatch.
+ *
+ * Under the revised M4 topology this step precedes OTP — submitting here issues
+ * the `Register` RPC which generates the OTP. Avatar + bio fields remain as
+ * placeholders; they aren't wired into the AuthViewModel contract yet.
+ */
 @Composable
-fun RegisterScreen(
-    onRegistered: () -> Unit,
+fun ProfileScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: RegisterViewModel = hiltViewModel(),
+    viewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    val profileEntry: AuthState.ProfileEntry =
+        when (val s = state) {
+            is AuthState.ProfileEntry -> s
+            is AuthState.Error -> s.previousState as? AuthState.ProfileEntry ?: return
+            else -> return
+        }
+    val errorMessage = (state as? AuthState.Error)?.message
 
     Scaffold(
         topBar = {
-            SanchrTopBar(
-                title = "Create Profile",
-                onNavigateBack = onNavigateBack,
-            )
+            SanchrTopBar(title = "Create Profile", onNavigateBack = onNavigateBack)
         },
         modifier = modifier,
     ) { innerPadding ->
@@ -72,7 +80,7 @@ fun RegisterScreen(
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // --- Avatar placeholder with camera icon overlay ---
+            // Avatar placeholder — image picker wiring arrives in a later milestone.
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.size(112.dp),
@@ -94,11 +102,8 @@ fun RegisterScreen(
                     }
                 }
 
-                // Camera overlay button
                 IconButton(
-                    onClick = {
-                        // TODO: Launch image picker for avatar
-                    },
+                    onClick = { /* TODO: Launch image picker for avatar */ },
                     modifier =
                         Modifier
                             .size(36.dp)
@@ -122,77 +127,32 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // --- Display name ---
             SanchrTextField(
-                value = uiState.displayName,
+                value = profileEntry.displayName,
                 onValueChange = viewModel::onDisplayNameChanged,
                 label = "Display Name",
                 placeholder = "Your name",
-                isError = uiState.errorMessage != null,
-                errorMessage = uiState.errorMessage,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
-
-            // --- Bio / status optional field ---
-            SanchrTextField(
-                value = uiState.bio,
-                onValueChange = viewModel::onBioChanged,
-                label = "Bio (optional)",
-                placeholder = "Tell people about yourself",
-                singleLine = false,
-                maxLines = 3,
+                isError = errorMessage != null,
+                errorMessage = errorMessage,
+                enabled = !profileEntry.isSubmitting,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // --- Create your account gradient button ---
-            Box(
+            SanchrButton(
+                text = if (profileEntry.isSubmitting) "Sending..." else "Send code",
+                onClick = {
+                    if (state is AuthState.Error) viewModel.retry()
+                    viewModel.submitProfile()
+                },
+                enabled = !profileEntry.isSubmitting && profileEntry.displayName.isNotBlank(),
+                isLoading = profileEntry.isSubmitting,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
-                        .clip(
-                            com.sanchr.core.designsystem.theme.SanchrShapeTokens.CornerFull,
-                        ).background(
-                            brush =
-                                if (!uiState.isLoading && uiState.displayName.isNotBlank()) {
-                                    SanchrGradients.Primary
-                                } else {
-                                    Brush.linearGradient(
-                                        colors =
-                                            listOf(
-                                                com.sanchr.core.designsystem.theme.SanchrGray400
-                                                    .copy(alpha = 0.5f),
-                                                com.sanchr.core.designsystem.theme.SanchrGray400
-                                                    .copy(alpha = 0.5f),
-                                            ),
-                                    )
-                                },
-                        ),
-            ) {
-                SanchrButton(
-                    onClick = { viewModel.register(onRegistered) },
-                    enabled = !uiState.isLoading && uiState.displayName.isNotBlank(),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = SanchrWhite,
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                    }
-                    Text(
-                        text = if (uiState.isLoading) "Creating..." else "Create your account",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SanchrWhite,
-                    )
-                }
-            }
+                        .height(52.dp),
+            )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
 

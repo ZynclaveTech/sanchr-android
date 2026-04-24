@@ -8,7 +8,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.navArgument
 import com.sanchr.feature.auth.LoginScreen
 import com.sanchr.feature.auth.OtpScreen
-import com.sanchr.feature.auth.RegisterScreen
+import com.sanchr.feature.auth.ProfileScreen
 
 const val AUTH_GRAPH_ROUTE = "auth"
 const val LOGIN_ROUTE = "auth/login"
@@ -60,8 +60,7 @@ fun NavGraphBuilder.authGraph(
         }
 
         composable(REGISTER_ROUTE) {
-            RegisterScreen(
-                onRegistered = onAuthSuccess,
+            ProfileScreen(
                 onNavigateBack = { navController.popBackStack() },
             )
         }
