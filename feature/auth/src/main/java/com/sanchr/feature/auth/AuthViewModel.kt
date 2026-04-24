@@ -1,6 +1,7 @@
 package com.sanchr.feature.auth
 
 import android.os.Build
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.DispatcherProvider
@@ -11,17 +12,31 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.DeviceInfo
+import com.sanchr.proto.auth.LoginRequest
 import com.sanchr.proto.auth.RegisterRequest
 import com.sanchr.proto.auth.VerifyOTPRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.security.SecureRandom
 import java.util.Base64
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * Shared sentinel password sent on the *existing-phone* branch of Register.
+ *
+ * Backend ignores this on the existing-phone path — see
+ * `backend-oss/crates/sanchr-core/src/auth/handlers.rs:297-305`, where the
+ * Register handler short-circuits to "re-issue OTP" for a verified phone and
+ * never compares the submitted password against the stored one. Matches the
+ * iOS sentinel pattern (AuthRepository.swift:61-86) so both clients hit the
+ * same code path.
+ */
+private const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
 
 /**
  * Drives the onboarding state machine defined in [AuthState]:
@@ -31,12 +46,10 @@ import kotlinx.coroutines.withContext
  * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done       (legacy)
  * ```
  *
- * Phase 2 of the realignment has wired the new Home/LoginPhone/RegisterPhoneAndName
- * state transitions and their screens, and flipped the initial state to [AuthState.Splash]
- * so cold launch hits the new flow. The RPC dispatch on `submitLoginPhone()` and
- * `submitRegister()` remains a Phase-3 `TODO` — those calls currently throw
- * `NotImplementedError` intentionally so UI manual-tests can verify the
- * navigation up to "tap Continue" without accidentally contacting the backend.
+ * Phase 3 of the realignment has wired the RPC dispatch for
+ * `submitLoginPhone()` and `submitRegister()` and added [attemptFastLogin]
+ * which restores the session silently using the cached phone + password when
+ * we have them, so warm-start returning users skip the Home chooser entirely.
  *
  * Legacy `submitPhone` / `submitProfile` / `onPhoneChanged` / `onDisplayNameChanged`
  * handlers remain live and are covered by `AuthViewModelStateTest`. They will be
@@ -261,7 +274,7 @@ class AuthViewModel
                     try {
                         pushTokenManager.uploadToken()
                     } catch (e: Exception) {
-                        android.util.Log.w(
+                        Log.w(
                             "AuthViewModel",
                             "Push token upload failed; continuing registration",
                             e,
@@ -297,11 +310,6 @@ class AuthViewModel
         // endregion
 
         // region ── New iOS-parity transitions (Splash / Home / Login / Register)
-        //
-        // RPC dispatch from `submitLoginPhone()` and `submitRegister()` lands in
-        // Phase 3; the bodies currently throw `NotImplementedError` through the
-        // stdlib `TODO(...)` helper. That's intentional — tapping Continue will
-        // crash the app loudly so we catch any premature production routing.
 
         /** Splash -> Home; no-op if we're already past the splash. */
         fun onSplashComplete() {
@@ -334,17 +342,49 @@ class AuthViewModel
                 )
         }
 
+        /**
+         * Existing-phone login path. Dispatches `Register` with an empty display
+         * name + bootstrap password, mirroring iOS `AuthRepository.requestOTP`
+         * (AuthRepository.swift:61-86). Backend short-circuits on a verified
+         * phone (handlers.rs:297-305) and re-issues an OTP without touching the
+         * stored password.
+         */
         fun submitLoginPhone() {
             val current = _state.value as? AuthState.LoginPhone ?: return
             if (!isValidCountryCode(current.countryCode) || !isValidSubscriber(current.phone)) {
                 _state.value = AuthState.Error(current, "Please enter a valid phone number")
                 return
             }
-            // Phase 3 will dispatch `authServiceClient.register(...)` with an empty
-            // display name + bootstrap password, mirroring iOS `AuthRepository.requestOTP`.
-            // Until then this path intentionally throws so a premature merge can't
-            // silently call the backend.
-            TODO("Phase-3: call Login RPC or Register sentinel path")
+            val phoneE164 = current.countryCode + current.phone
+            _state.value = current.copy(isSubmitting = true)
+            viewModelScope.launch {
+                try {
+                    // Persist the phone so resend + future fast-login have it.
+                    sessionManager.saveStoredPhoneE164(phoneE164)
+                    withContext(dispatchers.io) {
+                        authServiceClient.register(
+                            RegisterRequest(
+                                phoneNumber = phoneE164,
+                                displayName = "",
+                                password = BOOTSTRAP_PASSWORD,
+                                device = buildDeviceInfo(),
+                            ),
+                        )
+                    }
+                    // Empty displayName signals the login path to downstream screens.
+                    _state.value =
+                        AuthState.OtpEntry(
+                            phoneE164 = phoneE164,
+                            displayName = "",
+                        )
+                } catch (e: Exception) {
+                    _state.value =
+                        AuthState.Error(
+                            current.copy(isSubmitting = false),
+                            e.message ?: "Failed to request verification code",
+                        )
+                }
+            }
         }
 
         fun onRegisterChanged(
@@ -361,6 +401,11 @@ class AuthViewModel
                 )
         }
 
+        /**
+         * New-user registration path. Generates a per-account password, persists
+         * it, and calls Register with the submitted display name. Mirrors iOS
+         * `AuthRepository.register`.
+         */
         fun submitRegister() {
             val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
             val trimmedName = current.displayName.trim()
@@ -372,10 +417,94 @@ class AuthViewModel
                 _state.value = AuthState.Error(current, "Please enter a valid phone number")
                 return
             }
-            // Phase 3 will dispatch `authServiceClient.register(...)` with a freshly-
-            // generated password mirroring iOS `AuthRepository.register`. Throws
-            // until then so premature routing to the network is impossible.
-            TODO("Phase-3: call Register with generated password")
+            val phoneE164 = current.countryCode + current.phone
+            _state.value = current.copy(displayName = trimmedName, isSubmitting = true)
+            viewModelScope.launch {
+                try {
+                    val password = generateAccountPassword()
+                    sessionManager.saveAccountPassword(password)
+                    sessionManager.saveStoredPhoneE164(phoneE164)
+                    withContext(dispatchers.io) {
+                        authServiceClient.register(
+                            RegisterRequest(
+                                phoneNumber = phoneE164,
+                                displayName = trimmedName,
+                                password = password,
+                                device = buildDeviceInfo(),
+                            ),
+                        )
+                    }
+                    _state.value =
+                        AuthState.OtpEntry(
+                            phoneE164 = phoneE164,
+                            displayName = trimmedName,
+                        )
+                } catch (e: Exception) {
+                    _state.value =
+                        AuthState.Error(
+                            current.copy(displayName = trimmedName, isSubmitting = false),
+                            e.message ?: "Failed to request verification code",
+                        )
+                }
+            }
+        }
+
+        /**
+         * Best-effort silent session restore. Called from the Home screen on
+         * first composition. Three paths:
+         *
+         * 1. Valid unexpired access token already on disk → jump straight to
+         *    [AuthState.Done]; the NavHost routes the user out.
+         * 2. Cached phone + account password → call `Login` (handlers.rs:413-463
+         *    returns tokens directly, no OTP round-trip) and persist the
+         *    session. On any failure, stay on Home silently — this is a best-
+         *    effort path and surfacing an error would be hostile UX.
+         * 3. No cached credentials → return null.
+         *
+         * @return the launched [Job] when an RPC attempt was kicked off, or
+         * `null` if no attempt was made (nothing to await).
+         */
+        fun attemptFastLogin(): Job? {
+            if (sessionManager.getAccessToken() != null && !sessionManager.isTokenExpired()) {
+                _state.value = AuthState.Done
+                return null
+            }
+            val phoneE164 = sessionManager.getStoredPhoneE164() ?: return null
+            val password = sessionManager.getAccountPassword() ?: return null
+            return viewModelScope.launch {
+                try {
+                    val response =
+                        withContext(dispatchers.io) {
+                            authServiceClient.login(
+                                LoginRequest(
+                                    phoneNumber = phoneE164,
+                                    password = password,
+                                    device = buildDeviceInfo(),
+                                ),
+                            )
+                        }
+                    val userId = response.user?.id.orEmpty()
+                    if (response.accessToken.isEmpty() || userId.isEmpty() || response.deviceId <= 0) {
+                        Log.w("AuthViewModel", "Fast-login response missing session data; staying on Home")
+                        return@launch
+                    }
+                    sessionManager.saveSession(
+                        accessToken = response.accessToken,
+                        refreshToken = response.refreshToken,
+                        userId = userId,
+                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
+                    )
+                    sessionManager.saveDeviceId(response.deviceId.toString())
+                    val serverDisplayName = response.user?.displayName.orEmpty()
+                    if (serverDisplayName.isNotBlank()) {
+                        sessionManager.saveDisplayName(serverDisplayName)
+                    }
+                    _state.value = AuthState.Done
+                } catch (e: Exception) {
+                    // Silent by design — user sees Home and can continue manually.
+                    Log.w("AuthViewModel", "Fast-login failed; falling back to Home", e)
+                }
+            }
         }
         // endregion
 

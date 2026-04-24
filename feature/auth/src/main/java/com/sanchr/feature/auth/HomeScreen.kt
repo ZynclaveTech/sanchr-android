@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +48,11 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
  * [AuthState.LoginPhone]; tapping "Sign up" transitions to
  * [AuthState.RegisterPhoneAndName].
  *
+ * On first composition this screen fires [AuthViewModel.attemptFastLogin].
+ * When the device has cached credentials the VM transitions straight to
+ * [AuthState.Done] and `AuthFlowHost` navigates out before the user ever
+ * sees the chooser. Failures are silent — the user just sees this screen.
+ *
  * TODO(copy): Privacy Policy / Terms URLs below use the placeholder
  *   `sanchr.app/privacy` and `sanchr.app/terms`. Replace with the final
  *   marketing URLs once legal sign-off lands.
@@ -57,6 +63,10 @@ fun HomeScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val uriHandler = LocalUriHandler.current
+
+    LaunchedEffect(Unit) {
+        viewModel.attemptFastLogin()
+    }
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(

@@ -42,6 +42,7 @@ class SessionManager
             const val KEY_BACKUP_LAST_CONTENT_HASH = "backup_last_content_hash"
             const val KEY_SENDER_CERTIFICATE = "sender_certificate_b64"
             const val KEY_ACCOUNT_PASSWORD = "account_password"
+            const val KEY_ACCOUNT_PHONE_E164 = "account_phone_e164"
             const val KEY_DISPLAY_NAME = "display_name"
         }
 
@@ -196,6 +197,20 @@ class SessionManager
                 .apply()
         }
 
+        /**
+         * Returns the E.164 phone number associated with the active account, or
+         * null when none is stored. Used by the fast-login bootstrap path and
+         * OTP-resend to rebuild the Register payload without re-prompting the user.
+         */
+        fun getStoredPhoneE164(): String? = encryptedPrefs.getString(KEY_ACCOUNT_PHONE_E164, null)
+
+        fun saveStoredPhoneE164(phoneE164: String) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_ACCOUNT_PHONE_E164, phoneE164)
+                .apply()
+        }
+
         /** Display name, persisted locally after OTP verification. */
         fun getDisplayName(): String? = encryptedPrefs.getString(KEY_DISPLAY_NAME, null)
 
@@ -287,6 +302,7 @@ class SessionManager
                 .remove(KEY_TOKEN_EXPIRY)
                 .remove(KEY_INSTALLATION_ID)
                 .remove(KEY_ACCOUNT_PASSWORD)
+                .remove(KEY_ACCOUNT_PHONE_E164)
                 .remove(KEY_DISPLAY_NAME)
                 .remove(KEY_SENDER_CERTIFICATE)
                 .remove(KEY_DEVICE_MASTER_SECRET)

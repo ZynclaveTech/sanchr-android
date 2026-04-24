@@ -8,6 +8,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthResponse
 import com.sanchr.proto.auth.AuthServiceClient
+import com.sanchr.proto.auth.LoginRequest
 import com.sanchr.proto.auth.RegisterRequest
 import com.sanchr.proto.auth.User
 import com.sanchr.proto.auth.VerifyOTPRequest
@@ -262,5 +263,43 @@ class AuthViewModelStateTest {
             assertIs<AuthState.Error>(s)
             assertIs<AuthState.Permissions>(s.previousState)
             coVerify(exactly = 0) { identityKeyStore.initializeAccount(any(), any(), any()) }
+        }
+
+    @Test
+    fun `attemptFastLogin_withCachedCredentials_transitionsToDone`() =
+        runTest {
+            every { sessionManager.getAccessToken() } returns null
+            every { sessionManager.getStoredPhoneE164() } returns "+14155551234"
+            every { sessionManager.getAccountPassword() } returns "cached-pw"
+            val request = slot<LoginRequest>()
+            coEvery { authServiceClient.login(capture(request)) } returns
+                AuthResponse(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    expiresIn = 3600,
+                    user = User(id = "user-42", displayName = "Alice"),
+                    deviceId = 9,
+                )
+
+            val vm = newViewModel()
+            val job = vm.attemptFastLogin()
+            assertTrue(job != null, "fast-login should have launched a job")
+            advanceUntilIdle()
+
+            assertEquals(AuthState.Done, vm.state.value)
+            val captured = request.captured
+            assertEquals("+14155551234", captured.phoneNumber)
+            assertEquals("cached-pw", captured.password)
+            assertEquals("install-1", captured.device?.installationId)
+            verify {
+                sessionManager.saveSession(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    userId = "user-42",
+                    expiresAtMillis = any(),
+                )
+                sessionManager.saveDeviceId("9")
+                sessionManager.saveDisplayName("Alice")
+            }
         }
 }
