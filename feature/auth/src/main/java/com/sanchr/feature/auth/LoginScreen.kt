@@ -23,10 +23,8 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -243,50 +241,6 @@ fun LoginScreen(
                         .fillMaxWidth()
                         .height(52.dp),
             )
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                Text(
-                    text = "  Or connect with  ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = SanchrGray400,
-                )
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
-            ) {
-                OutlinedButton(
-                    onClick = { /* TODO: Google sign-in */ },
-                    modifier = Modifier.weight(1f),
-                    shape = SanchrShapeTokens.CornerFull,
-                ) {
-                    Text(text = "Google", style = MaterialTheme.typography.labelLarge)
-                }
-
-                OutlinedButton(
-                    onClick = { /* TODO: Apple sign-in */ },
-                    modifier = Modifier.weight(1f),
-                    shape = SanchrShapeTokens.CornerFull,
-                ) {
-                    Text(text = "Apple", style = MaterialTheme.typography.labelLarge)
-                }
-            }
 
             Spacer(modifier = Modifier.weight(1f))
 
