@@ -4,7 +4,11 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.crypto.SignalKeyManager
+import com.sanchr.core.crypto.sealed.SenderCertificateManager
+import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.DeviceInfo
 import com.sanchr.proto.auth.RegisterRequest
@@ -26,10 +30,6 @@ import kotlinx.coroutines.withContext
  * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done
  * ```
  *
- * This commit wires the pre-pipeline portion (PhoneEntry → ProfileEntry →
- * OtpEntry → Permissions). The post-OTP registration pipeline is added in a
- * follow-up commit.
- *
  * The legacy [LoginViewModel] / [RegisterViewModel] remain in place while Task 5
  * migrates the navigation graph; both may coexist without touching shared state.
  */
@@ -40,6 +40,10 @@ class AuthViewModel
         private val authServiceClient: AuthServiceClient,
         private val sessionManager: SessionManager,
         private val dispatchers: DispatcherProvider,
+        private val signalKeyManager: SignalKeyManager,
+        private val senderCertificateManager: SenderCertificateManager,
+        private val pushTokenManager: PushTokenManager,
+        private val identityKeyStore: SanchrIdentityKeyStore,
     ) : ViewModel() {
         private val _state = MutableStateFlow<AuthState>(AuthState.PhoneEntry())
         val state: StateFlow<AuthState> = _state.asStateFlow()
@@ -170,6 +174,53 @@ class AuthViewModel
                 } catch (e: Exception) {
                     _state.value =
                         AuthState.Error(current, e.message ?: "Failed to verify code")
+                }
+            }
+        }
+        // endregion
+
+        // region ── Permissions / Registering pipeline ───────────────────────
+
+        /** No-op placeholder; kept so callers can plumb results in later. */
+        @Suppress("UNUSED_PARAMETER")
+        fun onPermissionsResult(granted: Set<String>) { /* diagnostics only */ }
+
+        fun submitPermissions() {
+            val permissions = _state.value as? AuthState.Permissions ?: return
+            runRegistrationPipeline(permissions)
+        }
+
+        private fun runRegistrationPipeline(permissions: AuthState.Permissions) {
+            viewModelScope.launch {
+                try {
+                    _state.value = AuthState.Registering(RegistrationStep.GENERATING_KEYS, permissions)
+                    signalKeyManager.generateIdentity()
+
+                    _state.value = AuthState.Registering(RegistrationStep.UPLOADING_KEYS, permissions)
+                    signalKeyManager.uploadInitialKeyBundle()
+
+                    _state.value = AuthState.Registering(RegistrationStep.FETCHING_SENDER_CERT, permissions)
+                    senderCertificateManager.refresh()
+
+                    _state.value = AuthState.Registering(RegistrationStep.REGISTERING_PUSH, permissions)
+                    pushTokenManager.uploadToken()
+
+                    _state.value = AuthState.Registering(RegistrationStep.PERSISTING, permissions)
+                    withContext(dispatchers.io) {
+                        identityKeyStore.initializeAccount(
+                            userId = permissions.userId,
+                            deviceId = permissions.deviceId.toString(),
+                            phoneE164 = permissions.phoneE164,
+                        )
+                    }
+
+                    _state.value = AuthState.Done
+                } catch (e: Exception) {
+                    _state.value =
+                        AuthState.Error(
+                            previousState = permissions,
+                            message = e.message ?: "Registration failed",
+                        )
                 }
             }
         }

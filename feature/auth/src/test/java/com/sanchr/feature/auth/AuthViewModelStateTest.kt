@@ -1,7 +1,11 @@
 package com.sanchr.feature.auth
 
 import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.crypto.SignalKeyManager
+import com.sanchr.core.crypto.sealed.SenderCertificateManager
+import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthResponse
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.RegisterRequest
@@ -9,6 +13,8 @@ import com.sanchr.proto.auth.User
 import com.sanchr.proto.auth.VerifyOTPRequest
 import io.mockk.Runs
 import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -34,6 +40,10 @@ class AuthViewModelStateTest {
 
     private val authServiceClient = mockk<AuthServiceClient>()
     private val sessionManager = mockk<SessionManager>(relaxed = true)
+    private val signalKeyManager = mockk<SignalKeyManager>(relaxed = true)
+    private val senderCertificateManager = mockk<SenderCertificateManager>(relaxed = true)
+    private val pushTokenManager = mockk<PushTokenManager>(relaxed = true)
+    private val identityKeyStore = mockk<SanchrIdentityKeyStore>(relaxed = true)
 
     private val dispatchers =
         object : DispatcherProvider {
@@ -50,6 +60,10 @@ class AuthViewModelStateTest {
             authServiceClient = authServiceClient,
             sessionManager = sessionManager,
             dispatchers = dispatchers,
+            signalKeyManager = signalKeyManager,
+            senderCertificateManager = senderCertificateManager,
+            pushTokenManager = pushTokenManager,
+            identityKeyStore = identityKeyStore,
         )
     }
 
@@ -177,5 +191,62 @@ class AuthViewModelStateTest {
             assertIs<AuthState.Error>(vm.state.value)
             vm.retry()
             assertEquals(AuthState.PhoneEntry(countryCode = "+1", phone = "123"), vm.state.value)
+        }
+
+    // ── Pipeline tests (2.3) ──────────────────────────────────────────────
+
+    private fun kotlinx.coroutines.test.TestScope.driveToPermissions(vm: AuthViewModel) {
+        coEvery { authServiceClient.register(any()) } returns AuthResponse()
+        coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
+            AuthResponse(
+                accessToken = "at",
+                refreshToken = "rt",
+                expiresIn = 3600,
+                user = User(id = "user-42", displayName = "Alice"),
+                deviceId = 7,
+            )
+        vm.onPhoneChanged("+1", "4155551234")
+        vm.submitPhone()
+        vm.onDisplayNameChanged("Alice")
+        vm.submitProfile()
+        advanceUntilIdle()
+        vm.onOtpChanged("123456")
+        vm.submitOtp()
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `pipeline calls uploadInitialKeyBundle before initializeAccount`() =
+        runTest {
+            val vm = newViewModel()
+            driveToPermissions(vm)
+
+            vm.submitPermissions()
+            advanceUntilIdle()
+
+            coVerifyOrder {
+                signalKeyManager.generateIdentity()
+                signalKeyManager.uploadInitialKeyBundle()
+                senderCertificateManager.refresh()
+                pushTokenManager.uploadToken()
+                identityKeyStore.initializeAccount(any(), any(), any())
+            }
+            assertEquals(AuthState.Done, vm.state.value)
+        }
+
+    @Test
+    fun `pipeline failure at UPLOADING_KEYS transitions to Error with Permissions previous state`() =
+        runTest {
+            coEvery { signalKeyManager.uploadInitialKeyBundle() } throws RuntimeException("net")
+
+            val vm = newViewModel()
+            driveToPermissions(vm)
+            vm.submitPermissions()
+            advanceUntilIdle()
+
+            val s = vm.state.value
+            assertIs<AuthState.Error>(s)
+            assertIs<AuthState.Permissions>(s.previousState)
+            coVerify(exactly = 0) { identityKeyStore.initializeAccount(any(), any(), any()) }
         }
 }
