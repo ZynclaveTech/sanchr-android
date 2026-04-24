@@ -26,6 +26,7 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrOtpInput
 import com.sanchr.core.designsystem.component.SanchrTextButton
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.component.SecureScreen
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -38,6 +39,10 @@ private const val RESEND_COOLDOWN_SECONDS = 30
  * [AuthState.OtpEntry] (and the Error-wrapped variant). Auto-submits on final
  * digit via [SanchrOtpInput.onComplete]; a separate Verify button is kept for
  * explicit confirmation / accessibility.
+ *
+ * Unconditionally applies [SecureScreen] — the OTP code is sensitive and must
+ * not leak via screenshots or the app-switcher thumbnail (M6 security checklist,
+ * iOS parity).
  */
 @Composable
 fun OtpScreen(
@@ -45,6 +50,8 @@ fun OtpScreen(
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
+    SecureScreen()
+
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     val otpEntry: AuthState.OtpEntry =

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.component.SecureScreen
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -228,6 +229,19 @@ fun ChatSettingsScreen(
         }
     }
 
+    val pendingRecoveryKey = viewModel.pendingRecoveryKey()
+
+    // Any time a recovery key is being displayed (reveal / just-generated) or
+    // entered (restore), clamp FLAG_SECURE on the hosting window. A conditional
+    // SecureScreen() call is fine: Compose tracks the DisposableEffect and
+    // cleans up when the branch leaves composition. iOS parity.
+    if (revealedRecoveryKey.value != null ||
+        pendingRecoveryKey != null ||
+        showRestoreDialog.value
+    ) {
+        SecureScreen()
+    }
+
     if (showRestoreDialog.value) {
         AlertDialog(
             onDismissRequest = { showRestoreDialog.value = false },
@@ -265,7 +279,7 @@ fun ChatSettingsScreen(
         )
     }
 
-    viewModel.pendingRecoveryKey()?.let { recoveryKey ->
+    pendingRecoveryKey?.let { recoveryKey ->
         AlertDialog(
             onDismissRequest = viewModel::cancelPendingBackup,
             title = { Text("Recovery Key") },
