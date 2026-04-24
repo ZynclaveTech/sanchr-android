@@ -270,6 +270,8 @@ class MessageRepositoryImpl
                 editedAt = editedAt?.let { Instant.fromEpochMilliseconds(it) },
                 replyToId = replyToId,
                 expiresAt = expiresAt?.let { Instant.fromEpochMilliseconds(it) },
+                failureClass = failureClass,
+                failureReason = failureReason,
             )
 
         private fun String.toMessageContent(body: String): MessageContent =

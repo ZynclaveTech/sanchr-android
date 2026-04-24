@@ -27,11 +27,13 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +74,7 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -452,26 +455,71 @@ private fun MessageBubble(
 
                 if (message.isFromMe) {
                     Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Filled.DoneAll,
-                        contentDescription =
-                            when (message.status) {
-                                MessageStatus.READ -> "Read"
-                                MessageStatus.DELIVERED -> "Delivered"
-                                else -> "Sent"
-                            },
-                        modifier = Modifier.size(14.dp),
-                        tint =
-                            when (message.status) {
-                                MessageStatus.READ -> SanchrIndigo500
-                                MessageStatus.DELIVERED -> SanchrGray400
-                                MessageStatus.SENT -> SanchrGray400
-                                MessageStatus.SENDING -> SanchrGray400.copy(alpha = 0.5f)
-                                MessageStatus.FAILED -> MaterialTheme.colorScheme.error
-                            },
-                    )
+                    MessageStatusIcon(message)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Status indicator rendered at the trailing edge of an outbound message.
+ *
+ * - SENDING / SENT / DELIVERED / READ → `DoneAll` checkmark tinted per state.
+ * - FAILED + [FailureKind.UNTRUSTED_IDENTITY] → warning triangle, signalling
+ *   that the peer's safety number changed. No tap-to-retry: the right action
+ *   is a safety-number screen (M6); retrying blindly will fail the same way.
+ * - FAILED + [FailureKind.GENERIC] / null → error-outline icon.
+ *
+ * The `contentDescription` is filled from [MessageUiModel.failureReason]
+ * when available so screen readers and tooltip-style long-press expose the
+ * concrete reason without the UI needing to know the taxonomy.
+ */
+@Composable
+private fun MessageStatusIcon(message: MessageUiModel) {
+    when (message.status) {
+        MessageStatus.FAILED -> {
+            val (icon, tint, defaultLabel) =
+                when (message.failureKind) {
+                    FailureKind.UNTRUSTED_IDENTITY ->
+                        Triple(
+                            Icons.Filled.Warning,
+                            SanchrWarning,
+                            "Peer's safety number changed",
+                        )
+                    FailureKind.GENERIC, null ->
+                        Triple(
+                            Icons.Filled.ErrorOutline,
+                            MaterialTheme.colorScheme.error,
+                            "Failed to send",
+                        )
+                }
+            Icon(
+                imageVector = icon,
+                contentDescription = message.failureReason ?: defaultLabel,
+                modifier = Modifier.size(14.dp),
+                tint = tint,
+            )
+        }
+        else -> {
+            Icon(
+                imageVector = Icons.Filled.DoneAll,
+                contentDescription =
+                    when (message.status) {
+                        MessageStatus.READ -> "Read"
+                        MessageStatus.DELIVERED -> "Delivered"
+                        else -> "Sent"
+                    },
+                modifier = Modifier.size(14.dp),
+                tint =
+                    when (message.status) {
+                        MessageStatus.READ -> SanchrIndigo500
+                        MessageStatus.DELIVERED -> SanchrGray400
+                        MessageStatus.SENT -> SanchrGray400
+                        MessageStatus.SENDING -> SanchrGray400.copy(alpha = 0.5f)
+                        MessageStatus.FAILED -> MaterialTheme.colorScheme.error
+                    },
+            )
         }
     }
 }

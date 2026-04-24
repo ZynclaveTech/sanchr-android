@@ -14,6 +14,21 @@ data class Message(
     val editedAt: Instant? = null,
     val replyToId: String? = null,
     val expiresAt: Instant? = null,
+    /**
+     * Taxonomy name for why [status] is `FAILED` — stored as a plain string
+     * in `core:model` to avoid a dependency from `core:model` onto
+     * `domain:messaging`. UI layer maps the known names
+     * (`NO_RECIPIENTS`, `UNTRUSTED_IDENTITY`, `CRYPTO_OTHER`, ...) to
+     * distinct affordances; null while the row is in any non-terminal
+     * state.
+     */
+    val failureClass: String? = null,
+    /**
+     * Human-readable failure reason surfaced to the UI as a tooltip /
+     * long-press detail on the failed-message affordance. Null while the
+     * row is in any non-terminal state.
+     */
+    val failureReason: String? = null,
 )
 
 @Serializable

@@ -148,14 +148,31 @@ class ChatDetailViewModel
 
         private fun Message.toUiModel(): MessageUiModel {
             val currentUser = sessionManager.getUserId() ?: ""
+            val uiStatus = status.toUiStatus()
             return MessageUiModel(
                 id = id,
                 text = content.displayText(),
                 timestamp = timestamp.toEpochMilliseconds(),
                 isFromMe = senderId == currentUser,
-                status = status.toUiStatus(),
+                status = uiStatus,
                 contentType = content.contentTypeTag(),
+                failureKind = failureClass.toFailureKind(uiStatus),
+                failureReason = failureReason.takeIf { uiStatus == MessageStatus.FAILED },
             )
+        }
+
+        /**
+         * Maps the domain-layer `FailureClass` name (stored as plain string
+         * in `core:model`) to the UI taxonomy. Returns null when the row is
+         * not in a FAILED state so non-terminal rows render without a
+         * failure affordance.
+         */
+        private fun String?.toFailureKind(status: MessageStatus): FailureKind? {
+            if (status != MessageStatus.FAILED) return null
+            return when (this) {
+                "UNTRUSTED_IDENTITY" -> FailureKind.UNTRUSTED_IDENTITY
+                else -> FailureKind.GENERIC
+            }
         }
 
         private fun MessageContent.displayText(): String =
