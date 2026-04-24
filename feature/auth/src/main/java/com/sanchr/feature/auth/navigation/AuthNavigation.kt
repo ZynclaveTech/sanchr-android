@@ -27,16 +27,9 @@ fun NavGraphBuilder.authGraph(
 ) {
     navigation(startDestination = LOGIN_ROUTE, route = AUTH_GRAPH_ROUTE) {
         composable(LOGIN_ROUTE) {
-            LoginScreen(
-                onNavigateToOtp = { phoneNumber ->
-                    val encodedPhone =
-                        java.net.URLEncoder.encode(
-                            phoneNumber,
-                            "UTF-8",
-                        )
-                    navController.navigate("auth/otp/$encodedPhone")
-                },
-            )
+            // Task 3.6 will rewire this to an AuthState-driven host; for now the
+            // screen consumes AuthViewModel directly and the host just renders it.
+            LoginScreen()
         }
 
         composable(

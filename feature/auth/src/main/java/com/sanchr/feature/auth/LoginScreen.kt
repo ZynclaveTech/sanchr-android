@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +44,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextButton
-import com.sanchr.core.designsystem.theme.SanchrGradients
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
@@ -57,29 +55,30 @@ import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWhite
 
+/**
+ * Phone-entry step of the onboarding flow. Observes [AuthViewModel.state] and
+ * renders UI keyed off [AuthState.PhoneEntry]; any other state means the host
+ * navigation observer has already moved the flow forward, so the screen shows
+ * nothing (the NavHost will swap it out immediately).
+ */
 @Composable
 fun LoginScreen(
-    onNavigateToOtp: (String) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: LoginViewModel = hiltViewModel(),
+    viewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val phoneNumber =
-        when (uiState) {
-            is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).phoneNumber
-            is LoginUiState.Error -> (uiState as LoginUiState.Error).phoneNumber
-            else -> ""
+    // Resolve the PhoneEntry snapshot we need to render. If the current state is an
+    // Error whose previousState is PhoneEntry, we render that PhoneEntry + inline
+    // error so the user can fix and retry.
+    val phoneEntry: AuthState.PhoneEntry =
+        when (val s = state) {
+            is AuthState.PhoneEntry -> s
+            is AuthState.Error -> s.previousState as? AuthState.PhoneEntry ?: return
+            else -> return // NavHost will navigate away; render nothing to avoid flicker.
         }
-    val countryCode =
-        when (uiState) {
-            is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).countryCode
-            is LoginUiState.Error -> (uiState as LoginUiState.Error).countryCode
-            else -> "+1"
-        }
-    val errorMessage = (uiState as? LoginUiState.Error)?.message
-    val isLoading = uiState is LoginUiState.Loading
-    val isValid = (uiState as? LoginUiState.PhoneInput)?.isValid ?: false
+
+    val errorMessage = (state as? AuthState.Error)?.message
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
@@ -94,16 +93,13 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
 
-            // --- Sanchr logo: purple chat bubble + shield icon ---
             Box(
                 modifier =
                     Modifier
                         .size(80.dp)
                         .clip(SanchrShapeTokens.CornerExtraLarge)
                         .background(
-                            Brush.linearGradient(
-                                colors = listOf(SanchrIndigo500, SanchrIndigo400),
-                            ),
+                            Brush.linearGradient(colors = listOf(SanchrIndigo500, SanchrIndigo400)),
                         ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -127,7 +123,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // --- Title ---
             Text(
                 text = "Welcome to Sanchr",
                 style = MaterialTheme.typography.headlineMedium,
@@ -137,7 +132,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
-            // --- Subtitle ---
             Text(
                 text = "Encrypted. Synced. Secure.",
                 style = MaterialTheme.typography.bodyLarge,
@@ -146,10 +140,9 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // --- Phone number input with country code ---
             OutlinedTextField(
-                value = phoneNumber,
-                onValueChange = viewModel::onPhoneNumberChanged,
+                value = phoneEntry.phone,
+                onValueChange = { viewModel.onPhoneChanged(phoneEntry.countryCode, it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Phone number") },
                 placeholder = { Text("Enter your phone number") },
@@ -166,7 +159,7 @@ fun LoginScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = countryCode,
+                            text = phoneEntry.countryCode,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Medium,
                         )
@@ -201,14 +194,10 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
 
-            // --- E2EE info card ---
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = SanchrShapeTokens.CornerMedium,
-                colors =
-                    CardDefaults.cardColors(
-                        containerColor = SanchrIndigo100,
-                    ),
+                colors = CardDefaults.cardColors(containerColor = SanchrIndigo100),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Row(
@@ -241,52 +230,22 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // --- Gradient "Continue" button ---
-            Box(
+            SanchrButton(
+                text = "Continue",
+                onClick = {
+                    if (state is AuthState.Error) viewModel.retry()
+                    viewModel.submitPhone()
+                },
+                enabled = phoneEntry.phone.length >= 7,
+                isLoading = false,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
-                        .clip(SanchrShapeTokens.CornerFull)
-                        .background(
-                            brush =
-                                if (!isLoading && (isValid || phoneNumber.length >= 7)) {
-                                    SanchrGradients.Primary
-                                } else {
-                                    Brush.linearGradient(
-                                        colors =
-                                            listOf(
-                                                SanchrGray400.copy(alpha = 0.5f),
-                                                SanchrGray400.copy(alpha = 0.5f),
-                                            ),
-                                    )
-                                },
-                        ),
-            ) {
-                SanchrButton(
-                    onClick = { viewModel.requestOtp(onNavigateToOtp) },
-                    enabled = !isLoading && (isValid || phoneNumber.length >= 7),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = SanchrWhite,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = if (isLoading) "Sending..." else "Continue  \u2192",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SanchrWhite,
-                    )
-                }
-            }
+                        .height(52.dp),
+            )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // --- "Or connect with" divider ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -308,7 +267,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
 
-            // --- Google + Apple sign-in buttons ---
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
@@ -318,10 +276,7 @@ fun LoginScreen(
                     modifier = Modifier.weight(1f),
                     shape = SanchrShapeTokens.CornerFull,
                 ) {
-                    Text(
-                        text = "Google",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Text(text = "Google", style = MaterialTheme.typography.labelLarge)
                 }
 
                 OutlinedButton(
@@ -329,16 +284,12 @@ fun LoginScreen(
                     modifier = Modifier.weight(1f),
                     shape = SanchrShapeTokens.CornerFull,
                 ) {
-                    Text(
-                        text = "Apple",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Text(text = "Apple", style = MaterialTheme.typography.labelLarge)
                 }
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // --- Privacy Policy / Terms links ---
             Row(
                 modifier =
                     Modifier
