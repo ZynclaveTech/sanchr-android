@@ -45,11 +45,12 @@ class SessionManager
             const val KEY_DISPLAY_NAME = "display_name"
         }
 
-        private val masterKey =
+        private val masterKey: MasterKey by lazy {
             MasterKey
                 .Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
+        }
 
         private val encryptedPrefs: SharedPreferences by lazy {
             EncryptedSharedPreferences.create(
@@ -61,13 +62,15 @@ class SessionManager
             )
         }
 
-        private val _isAuthenticated = MutableStateFlow(getAccessToken() != null)
+        private val _isAuthenticated: MutableStateFlow<Boolean> by lazy {
+            MutableStateFlow(getAccessToken() != null)
+        }
 
         /** Observable authentication state. */
-        val isAuthenticated: Flow<Boolean> = _isAuthenticated.asStateFlow()
+        val isAuthenticated: Flow<Boolean> get() = _isAuthenticated.asStateFlow()
 
         /** Observable session state as a [StateFlow] for collectors that need `.value` access. */
-        val sessionActive: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
+        val sessionActive: StateFlow<Boolean> get() = _isAuthenticated.asStateFlow()
 
         /** Returns the current access token, or null if not authenticated. */
         fun getAccessToken(): String? = encryptedPrefs.getString(KEY_ACCESS_TOKEN, null)
@@ -285,6 +288,15 @@ class SessionManager
                 .remove(KEY_INSTALLATION_ID)
                 .remove(KEY_ACCOUNT_PASSWORD)
                 .remove(KEY_DISPLAY_NAME)
+                .remove(KEY_SENDER_CERTIFICATE)
+                .remove(KEY_DEVICE_MASTER_SECRET)
+                .remove(KEY_RECOVERY_KEY)
+                .remove(KEY_BACKUP_ENABLED)
+                .remove(KEY_BACKUP_LINEAGE_ID)
+                .remove(KEY_BACKUP_FORMAT_VERSION)
+                .remove(KEY_BACKUP_CONFIRMED_AT)
+                .remove(KEY_BACKUP_LAST_AT)
+                .remove(KEY_BACKUP_LAST_CONTENT_HASH)
                 .apply()
             _isAuthenticated.value = false
         }

@@ -21,6 +21,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -34,4 +38,9 @@ dependencies {
     implementation(libs.tink.android)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.security.crypto)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 }
