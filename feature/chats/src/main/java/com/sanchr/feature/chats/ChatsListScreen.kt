@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,12 +59,21 @@ import com.sanchr.core.model.Conversation
 @Composable
 fun ChatsListScreen(
     onConversationClick: (String) -> Unit,
-    onNewChat: () -> Unit,
+    onOpenConversation: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChatsListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val newChatState by viewModel.newChat.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is NewChatEvent.OpenConversation -> onOpenConversation(event.conversationId)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -71,7 +81,7 @@ fun ChatsListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = onNewChat,
+                onClick = viewModel::openNewChat,
                 containerColor = SanchrIndigo500,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
@@ -230,6 +240,15 @@ fun ChatsListScreen(
                     }
                 }
             }
+        }
+
+        if (newChatState.isOpen) {
+            NewChatBottomSheet(
+                state = newChatState,
+                onPhoneChange = viewModel::onNewChatPhoneChanged,
+                onSubmit = viewModel::submitNewChat,
+                onDismiss = viewModel::closeNewChat,
+            )
         }
     }
 }
