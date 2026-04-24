@@ -29,9 +29,6 @@ import kotlinx.coroutines.withContext
  * ```
  * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done
  * ```
- *
- * The legacy [LoginViewModel] / [RegisterViewModel] remain in place while Task 5
- * migrates the navigation graph; both may coexist without touching shared state.
  */
 @HiltViewModel
 class AuthViewModel
