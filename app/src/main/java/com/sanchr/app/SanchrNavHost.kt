@@ -2,6 +2,8 @@ package com.sanchr.app
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
@@ -12,22 +14,28 @@ import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import com.sanchr.app.bootstrap.AppBootstrapViewModel
+import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.feature.auth.navigation.authGraph
 import com.sanchr.feature.calls.navigation.callsGraph
 import com.sanchr.feature.chats.navigation.chatsGraph
@@ -72,16 +80,40 @@ enum class TopLevelDestination(
 }
 
 @Composable
-fun SanchrNavHost(modifier: Modifier = Modifier) {
+fun SanchrNavHost(
+    modifier: Modifier = Modifier,
+    bootstrapViewModel: AppBootstrapViewModel = hiltViewModel(),
+) {
+    val startState by bootstrapViewModel.startDestination.collectAsState()
+
+    when (val state = startState) {
+        is StartDestination.Loading -> {
+            Box(
+                modifier = modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        is StartDestination.Auth, is StartDestination.Main -> {
+            ResolvedNavHost(
+                startRoute = if (state is StartDestination.Main) "main" else "auth",
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResolvedNavHost(
+    startRoute: String,
+    modifier: Modifier = Modifier,
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
     val topLevelDestinations = remember { TopLevelDestination.entries }
-
-    // TODO: Check auth state to determine start destination
-    val isAuthenticated = false
-    val startDestination = if (isAuthenticated) "main" else "auth"
 
     Scaffold(
         modifier = modifier,
@@ -110,7 +142,7 @@ fun SanchrNavHost(modifier: Modifier = Modifier) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = startDestination,
+            startDestination = startRoute,
             modifier = Modifier.padding(innerPadding),
             enterTransition = {
                 slideIntoContainer(
