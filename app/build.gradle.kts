@@ -147,6 +147,7 @@ dependencies {
     implementation(projects.feature.vault)
     implementation(projects.feature.settings)
     implementation(projects.feature.profile)
+    implementation(projects.feature.onboarding)
 
     // Proto (gRPC service clients)
     implementation(projects.proto)

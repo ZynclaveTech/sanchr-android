@@ -5,11 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -43,6 +46,7 @@ class AppBootstrapViewModel
     constructor(
         private val sessionManager: SessionManager,
         private val accountDao: AccountDao,
+        private val userPreferences: UserPreferences,
         private val dispatchers: DispatcherProvider,
     ) : ViewModel() {
         private val _startDestination = MutableStateFlow<StartDestination>(StartDestination.Loading)
@@ -55,6 +59,22 @@ class AppBootstrapViewModel
          * process restart.
          */
         val sessionActive: StateFlow<Boolean> = sessionManager.sessionActive
+
+        /**
+         * Per-device onboarding-completion flag. `SanchrNavHost` observes this
+         * in combination with [sessionActive] to route:
+         *  - sessionActive && hasCompletedOnboarding → Main
+         *  - sessionActive && !hasCompletedOnboarding → Onboarding graph
+         *  - !sessionActive → Auth graph
+         *
+         * `Eagerly` so the value is materialised by the time `NavHost` first
+         * composes — a lazy `WhileSubscribed` would briefly emit the
+         * `initialValue = false` default and flash onboarding for already-
+         * onboarded users on cold launch.
+         */
+        val hasCompletedOnboarding: StateFlow<Boolean> =
+            userPreferences.hasCompletedOnboardingFlow
+                .stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = false)
 
         init {
             viewModelScope.launch(dispatchers.io) {

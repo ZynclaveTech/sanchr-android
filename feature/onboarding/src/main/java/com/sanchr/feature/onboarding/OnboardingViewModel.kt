@@ -1,12 +1,16 @@
 package com.sanchr.feature.onboarding
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Drives the onboarding flow.
@@ -16,22 +20,28 @@ import kotlinx.coroutines.flow.asStateFlow
  * `currentStep: Int` + mutable fields into the [OnboardingState] sealed
  * hierarchy because Compose state-hoisting is idiomatically per-step.
  *
- * Phase 4a scope:
- *  - Pure in-memory state transitions. No RPC calls. No `hasCompletedOnboarding`
- *    DataStore write — that flag flip lands in Phase 5 alongside NavHost gating.
- *  - Avatar persistence to `ProfileService.UpdateProfile` lands in Phase 6.
- *    For now the selected URI is held on [OnboardingState.AvatarEntry] /
- *    [OnboardingState.ContactSync] so the UI can preview it.
+ * Phase 5 scope additions on top of Phase 4a:
+ *  - Terminal [onContactSyncFinish] persists
+ *    `UserPreferences.setOnboardingCompleted(true)` BEFORE emitting
+ *    [OnboardingState.Completed] so the NavHost's gating flow observes the
+ *    flip before routing to Main. Any DataStore write failure is logged and
+ *    swallowed — the user must not be trapped in onboarding because of a
+ *    disk-write error; Phase X will add a retry on next cold-launch when we
+ *    implement the logout wipe path anyway.
+ *
+ * Still deferred: Avatar persistence to `ProfileService.UpdateProfile` lands
+ * in Phase 6 (see `OnboardingViewModel.swift:86-97`).
  *
  * Validation: display name is trimmed, length 1..128. Matches iOS
  * `isNameValid` (>=2 chars) loosely — we accept >=1 and cap at 128 to match
- * the server-side profile name column. Phase 6 will tighten if backend rejects.
+ * the server-side profile name column.
  */
 @HiltViewModel
 class OnboardingViewModel
     @Inject
     constructor(
         private val sessionManager: SessionManager,
+        private val userPreferences: UserPreferences,
     ) : ViewModel() {
         private val _state: MutableStateFlow<OnboardingState> =
             MutableStateFlow(OnboardingState.Welcome)
@@ -86,12 +96,27 @@ class OnboardingViewModel
                 )
         }
 
-        /** Terminal — NavHost observer fires onOnboardingComplete() on this. */
+        /**
+         * Terminal step. Persists the `has_completed_onboarding` DataStore flag
+         * BEFORE flipping state to [OnboardingState.Completed] so the NavHost
+         * sees the updated flag on its next recomposition. On persistence
+         * failure we log and still advance — trapping the user in onboarding
+         * over a disk-write error is worse than a one-time re-onboard after
+         * relaunch.
+         */
         fun onContactSyncFinish() {
-            _state.value = OnboardingState.Completed
+            viewModelScope.launch {
+                try {
+                    userPreferences.setOnboardingCompleted(true)
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to persist has_completed_onboarding flag", t)
+                }
+                _state.value = OnboardingState.Completed
+            }
         }
 
         companion object {
             private const val MAX_NAME_LENGTH = 128
+            private const val TAG = "OnboardingViewModel"
         }
     }
