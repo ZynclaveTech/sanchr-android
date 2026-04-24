@@ -153,16 +153,28 @@ class UserPreferences
          * (see plan §Step A). Returning users on a new device will see
          * onboarding once — acceptable per Phase 5 design.
          *
-         * TODO(Phase-X logout): `UserPreferences` has no global `clear()` /
-         * `wipe()` path today. On account wipe / logout this flag must be
-         * reset to false so a subsequent re-login on the same device treats
-         * the new account correctly. Add a wipe-path and reset the key when
-         * the logout infrastructure lands.
+         * On logout [clear] wipes this flag (alongside every other key) so a
+         * subsequent re-login with a different account on the same device
+         * re-runs onboarding correctly instead of silently inheriting the
+         * previous user's completion state.
          */
         val hasCompletedOnboardingFlow: Flow<Boolean> =
             dataStore.data.map { it[Keys.HAS_COMPLETED_ONBOARDING] ?: false }
 
         suspend fun setOnboardingCompleted(completed: Boolean) {
             dataStore.edit { it[Keys.HAS_COMPLETED_ONBOARDING] = completed }
+        }
+
+        // --- Lifecycle ---
+
+        /**
+         * Wipes all user-level preferences. Called from `LogoutUseCase` so
+         * per-user flags (onboarding completion, privacy toggles, etc.) do
+         * not leak across accounts when a second user logs in on the same
+         * device. Device-global defaults re-materialise on the next read via
+         * the `?: <default>` fallbacks on each flow.
+         */
+        suspend fun clear() {
+            dataStore.edit { it.clear() }
         }
     }
