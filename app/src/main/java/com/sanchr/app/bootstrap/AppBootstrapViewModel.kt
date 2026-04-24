@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -61,11 +62,32 @@ class AppBootstrapViewModel
         val sessionActive: StateFlow<Boolean> = sessionManager.sessionActive
 
         /**
-         * Per-device onboarding-completion flag. `SanchrNavHost` observes this
-         * in combination with [sessionActive] to route:
+         * Effective "this user has already onboarded" signal. `SanchrNavHost`
+         * observes this in combination with [sessionActive] to route:
          *  - sessionActive && hasCompletedOnboarding → Main
          *  - sessionActive && !hasCompletedOnboarding → Onboarding graph
          *  - !sessionActive → Auth graph
+         *
+         * Computed as the OR of two signals — matching iOS parity
+         * (`SanchrApp.swift:331,340-343`):
+         *
+         *  1. [UserPreferences.hasCompletedOnboardingFlow] — per-device flag
+         *     flipped true when the user finishes the in-app onboarding flow
+         *     (Welcome → Name → Avatar → ContactSync).
+         *
+         *  2. A non-blank [SessionManager.getDisplayName] — covers the
+         *     returning-user-on-a-new-device path: the server already has a
+         *     display name on file, so there is no useful onboarding to
+         *     re-run. Without this fallback, a re-install or device swap would
+         *     force an existing user back through onboarding, which iOS
+         *     explicitly avoids.
+         *
+         * The display-name check is a one-shot read (EncryptedSharedPreferences
+         * has no `Flow` surface), so we piggy-back on
+         * [SessionManager.isAuthenticated] as the trigger: every time auth
+         * state flips (login / logout), we re-read the display name and
+         * recompute. The auth-state value itself is intentionally discarded in
+         * the combiner — it is the trigger, not an input.
          *
          * `Eagerly` so the value is materialised by the time `NavHost` first
          * composes — a lazy `WhileSubscribed` would briefly emit the
@@ -73,8 +95,12 @@ class AppBootstrapViewModel
          * onboarded users on cold launch.
          */
         val hasCompletedOnboarding: StateFlow<Boolean> =
-            userPreferences.hasCompletedOnboardingFlow
-                .stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = false)
+            combine(
+                userPreferences.hasCompletedOnboardingFlow,
+                sessionManager.isAuthenticated,
+            ) { flagValue, _ ->
+                flagValue || !sessionManager.getDisplayName().isNullOrBlank()
+            }.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = false)
 
         init {
             viewModelScope.launch(dispatchers.io) {
