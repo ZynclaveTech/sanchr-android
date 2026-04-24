@@ -171,6 +171,14 @@ class MessageRepositoryImpl
             return entity.toDomain()
         }
 
+        override suspend fun ensureConversation(peerUserId: String): String {
+            // Server-side startDirectConversation is get-or-create: if a DIRECT
+            // conversation already exists between these two users it returns
+            // that existing row. The local REPLACE-on-insert keeps Room in
+            // sync. This keeps the UI layer ignorant of the distinction.
+            return createConversation(peerUserId).id
+        }
+
         override suspend fun setPinned(
             conversationId: String,
             pinned: Boolean,

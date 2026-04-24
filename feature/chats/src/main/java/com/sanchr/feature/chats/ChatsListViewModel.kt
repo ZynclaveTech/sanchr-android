@@ -5,18 +5,25 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.sanchr.core.common.Result
 import com.sanchr.core.model.Conversation
+import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ObserveConversationsUseCase
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 sealed interface ChatsListUiState {
     data object Loading : ChatsListUiState
@@ -35,16 +42,43 @@ sealed interface ChatsListUiState {
     ) : ChatsListUiState
 }
 
+/** UI state for the "new conversation by phone" bottom sheet. */
+data class NewChatState(
+    val isOpen: Boolean = false,
+    val phone: String = "",
+    val isSubmitting: Boolean = false,
+    val error: NewChatError? = null,
+)
+
+enum class NewChatError { INVALID_PHONE, NOT_FOUND, SERVER_ERROR }
+
+/** One-shot navigation events emitted by the chats-list VM. */
+sealed interface NewChatEvent {
+    data class OpenConversation(val conversationId: String) : NewChatEvent
+}
+
 @HiltViewModel
 class ChatsListViewModel
     @Inject
     constructor(
         observeConversationsUseCase: ObserveConversationsUseCase,
         private val workManager: WorkManager,
+        private val contactRepository: ContactRepository,
+        private val messageRepository: MessageRepository,
         val syncState: SyncState,
     ) : ViewModel() {
         private val _searchQuery = MutableStateFlow("")
         private val _isRefreshing = MutableStateFlow(false)
+
+        private val _newChat = MutableStateFlow(NewChatState())
+        val newChat: StateFlow<NewChatState> = _newChat.asStateFlow()
+
+        private val _events =
+            MutableSharedFlow<NewChatEvent>(
+                replay = 0,
+                extraBufferCapacity = 1,
+            )
+        val events: SharedFlow<NewChatEvent> = _events.asSharedFlow()
 
         val uiState: StateFlow<ChatsListUiState> =
             combine(
@@ -111,5 +145,73 @@ class ChatsListViewModel
         fun refresh() {
             _isRefreshing.value = true
             SyncWorker.syncNow(workManager)
+        }
+
+        // ── New-chat bottom sheet ──────────────────────────────────────────
+
+        fun openNewChat() {
+            _newChat.value = NewChatState(isOpen = true)
+        }
+
+        fun closeNewChat() {
+            _newChat.value = NewChatState()
+        }
+
+        fun onNewChatPhoneChanged(phone: String) {
+            _newChat.value = _newChat.value.copy(phone = phone, error = null)
+        }
+
+        fun submitNewChat() {
+            val current = _newChat.value
+            if (current.isSubmitting) return
+            val phone = current.phone.trim()
+            if (!E164_PATTERN.matches(phone)) {
+                _newChat.value = current.copy(error = NewChatError.INVALID_PHONE)
+                return
+            }
+            _newChat.value = current.copy(isSubmitting = true, error = null)
+            viewModelScope.launch {
+                val user =
+                    try {
+                        contactRepository.lookupByPhone(phone)
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        _newChat.value =
+                            _newChat.value.copy(
+                                isSubmitting = false,
+                                error = NewChatError.SERVER_ERROR,
+                            )
+                        return@launch
+                    }
+                if (user == null) {
+                    _newChat.value =
+                        _newChat.value.copy(
+                            isSubmitting = false,
+                            error = NewChatError.NOT_FOUND,
+                        )
+                    return@launch
+                }
+                val conversationId =
+                    try {
+                        messageRepository.ensureConversation(user.id)
+                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        _newChat.value =
+                            _newChat.value.copy(
+                                isSubmitting = false,
+                                error = NewChatError.SERVER_ERROR,
+                            )
+                        return@launch
+                    }
+                _events.tryEmit(NewChatEvent.OpenConversation(conversationId))
+                _newChat.value = NewChatState()
+            }
+        }
+
+        private companion object {
+            /** Minimal E.164 check: leading + followed by 7–15 digits. */
+            private val E164_PATTERN = Regex("^\\+\\d{7,15}$")
         }
     }

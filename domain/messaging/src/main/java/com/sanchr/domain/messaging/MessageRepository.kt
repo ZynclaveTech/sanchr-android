@@ -98,6 +98,15 @@ interface MessageRepository {
     /** Creates a new direct conversation with a user. */
     suspend fun createConversation(participantId: String): Conversation
 
+    /**
+     * Returns the conversation id for a direct chat with [peerUserId], creating
+     * one if necessary. The server RPC is expected to be idempotent for
+     * DIRECT conversations, so repeated calls with the same peer return the
+     * same conversation id. Surfaced as a narrow helper so the new-chat UI
+     * does not need to know about the underlying create-vs-fetch distinction.
+     */
+    suspend fun ensureConversation(peerUserId: String): String
+
     /** Pins or unpins a conversation. */
     suspend fun setPinned(
         conversationId: String,
