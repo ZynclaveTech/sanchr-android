@@ -4,9 +4,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.crypto.RecoveryKeyManager
-import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.PushTokenManager
+import com.sanchr.domain.messaging.LogoutUseCase
 import com.sanchr.proto.notifications.NotificationServiceClient
 import com.sanchr.proto.notifications.UpdateNotificationPrefsRequest
 import com.sanchr.proto.settings.GetSettingsRequest
@@ -76,12 +76,12 @@ class SettingsViewModel
     @Inject
     constructor(
         private val userPreferences: UserPreferences,
-        private val sessionManager: SessionManager,
         private val recoveryKeyManager: RecoveryKeyManager,
         private val notificationServiceClient: NotificationServiceClient,
         private val pushTokenManager: PushTokenManager,
         private val settingsServiceClient: SettingsServiceClient,
         private val chatBackupManager: ChatBackupManager,
+        private val logoutUseCase: LogoutUseCase,
     ) : ViewModel() {
         companion object {
             private const val TAG = "SettingsViewModel"
@@ -511,12 +511,21 @@ class SettingsViewModel
 
         fun logout() {
             viewModelScope.launch {
+                // Deregister the FCM token with the backend first — this is a
+                // server-side side effect that does not touch local state, so
+                // it runs before the local wipe. Failures here must not block
+                // the local teardown: a stale token on the backend is far less
+                // dangerous than leaking account material on-device.
                 try {
                     pushTokenManager.clearToken()
                 } catch (_: Exception) {
                     // Non-fatal
                 }
-                sessionManager.clearSession()
+                // Full local wipe: DB + Keystore-wrapped passphrase + staged
+                // identity + encrypted session prefs. Flips
+                // `SessionManager.sessionActive` to false, which
+                // `SanchrNavHost` observes to navigate back to the auth graph.
+                logoutUseCase()
             }
         }
 
