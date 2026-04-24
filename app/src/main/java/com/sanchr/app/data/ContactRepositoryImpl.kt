@@ -6,6 +6,7 @@ import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.ContactServiceClient
+import com.sanchr.proto.contacts.LookedUpUser
 import com.sanchr.proto.contacts.SyncContactsRequest
 import com.sanchr.proto.contacts.UnblockContactRequest
 import javax.inject.Inject
@@ -75,7 +76,27 @@ class ContactRepositoryImpl
             contactDao.setFavorite(userId, favorite)
         }
 
+        override suspend fun lookupByPhone(phoneE164: String): User? = contactClient.lookupUser(phoneE164)?.toDomain()
+
         // ── Mapping helpers ──
+
+        private fun LookedUpUser.toDomain(): User =
+            User(
+                id = id,
+                phoneNumber = phoneNumber,
+                displayName = displayName,
+                avatarUrl = avatarUrl.ifEmpty { null },
+                bio = null,
+                isOnline = false,
+                lastSeen = null,
+                publicKeyFingerprint = null,
+                // `createdAt` is an RFC 3339 timestamp from the server. Parsing
+                // is best-effort: an empty or malformed value falls back to
+                // epoch-zero so the UI still has a non-null Instant to render.
+                createdAt =
+                    runCatching { Instant.parse(createdAt) }
+                        .getOrDefault(Instant.fromEpochMilliseconds(0L)),
+            )
 
         private fun ContactEntity.toDomain(): User =
             User(

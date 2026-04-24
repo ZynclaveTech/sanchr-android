@@ -30,4 +30,13 @@ interface ContactRepository {
         userId: String,
         favorite: Boolean,
     )
+
+    /**
+     * Looks up a single registered user by E.164 phone number.
+     *
+     * Returns `null` if the server has no registered user matching this phone
+     * (NOT_FOUND). Non-NOT_FOUND errors (network, INVALID_ARGUMENT, etc.)
+     * propagate as exceptions for the caller to handle.
+     */
+    suspend fun lookupByPhone(phoneE164: String): User?
 }
