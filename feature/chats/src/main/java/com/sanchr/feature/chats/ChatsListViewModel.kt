@@ -54,7 +54,9 @@ enum class NewChatError { INVALID_PHONE, NOT_FOUND, SERVER_ERROR }
 
 /** One-shot navigation events emitted by the chats-list VM. */
 sealed interface NewChatEvent {
-    data class OpenConversation(val conversationId: String) : NewChatEvent
+    data class OpenConversation(
+        val conversationId: String,
+    ) : NewChatEvent
 }
 
 @HiltViewModel
