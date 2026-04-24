@@ -203,7 +203,18 @@ class AuthViewModel
                     senderCertificateManager.refresh()
 
                     _state.value = AuthState.Registering(RegistrationStep.REGISTERING_PUSH, permissions)
-                    pushTokenManager.uploadToken()
+                    // Best-effort: FCM token upload must not block registration. If Play
+                    // Services are missing or the backend rejects the token we log and
+                    // continue; SyncInitializer's periodic refresh will retry later.
+                    try {
+                        pushTokenManager.uploadToken()
+                    } catch (e: Exception) {
+                        android.util.Log.w(
+                            "AuthViewModel",
+                            "Push token upload failed; continuing registration",
+                            e,
+                        )
+                    }
 
                     _state.value = AuthState.Registering(RegistrationStep.PERSISTING, permissions)
                     withContext(dispatchers.io) {

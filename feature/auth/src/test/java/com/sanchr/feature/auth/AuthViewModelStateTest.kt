@@ -235,6 +235,20 @@ class AuthViewModelStateTest {
         }
 
     @Test
+    fun `pipeline completes even when pushTokenManager throws`() =
+        runTest {
+            coEvery { pushTokenManager.uploadToken() } throws RuntimeException("no-play-services")
+
+            val vm = newViewModel()
+            driveToPermissions(vm)
+            vm.submitPermissions()
+            advanceUntilIdle()
+
+            assertEquals(AuthState.Done, vm.state.value)
+            coVerify { identityKeyStore.initializeAccount(any(), any(), any()) }
+        }
+
+    @Test
     fun `pipeline failure at UPLOADING_KEYS transitions to Error with Permissions previous state`() =
         runTest {
             coEvery { signalKeyManager.uploadInitialKeyBundle() } throws RuntimeException("net")
