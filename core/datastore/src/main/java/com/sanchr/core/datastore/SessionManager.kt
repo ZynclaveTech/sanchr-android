@@ -279,6 +279,8 @@ class SessionManager
                 .remove(KEY_DEVICE_ID)
                 .remove(KEY_TOKEN_EXPIRY)
                 .remove(KEY_INSTALLATION_ID)
+                .remove(KEY_ACCOUNT_PASSWORD)
+                .remove(KEY_DISPLAY_NAME)
                 .apply()
             _isAuthenticated.value = false
         }
