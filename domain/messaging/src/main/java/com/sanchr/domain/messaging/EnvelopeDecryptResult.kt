@@ -65,4 +65,23 @@ enum class FailureClass {
     DUPLICATE,
     SESSION_MISSING,
     CRYPTO_OTHER,
+
+    /**
+     * Outbound-only: [SendMessageUseCase] observed a conversation with no
+     * reachable recipients (either the recipient set resolved empty, or the
+     * per-recipient device fan-out produced zero `DeviceMessage` rows). Used
+     * to surface a terminal FAILED status on the outbound message so the UI
+     * can render a distinct failure affordance instead of silently reporting
+     * SENT.
+     */
+    NO_RECIPIENTS,
+
+    /**
+     * Outbound or inbound: libsignal reported an `UntrustedIdentityException`
+     * / `ProtocolUntrustedIdentityException`. The peer's identity key has
+     * rotated since the session was established. Requires explicit user
+     * action on a safety-number screen (M6) to re-trust; retrying blindly
+     * will fail the same way.
+     */
+    UNTRUSTED_IDENTITY,
 }

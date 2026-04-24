@@ -13,6 +13,7 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.model.User
+import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteMessageRequest
@@ -104,8 +105,17 @@ class MessageRepositoryImpl
             )
         }
 
-        override suspend fun markSendFailed(messageId: String) {
-            messageDao.updateMessageStatus(messageId, MessageStatus.FAILED.name)
+        override suspend fun markSendFailed(
+            messageId: String,
+            failureReason: String?,
+            failureClass: FailureClass?,
+        ) {
+            messageDao.updateMessageFailure(
+                messageId = messageId,
+                status = MessageStatus.FAILED.name,
+                failureReason = failureReason,
+                failureClass = failureClass?.name,
+            )
         }
 
         override suspend fun requeueAfterFailure(messageId: String) {

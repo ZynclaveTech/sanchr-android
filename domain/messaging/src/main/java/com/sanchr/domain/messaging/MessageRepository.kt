@@ -56,10 +56,22 @@ interface MessageRepository {
     )
 
     /**
-     * Marks a row FAILED (terminal). Called when [recordSendAttempt]
-     * reports the attempts cap was reached.
+     * Marks a row FAILED (terminal) with a typed failure context so the UI
+     * can render a distinct affordance per class (e.g. safety-number
+     * warning for [FailureClass.UNTRUSTED_IDENTITY] vs generic error icon
+     * for [FailureClass.NO_RECIPIENTS]). Called both when
+     * [recordSendAttempt] reports the attempts cap was reached and when a
+     * non-retriable condition (no recipients, untrusted identity) is
+     * detected mid-attempt.
+     *
+     * @param failureReason Human-readable, stored for tooltip / long-press.
+     * @param failureClass Canonical taxonomy — null only in legacy contexts.
      */
-    suspend fun markSendFailed(messageId: String)
+    suspend fun markSendFailed(
+        messageId: String,
+        failureReason: String?,
+        failureClass: FailureClass?,
+    )
 
     /**
      * Reverts a row's status to QUEUED after a transient failure so

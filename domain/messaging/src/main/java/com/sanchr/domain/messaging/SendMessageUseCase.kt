@@ -106,9 +106,9 @@ class SendMessageUseCase
                     selfUserId = selfUserId,
                 )
 
-            try {
-                val plaintext = entity.contentBody.toByteArray(Charsets.UTF_8)
-                val deviceMessages =
+            val deviceMessages =
+                try {
+                    val plaintext = entity.contentBody.toByteArray(Charsets.UTF_8)
                     recipients.flatMap { recipientId ->
                         signalSessionManager
                             .encryptForAllDevices(plaintext, recipientId)
@@ -120,6 +120,21 @@ class SendMessageUseCase
                                 )
                             }
                     }
+                } catch (error: EncryptFanOutEmptyException) {
+                    // Transient: no ciphertext was produced for any recipient
+                    // device (typically a sender-certificate fetch failure).
+                    // NEVER mark FAILED on this branch — the row must remain
+                    // eligible for SendRetryWorker indefinitely, otherwise
+                    // the message is lost. We deliberately skip the
+                    // MAX_ATTEMPTS gate here because a cert outage is not
+                    // the user's fault and is expected to clear on its own.
+                    messageRepository.requeueAfterFailure(entity.id)
+                    throw error
+                }
+
+            guardZeroRecipients(entity, recipients, deviceMessages)
+
+            try {
                 val response =
                     messagingClient.sendMessage(
                         SendMessageRequest(
@@ -143,25 +158,44 @@ class SendMessageUseCase
                     status = MessageStatus.SENT,
                     timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
                 )
-            } catch (error: EncryptFanOutEmptyException) {
-                // Transient: no ciphertext was produced for any recipient device
-                // (typically a sender-certificate fetch failure). NEVER mark
-                // FAILED on this branch — the row must remain eligible for
-                // SendRetryWorker indefinitely, otherwise the message is lost.
-                // The `attempts` counter has already been incremented by
-                // recordSendAttempt; we deliberately skip the MAX_ATTEMPTS
-                // gate here because a cert outage is not the user's fault and
-                // is expected to clear on its own.
-                messageRepository.requeueAfterFailure(entity.id)
-                throw error
             } catch (error: Exception) {
                 if (attempts >= MAX_ATTEMPTS) {
-                    messageRepository.markSendFailed(entity.id)
+                    messageRepository.markSendFailed(
+                        messageId = entity.id,
+                        failureReason = error.message ?: error::class.java.simpleName,
+                        failureClass = FailureClass.CRYPTO_OTHER,
+                    )
                 } else {
                     messageRepository.requeueAfterFailure(entity.id)
                 }
                 throw error
             }
+        }
+
+        /**
+         * Zero-recipient guard. Never ship a `SendMessage` RPC with an
+         * empty device list — the server treats it as a successful no-op
+         * send and the message is silently lost (the "silent SENT" bug
+         * from the M4 review). Marks the row terminally FAILED with
+         * [FailureClass.NO_RECIPIENTS] and throws
+         * [NoRecipientsReachableException]; callers MUST NOT requeue.
+         *
+         * The `recipients.isEmpty()` check is defense-in-depth —
+         * [MessageRepository.getOutboundRecipients] already `require`s
+         * non-empty, but that contract may later be relaxed.
+         */
+        private suspend fun guardZeroRecipients(
+            entity: MessageEntity,
+            recipients: List<String>,
+            deviceMessages: List<DeviceMessage>,
+        ) {
+            if (recipients.isNotEmpty() && deviceMessages.isNotEmpty()) return
+            messageRepository.markSendFailed(
+                messageId = entity.id,
+                failureReason = NO_RECIPIENTS_REASON,
+                failureClass = FailureClass.NO_RECIPIENTS,
+            )
+            throw NoRecipientsReachableException(entity.conversationId)
         }
 
         private companion object {
@@ -171,5 +205,18 @@ class SendMessageUseCase
              * `SendRetryWorker`; the user must manually retry or delete it.
              */
             const val MAX_ATTEMPTS = 3
+
+            const val NO_RECIPIENTS_REASON = "No recipients reachable"
         }
     }
+
+/**
+ * Thrown by [SendMessageUseCase.attemptSend] when the fan-out produced no
+ * `DeviceMessage` rows — either the conversation had no remote participants
+ * or every recipient returned an empty key-capable device list. Signals a
+ * *terminal* failure: the outbound row has already been marked FAILED with
+ * [FailureClass.NO_RECIPIENTS] and MUST NOT be requeued.
+ */
+class NoRecipientsReachableException(
+    val conversationId: String,
+) : RuntimeException("No recipients reachable for conversation $conversationId")

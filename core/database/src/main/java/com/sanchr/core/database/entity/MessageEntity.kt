@@ -50,4 +50,15 @@ data class MessageEntity(
     val attempts: Int = 0,
     @ColumnInfo(name = "last_attempt_at")
     val lastAttemptAt: Long? = null,
+    @ColumnInfo(name = "failure_reason")
+    val failureReason: String? = null,
+    /**
+     * Canonical failure taxonomy name (see
+     * `com.sanchr.domain.messaging.FailureClass`). Stored as a string to keep
+     * the DB schema independent of enum ordering. Null while the row is in a
+     * non-terminal state. Drives the distinct UI icon per failure class
+     * (e.g. `UNTRUSTED_IDENTITY` → safety-number warning vs generic error).
+     */
+    @ColumnInfo(name = "failure_class")
+    val failureClass: String? = null,
 )

@@ -53,7 +53,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         EnvelopeQueueEntity::class,
         QuarantinedEnvelopeEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -231,6 +231,23 @@ object DatabaseModule {
             }
         }
 
+    // Adds per-row failure context to `messages`. `status = 'FAILED'` alone
+    // doesn't let the UI distinguish "no recipients" from a peer-identity
+    // rotation (which needs a safety-number screen, not a retry). M5 chat UI
+    // keys off `failure_class` to render a distinct icon and off
+    // `failure_reason` for the tooltip.
+    private val migration5To6 =
+        object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE `messages` ADD COLUMN `failure_reason` TEXT",
+                )
+                database.execSQL(
+                    "ALTER TABLE `messages` ADD COLUMN `failure_class` TEXT",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -244,7 +261,7 @@ object DatabaseModule {
                 SanchrDatabase::class.java,
                 "sanchr-database",
             ).openHelperFactory(SupportOpenHelperFactory(passphraseProvider.obtainPassphrase()))
-            .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5)
+            .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6)
             .build()
     }
 

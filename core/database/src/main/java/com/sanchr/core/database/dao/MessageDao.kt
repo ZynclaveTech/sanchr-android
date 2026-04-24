@@ -55,6 +55,28 @@ interface MessageDao {
     )
 
     /**
+     * Terminal-state transition for outbound sends that cannot be retried.
+     * Writes `status`, `failure_reason`, and `failure_class` in one UPDATE so
+     * observers see a single row transition and the UI never sees a
+     * `FAILED` row with a stale (null) failure context.
+     */
+    @Query(
+        """
+        UPDATE messages
+        SET status = :status,
+            failure_reason = :failureReason,
+            failure_class = :failureClass
+        WHERE id = :messageId
+        """,
+    )
+    suspend fun updateMessageFailure(
+        messageId: String,
+        status: String,
+        failureReason: String?,
+        failureClass: String?,
+    )
+
+    /**
      * Marks an attempt on a QUEUED row. Bumps `attempts`, stamps
      * `last_attempt_at`, and optionally transitions status (e.g. to FAILED
      * once attempts cap is reached). Returns the number of rows affected so
