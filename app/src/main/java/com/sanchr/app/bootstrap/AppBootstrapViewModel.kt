@@ -1,5 +1,6 @@
 package com.sanchr.app.bootstrap
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.DispatcherProvider
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -58,6 +60,10 @@ class AppBootstrapViewModel
          * logout — when it flips `false` while the user is inside the main
          * graph, the nav host pops back to the auth graph without requiring a
          * process restart.
+         *
+         * Backed by an in-memory `MutableStateFlow` in [SessionManager]; there
+         * is no DataStore IO on the collection path, so no `.catch { }` guard
+         * is required here.
          */
         val sessionActive: StateFlow<Boolean> = sessionManager.sessionActive
 
@@ -93,6 +99,18 @@ class AppBootstrapViewModel
          * composes — a lazy `WhileSubscribed` would briefly emit the
          * `initialValue = false` default and flash onboarding for already-
          * onboarded users on cold launch.
+         *
+         * DataStore read failures fall through to a safe-default
+         * (not-onboarded) rather than crashing startup: a corrupted or
+         * unreadable preferences file would otherwise propagate out of the
+         * `stateIn` collector and tear down `viewModelScope`. Falling back to
+         * `false` re-shows onboarding — strictly safer than silently skipping
+         * it based on a corrupted flag.
+         *
+         * The safe-default emission happens BEFORE the log call so a
+         * mocked/unavailable `android.util.Log` (e.g. in JVM unit tests where
+         * `testOptions.unitTests.isReturnDefaultValues` is not set) cannot
+         * prevent the fallback from taking effect.
          */
         val hasCompletedOnboarding: StateFlow<Boolean> =
             combine(
@@ -100,6 +118,11 @@ class AppBootstrapViewModel
                 sessionManager.isAuthenticated,
             ) { flagValue, _ ->
                 flagValue || !sessionManager.getDisplayName().isNullOrBlank()
+            }.catch { throwable ->
+                emit(false)
+                runCatching {
+                    Log.w(TAG, "hasCompletedOnboarding flow failed; defaulting to false", throwable)
+                }
             }.stateIn(viewModelScope, SharingStarted.Eagerly, initialValue = false)
 
         init {
@@ -114,5 +137,9 @@ class AppBootstrapViewModel
             val identityKey = account?.identityPrivateKey
             val hasIdentityKey = identityKey != null && identityKey.isNotEmpty()
             return if (hasToken && hasIdentityKey) StartDestination.Main else StartDestination.Auth
+        }
+
+        private companion object {
+            const val TAG = "AppBootstrap"
         }
     }

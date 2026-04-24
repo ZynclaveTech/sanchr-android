@@ -7,6 +7,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import io.mockk.every
 import io.mockk.mockk
+import java.io.IOException
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -16,6 +17,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -215,14 +217,37 @@ class AppBootstrapViewModelTest {
             }
         }
 
-    // NOTE: `hasCompletedOnboarding_respectsDataStoreErrors` — originally
-    // planned as test #10 — is intentionally omitted. Writing it revealed
-    // that AppBootstrapViewModel does NOT currently guard its `combine()`
-    // stream with `.catch { }`, so any collection-time failure on the
-    // underlying DataStore `Flow<Boolean>` propagates out of the stateIn
-    // collector and crashes viewModelScope instead of falling back to the
-    // safe `initialValue = false`. This is a production-grade gap worth
-    // fixing in a follow-up (a one-line `.catch { emit(false) }` before
-    // `.stateIn(...)`); once fixed, reintroduce the test asserting
-    // `vm.hasCompletedOnboarding.value == false` with no uncaught exception.
+    /**
+     * DataStore read failures (corrupted preferences file, IO error on disk,
+     * migration glitch) must NOT propagate out of the `combine(...).stateIn`
+     * collector and crash `viewModelScope`. Instead, the flow is guarded by
+     * `.catch { emit(false) }` so onboarding is re-shown — strictly safer
+     * than silently skipping it on a corrupted flag.
+     *
+     * Regression guard for the Phase 7b bug: prior to the fix, the throw
+     * propagated out of the `Eagerly`-started stateIn collector and was
+     * rethrown by `runTest` as an uncaught exception, failing the test.
+     *
+     * The flow throws before emitting anything, so `combine` never produces
+     * a value from the happy path — `.catch { emit(false) }` is the sole
+     * emission path, giving an unambiguous final state of `false`.
+     */
+    @Test
+    fun hasCompletedOnboarding_respectsDataStoreErrors_fallsBackToFalse() =
+        runTest(testDispatcher) {
+            val failingFlagFlow =
+                flow<Boolean> {
+                    throw IOException("simulated DataStore read error")
+                }
+            every { userPreferences.hasCompletedOnboardingFlow } returns failingFlagFlow
+            every { sessionManager.getDisplayName() } returns null
+
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            assertFalse(vm.hasCompletedOnboarding.value)
+            // Reaching this line at all proves the exception was swallowed
+            // by `.catch { emit(false) }` rather than escaping the collector
+            // and failing `runTest` with an uncaught `IOException`.
+        }
 }
