@@ -92,7 +92,6 @@ class SettingsViewModel
         private val _isLoadingSettings = MutableStateFlow(true)
         private val _screenLockEnabled = MutableStateFlow(false)
         private val _screenLockTimeout = MutableStateFlow("immediately")
-        private val _screenshotProtection = MutableStateFlow(false)
         private val _enterSendsMessage = MutableStateFlow(false)
         private val _mediaAutoSave = MutableStateFlow(true)
         private val _bubbleStyle = MutableStateFlow("default")
@@ -124,7 +123,7 @@ class SettingsViewModel
                 combine(
                     combine(
                         _screenLockEnabled,
-                        _screenshotProtection,
+                        userPreferences.screenshotProtectionEnabled,
                         _enterSendsMessage,
                         _lowDataMode,
                         _disappearingMessagesDefault,
@@ -356,8 +355,14 @@ class SettingsViewModel
             _screenLockTimeout.value = timeout
         }
 
+        /**
+         * Persists the user's global screenshot-protection preference.
+         * `MainActivity` observes `UserPreferences.screenshotProtectionEnabled`
+         * and applies `FLAG_SECURE` to the window reactively, so this is the
+         * only call site needed to flip the state across the whole app.
+         */
         fun setScreenshotProtection(enabled: Boolean) {
-            _screenshotProtection.value = enabled
+            viewModelScope.launch { userPreferences.setScreenshotProtectionEnabled(enabled) }
         }
 
         fun toggleSanchrMode(enabled: Boolean) {

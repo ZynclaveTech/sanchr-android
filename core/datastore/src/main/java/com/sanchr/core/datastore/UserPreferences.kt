@@ -36,6 +36,7 @@ class UserPreferences
             val NOTIFICATION_PREVIEW = stringPreferencesKey("notification_preview") // "always", "contacts", "never"
             val NOTIFICATION_LOCKSCREEN_PREVIEW = booleanPreferencesKey("notification_lockscreen_preview")
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
+            val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
             val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
@@ -111,6 +112,24 @@ class UserPreferences
 
         suspend fun setBiometricEnabled(enabled: Boolean) {
             dataStore.edit { it[Keys.BIOMETRIC_ENABLED] = enabled }
+        }
+
+        /**
+         * User-controlled general screenshot protection. When true the hosting
+         * Activity applies `WindowManager.LayoutParams.FLAG_SECURE` to the
+         * window, which blocks screenshots, screen recording, and redacts the
+         * app in the recents/app-switcher thumbnail.
+         *
+         * Disabled by default so the app behaves normally out of the box;
+         * privacy-conscious users opt in from Settings → Security. Sensitive
+         * screens (OTP, recovery-key) still force FLAG_SECURE unconditionally
+         * via `SecureScreen()` regardless of this preference.
+         */
+        val screenshotProtectionEnabled: Flow<Boolean> =
+            dataStore.data.map { it[Keys.SCREENSHOT_PROTECTION_ENABLED] ?: false }
+
+        suspend fun setScreenshotProtectionEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.SCREENSHOT_PROTECTION_ENABLED] = enabled }
         }
 
         // --- Media ---

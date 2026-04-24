@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,12 +15,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkManager
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.sync.SyncState
@@ -43,6 +47,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var sessionManager: SessionManager
+
+    @Inject
+    lateinit var userPreferences: UserPreferences
 
     private val bootstrapViewModel: AppBootstrapViewModel by viewModels()
 
@@ -70,6 +77,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
         handleNotificationIntent(intent)
         bootstrapSignalKeysWhenAuthenticated()
+        observeScreenshotProtectionPreference()
 
         setContent {
             SanchrTheme {
@@ -108,6 +116,42 @@ class MainActivity : ComponentActivity() {
                 } else {
                     signalKeyManager.checkAndReplenishPreKeys()
                     signalKeyManager.rotateSignedPreKeyIfNeeded()
+                }
+            }
+        }
+    }
+
+    /**
+     * Reactively applies `WindowManager.LayoutParams.FLAG_SECURE` to this
+     * activity's window whenever the user's global screenshot-protection
+     * preference is enabled, and clears it when disabled.
+     *
+     * Scoped to `Lifecycle.State.STARTED` via [repeatOnLifecycle] so the
+     * collector is torn down on stop and re-established on start; this avoids
+     * leaking the collector across configuration changes and backgrounding.
+     * FLAG_SECURE itself is a window attribute — it survives configuration
+     * changes because the `Window` is recreated per-Activity-instance and the
+     * preference is re-applied as soon as the new instance restarts.
+     *
+     * Note: this applies to the *entire activity window*. Individual sensitive
+     * composables (OTP, recovery-key) still force-enable FLAG_SECURE via
+     * `SecureScreen()` regardless of this preference. The `SecureScreen`
+     * disposable is careful to only clear the flag on dispose if it was not
+     * already set — so when the global toggle is on, leaving an OTP screen
+     * never accidentally drops protection on the rest of the app.
+     */
+    private fun observeScreenshotProtectionPreference() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                userPreferences.screenshotProtectionEnabled.collect { enabled ->
+                    if (enabled) {
+                        window.setFlags(
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                        )
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
                 }
             }
         }
