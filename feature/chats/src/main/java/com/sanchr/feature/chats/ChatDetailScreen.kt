@@ -67,7 +67,6 @@ import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
-import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import java.text.SimpleDateFormat
@@ -90,13 +89,7 @@ fun ChatDetailScreen(
         topBar = {
             ChatDetailTopBar(
                 title = uiState.conversation?.title ?: "Chat",
-                statusText =
-                    if (uiState.peerTyping) {
-                        "Typing..."
-                    } else {
-                        uiState.peerPresenceText
-                    },
-                isOnline = uiState.isPeerOnline,
+                statusText = if (uiState.peerTyping) "Typing..." else null,
                 onNavigateBack = onNavigateBack,
                 onVideoCall = { /* TODO */ },
                 onVoiceCall = { /* TODO */ },
@@ -285,7 +278,6 @@ fun ChatDetailScreen(
 private fun ChatDetailTopBar(
     title: String,
     statusText: String?,
-    isOnline: Boolean,
     onNavigateBack: () -> Unit,
     onVideoCall: () -> Unit,
     onVoiceCall: () -> Unit,
@@ -335,7 +327,7 @@ private fun ChatDetailTopBar(
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (isOnline) SanchrSuccess else SanchrGray400,
+                            color = SanchrGray400,
                         )
                     }
                 }
