@@ -27,13 +27,20 @@ import kotlinx.coroutines.withContext
  * Drives the onboarding state machine defined in [AuthState]:
  *
  * ```
- * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done
+ * Splash -> Home -> (LoginPhone | RegisterPhoneAndName) -> OtpEntry -> ... -> Done   (new, iOS-parity)
+ * PhoneEntry -> ProfileEntry -> OtpEntry -> Permissions -> Registering -> Done       (legacy)
  * ```
  *
- * Phase 1 of the auth/onboarding realignment has appended transition stubs for
- * the new iOS-parity flow (`Splash -> Home -> LoginPhone|RegisterPhoneAndName`)
- * below. Those handlers are intentionally unreferenced by the live navigation
- * graph in this phase — Phase 2 will migrate screens onto them.
+ * Phase 2 of the realignment has wired the new Home/LoginPhone/RegisterPhoneAndName
+ * state transitions and their screens, and flipped the initial state to [AuthState.Splash]
+ * so cold launch hits the new flow. The RPC dispatch on `submitLoginPhone()` and
+ * `submitRegister()` remains a Phase-3 `TODO` — those calls currently throw
+ * `NotImplementedError` intentionally so UI manual-tests can verify the
+ * navigation up to "tap Continue" without accidentally contacting the backend.
+ *
+ * Legacy `submitPhone` / `submitProfile` / `onPhoneChanged` / `onDisplayNameChanged`
+ * handlers remain live and are covered by `AuthViewModelStateTest`. They will be
+ * removed in Phase 4 once the legacy routes are deleted from the NavHost.
  */
 @HiltViewModel
 class AuthViewModel
@@ -47,10 +54,14 @@ class AuthViewModel
         private val pushTokenManager: PushTokenManager,
         private val identityKeyStore: SanchrIdentityKeyStore,
     ) : ViewModel() {
-        private val _state = MutableStateFlow<AuthState>(AuthState.PhoneEntry())
+        // Initial state is [AuthState.Splash] so cold launch enters the new
+        // Phase-2 flow. Legacy unit tests call `onPhoneChanged(...)` before any
+        // assertions, which unconditionally pins state to `PhoneEntry`, so this
+        // switch is source-compatible with the existing `AuthViewModelStateTest`.
+        private val _state = MutableStateFlow<AuthState>(AuthState.Splash)
         val state: StateFlow<AuthState> = _state.asStateFlow()
 
-        // region ── PhoneEntry ────────────────────────────────────────────────
+        // region ── PhoneEntry (legacy) ───────────────────────────────────────
         fun onPhoneChanged(
             countryCode: String,
             phone: String,
@@ -70,7 +81,7 @@ class AuthViewModel
 
         // endregion
 
-        // region ── ProfileEntry ──────────────────────────────────────────────
+        // region ── ProfileEntry (legacy) ─────────────────────────────────────
         fun onDisplayNameChanged(name: String) {
             val current = _state.value as? AuthState.ProfileEntry ?: return
             _state.value = current.copy(displayName = name)
@@ -285,14 +296,12 @@ class AuthViewModel
         }
         // endregion
 
-        // region ── Phase 1 realignment stubs (iOS-parity flow) ──────────────
+        // region ── New iOS-parity transitions (Splash / Home / Login / Register)
         //
-        // These transitions drive the new Splash/Home/LoginPhone/RegisterPhoneAndName
-        // states. They are intentionally *not* wired into the running nav graph
-        // yet — Phase 2 migrates screens onto them, Phase 5 migrates the graph.
-        // Keeping them here means Phase 2 can introduce screens without
-        // re-touching this file and risking a merge-conflict with the legacy
-        // handlers above.
+        // RPC dispatch from `submitLoginPhone()` and `submitRegister()` lands in
+        // Phase 3; the bodies currently throw `NotImplementedError` through the
+        // stdlib `TODO(...)` helper. That's intentional — tapping Continue will
+        // crash the app loudly so we catch any premature production routing.
 
         /** Splash -> Home; no-op if we're already past the splash. */
         fun onSplashComplete() {
@@ -314,26 +323,59 @@ class AuthViewModel
         }
 
         fun onLoginPhoneChanged(
-            @Suppress("UNUSED_PARAMETER") countryCode: String,
-            @Suppress("UNUSED_PARAMETER") phone: String,
+            countryCode: String,
+            phone: String,
         ) {
-            TODO("Phase-3: apply to AuthState.LoginPhone")
+            val current = _state.value as? AuthState.LoginPhone ?: return
+            _state.value =
+                current.copy(
+                    countryCode = countryCode,
+                    phone = phone.filter { it.isDigit() },
+                )
         }
 
         fun submitLoginPhone() {
-            TODO("Phase-3: dispatch Register RPC with empty displayName + bootstrap password")
+            val current = _state.value as? AuthState.LoginPhone ?: return
+            if (!isValidCountryCode(current.countryCode) || !isValidSubscriber(current.phone)) {
+                _state.value = AuthState.Error(current, "Please enter a valid phone number")
+                return
+            }
+            // Phase 3 will dispatch `authServiceClient.register(...)` with an empty
+            // display name + bootstrap password, mirroring iOS `AuthRepository.requestOTP`.
+            // Until then this path intentionally throws so a premature merge can't
+            // silently call the backend.
+            TODO("Phase-3: call Login RPC or Register sentinel path")
         }
 
         fun onRegisterChanged(
-            @Suppress("UNUSED_PARAMETER") countryCode: String,
-            @Suppress("UNUSED_PARAMETER") phone: String,
-            @Suppress("UNUSED_PARAMETER") displayName: String,
+            countryCode: String,
+            phone: String,
+            displayName: String,
         ) {
-            TODO("Phase-3: apply to AuthState.RegisterPhoneAndName")
+            val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
+            _state.value =
+                current.copy(
+                    countryCode = countryCode,
+                    phone = phone.filter { it.isDigit() },
+                    displayName = displayName.take(MAX_DISPLAY_NAME_LENGTH),
+                )
         }
 
         fun submitRegister() {
-            TODO("Phase-3: dispatch Register RPC with generated password")
+            val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
+            val trimmedName = current.displayName.trim()
+            if (trimmedName.isEmpty() || trimmedName.length > MAX_DISPLAY_NAME_LENGTH) {
+                _state.value = AuthState.Error(current, "Display name must be 1-128 characters")
+                return
+            }
+            if (!isValidCountryCode(current.countryCode) || !isValidSubscriber(current.phone)) {
+                _state.value = AuthState.Error(current, "Please enter a valid phone number")
+                return
+            }
+            // Phase 3 will dispatch `authServiceClient.register(...)` with a freshly-
+            // generated password mirroring iOS `AuthRepository.register`. Throws
+            // until then so premature routing to the network is impossible.
+            TODO("Phase-3: call Register with generated password")
         }
         // endregion
 

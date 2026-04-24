@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -59,51 +60,54 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWhite
 
 /**
- * Phone-entry step of the onboarding flow. Observes [AuthViewModel.state] and
- * renders UI keyed off [AuthState.PhoneEntry]; any other state means the host
- * navigation observer has already moved the flow forward, so the screen shows
- * nothing (the NavHost will swap it out immediately).
+ * Returning-user phone entry. Android counterpart of iOS `LoginView` phone
+ * section (LoginView.swift:97-179). Observes [AuthViewModel.state] and renders
+ * keyed off [AuthState.LoginPhone]; any other state means the NavHost observer
+ * has already moved the flow forward, so this composable renders an empty
+ * [Box] to avoid a last-frame flicker during route transitions.
+ *
+ * First-time users take [RegisterScreen] instead.
+ *
+ * TODO(copy): the Privacy Policy / Terms URLs below point at the placeholder
+ *   `sanchr.app/privacy` and `sanchr.app/terms`. Replace with the final
+ *   marketing URLs once legal sign-off lands.
  */
 @Composable
-fun LoginScreen(
+fun LoginPhoneScreen(
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    // One-shot device-locale resolution. Memoized by Context so config
-    // changes (theme etc.) don't thrash the TelephonyManager lookup.
+    val uriHandler = LocalUriHandler.current
     val deviceDefault = remember(context) { resolveDefaultCountry(context) }
 
-    // Resolve the PhoneEntry snapshot we need to render. If the current state is an
-    // Error whose previousState is PhoneEntry, we render that PhoneEntry + inline
-    // error so the user can fix and retry.
-    val phoneEntry: AuthState.PhoneEntry =
+    val loginPhone: AuthState.LoginPhone =
         when (val s = state) {
-            is AuthState.PhoneEntry -> s
-            is AuthState.Error -> s.previousState as? AuthState.PhoneEntry ?: return
-            else -> return // NavHost will navigate away; render nothing to avoid flicker.
+            is AuthState.LoginPhone -> s
+            is AuthState.Error ->
+                s.previousState as? AuthState.LoginPhone ?: run {
+                    Box(modifier = modifier.fillMaxSize())
+                    return
+                }
+            else -> {
+                Box(modifier = modifier.fillMaxSize())
+                return
+            }
         }
 
-    // Seed the VM's country code from the device SIM/network on first
-    // composition, but only if the user hasn't typed yet AND the current
-    // country is still the PhoneEntry default "+1" (US). This avoids
-    // stomping a user-selected country on screen rotation.
     LaunchedEffect(deviceDefault.dialCode) {
-        if (phoneEntry.phone.isEmpty() &&
-            phoneEntry.countryCode == "+1" &&
+        if (loginPhone.phone.isEmpty() &&
+            loginPhone.countryCode == "+1" &&
             deviceDefault.dialCode != "+1"
         ) {
-            viewModel.onPhoneChanged(deviceDefault.dialCode, "")
+            viewModel.onLoginPhoneChanged(deviceDefault.dialCode, "")
         }
     }
 
-    // Resolve the Country to display in the picker pill. Prefer an exact
-    // single match on dial code; fall back to the device default when the
-    // dial code is shared (e.g. "+1" covers US and CA).
     val selectedCountry =
-        findCountryByDialCode(phoneEntry.countryCode)
-            ?: deviceDefault.takeIf { it.dialCode == phoneEntry.countryCode }
+        findCountryByDialCode(loginPhone.countryCode)
+            ?: deviceDefault.takeIf { it.dialCode == loginPhone.countryCode }
             ?: deviceDefault
 
     val errorMessage = (state as? AuthState.Error)?.message
@@ -152,7 +156,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
             Text(
-                text = "Welcome to Sanchr",
+                text = "Sign In",
                 style = MaterialTheme.typography.headlineMedium,
                 color = SanchrGray900,
                 fontWeight = FontWeight.Bold,
@@ -161,7 +165,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             Text(
-                text = "Encrypted. Synced. Secure.",
+                text = "Enter your phone number to continue",
                 style = MaterialTheme.typography.bodyLarge,
                 color = SanchrGray500,
             )
@@ -169,8 +173,8 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
             OutlinedTextField(
-                value = phoneEntry.phone,
-                onValueChange = { viewModel.onPhoneChanged(phoneEntry.countryCode, it) },
+                value = loginPhone.phone,
+                onValueChange = { viewModel.onLoginPhoneChanged(loginPhone.countryCode, it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Phone number") },
                 placeholder = { Text("Enter your phone number") },
@@ -182,7 +186,7 @@ fun LoginScreen(
                         CountryCodePicker(
                             selected = selectedCountry,
                             onSelected = { country ->
-                                viewModel.onPhoneChanged(country.dialCode, phoneEntry.phone)
+                                viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone)
                             },
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -257,10 +261,10 @@ fun LoginScreen(
                 text = "Continue",
                 onClick = {
                     if (state is AuthState.Error) viewModel.retry()
-                    viewModel.submitPhone()
+                    viewModel.submitLoginPhone()
                 },
-                enabled = phoneEntry.phone.length >= 7,
-                isLoading = false,
+                enabled = loginPhone.phone.length >= MIN_CONTINUE_DIGITS && !loginPhone.isSubmitting,
+                isLoading = loginPhone.isSubmitting,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -276,7 +280,7 @@ fun LoginScreen(
                         .padding(bottom = SanchrTheme.spacing.xl),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                SanchrTextButton(onClick = {}) {
+                SanchrTextButton(onClick = { uriHandler.openUri(PRIVACY_URL) }) {
                     Text(
                         text = "Privacy Policy",
                         style = MaterialTheme.typography.labelSmall,
@@ -289,7 +293,7 @@ fun LoginScreen(
                     color = SanchrGray400,
                     modifier = Modifier.align(Alignment.CenterVertically),
                 )
-                SanchrTextButton(onClick = {}) {
+                SanchrTextButton(onClick = { uriHandler.openUri(TERMS_URL) }) {
                     Text(
                         text = "Terms of Service",
                         style = MaterialTheme.typography.labelSmall,
@@ -300,3 +304,7 @@ fun LoginScreen(
         }
     }
 }
+
+private const val MIN_CONTINUE_DIGITS = 7
+private const val PRIVACY_URL = "https://sanchr.app/privacy"
+private const val TERMS_URL = "https://sanchr.app/terms"
