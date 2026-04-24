@@ -17,6 +17,15 @@ interface ContactServiceClient {
     suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse
 
     suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse
+
+    /**
+     * Looks up a single registered user by E.164 phone number.
+     *
+     * Returns the matched [LookedUpUser] when found, or `null` if the server
+     * responded with `NOT_FOUND`. Any other error (network, INVALID_ARGUMENT,
+     * etc.) propagates as an exception.
+     */
+    suspend fun lookupUser(phoneNumber: String): LookedUpUser?
 }
 
 /**
@@ -41,4 +50,6 @@ class ContactServiceGrpcClient(
 
     override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse =
         throw NotImplementedError("Awaiting protobuf codegen")
+
+    override suspend fun lookupUser(phoneNumber: String): LookedUpUser? = throw NotImplementedError("Awaiting protobuf codegen")
 }

@@ -77,3 +77,36 @@ data class GetBlockedListResponse(
     @SerialName("blocked_users") val blockedUsers: List<Contact> = emptyList(),
     @SerialName("next_page_token") val nextPageToken: String = "",
 )
+
+@Serializable
+data class LookupUserRequest(
+    @SerialName("phone_number") val phoneNumber: String = "",
+)
+
+/**
+ * Response for [ContactServiceClient.lookupUser]. Mirrors the shape of
+ * `sanchr.auth.User` (the canonical User message). `user` is null when no
+ * registered user matches the phone — the GrpcClient surfaces NOT_FOUND as a
+ * null return, so this data class stays non-nullable for consumers that
+ * already have a non-null result.
+ */
+@Serializable
+data class LookupUserResponse(
+    val user: LookedUpUser? = null,
+)
+
+/**
+ * Flat projection of `sanchr.auth.User` used only by [LookupUserResponse].
+ * Named distinctly from [Contact] so it does not conflict with the richer
+ * contact-list shape, and to keep the mapping to `core.model.User` explicit.
+ */
+@Serializable
+data class LookedUpUser(
+    val id: String = "",
+    @SerialName("phone_number") val phoneNumber: String = "",
+    @SerialName("display_name") val displayName: String = "",
+    val email: String = "",
+    @SerialName("avatar_url") val avatarUrl: String = "",
+    @SerialName("status_text") val statusText: String = "",
+    @SerialName("created_at") val createdAt: String = "",
+)
