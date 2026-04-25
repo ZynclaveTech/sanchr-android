@@ -60,8 +60,28 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
 /**
  * First-time signup path. Android counterpart of iOS `RegisterView`
  * (RegisterView.swift). Matches iOS field order: profile photo placeholder,
- * display name, phone number + country picker, primary "Create account" CTA,
- * Privacy/Terms footer.
+ * display name, phone number + country picker, primary "Continue to
+ * Verification" CTA, encryption notice footer.
+ *
+ * iOS-parity copy synced 2026-04-25 against `RegisterView.swift`. Title
+ * ("Create Account"), subtitle ("Set up your Sanchr profile before
+ * verification"), field labels ("Display Name", "Phone Number"),
+ * placeholders ("Enter your name", "Phone number"), CTA ("Continue to
+ * Verification") and helper text ("We'll verify your number before
+ * creating the account") are taken character-for-character from
+ * `RegisterView.swift:25-140`.
+ *
+ * iOS-deviation: the supporting/helper text ("We'll verify…") sits below
+ * the phone field on Android because Material's [OutlinedTextField] owns
+ * its supportingText slot; iOS draws the same string as a separate
+ * encryption-badge capsule beneath the CTA. Layout parity is preserved
+ * (helper still appears in the form group); only the visual chrome
+ * differs.
+ *
+ * iOS-deviation: Privacy Policy / Terms footer is Android-only — iOS
+ * `RegisterView` ships no legal footer (the agreement copy lives on
+ * `LoginView`). Retained for legal-team request that every entry-point
+ * surface the links.
  *
  * Observes [AuthViewModel.state] and renders keyed off
  * [AuthState.RegisterPhoneAndName]. Other states render an empty [Box] while
@@ -204,7 +224,7 @@ fun RegisterScreen(
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Display name") },
+                label = { Text("Display Name") },
                 placeholder = { Text("Enter your name") },
                 singleLine = true,
                 shape = SanchrShapeTokens.CornerMedium,
@@ -227,8 +247,8 @@ fun RegisterScreen(
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Phone number") },
-                placeholder = { Text("Enter your phone number") },
+                label = { Text("Phone Number") },
+                placeholder = { Text("Phone number") },
                 leadingIcon = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -277,7 +297,7 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
             SanchrButton(
-                text = "Create account",
+                text = "Continue to Verification",
                 onClick = {
                     if (state is AuthState.Error) viewModel.retry()
                     viewModel.submitRegister()

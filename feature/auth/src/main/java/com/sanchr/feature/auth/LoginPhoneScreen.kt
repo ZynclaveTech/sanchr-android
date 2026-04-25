@@ -66,6 +66,18 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
  * has already moved the flow forward, so this composable renders an empty
  * [Box] to avoid a last-frame flicker during route transitions.
  *
+ * iOS-parity copy synced 2026-04-25 against `LoginView.swift`. Hero title
+ * ("Welcome to Sanchr"), tagline ("Encrypted. Synced. Secure."), phone
+ * label ("Phone Number"), placeholder ("(555) 123-4567"), helper text
+ * ("We'll send you a verification code"), security card title
+ * ("End-to-End Encrypted") and body ("Your messages are secured with
+ * military-grade encryption. Only you and your contacts can read them.")
+ * are taken character-for-character from `LoginView.swift:81-199`.
+ *
+ * iOS-deviation: the OutlinedTextField label uses Title Case "Phone Number"
+ * mirroring iOS line 99; this also doubles as the Material floating-label,
+ * which Android requires (iOS draws a separate label above the field).
+ *
  * First-time users take [RegisterScreen] instead.
  *
  * TODO(copy): the Privacy Policy / Terms URLs below point at the placeholder
@@ -156,7 +168,7 @@ fun LoginPhoneScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
             Text(
-                text = "Sign In",
+                text = "Welcome to Sanchr",
                 style = MaterialTheme.typography.headlineMedium,
                 color = SanchrGray900,
                 fontWeight = FontWeight.Bold,
@@ -165,7 +177,7 @@ fun LoginPhoneScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             Text(
-                text = "Enter your phone number to continue",
+                text = "Encrypted. Synced. Secure.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = SanchrGray500,
             )
@@ -176,8 +188,8 @@ fun LoginPhoneScreen(
                 value = loginPhone.phone,
                 onValueChange = { viewModel.onLoginPhoneChanged(loginPhone.countryCode, it) },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Phone number") },
-                placeholder = { Text("Enter your phone number") },
+                label = { Text("Phone Number") },
+                placeholder = { Text("(555) 123-4567") },
                 leadingIcon = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -247,7 +259,7 @@ fun LoginPhoneScreen(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Your messages and calls are secured with Signal Protocol encryption. Not even Sanchr can read them.",
+                            text = "Your messages are secured with military-grade encryption. Only you and your contacts can read them.",
                             style = MaterialTheme.typography.bodySmall,
                             color = SanchrIndigo500,
                         )
@@ -273,6 +285,10 @@ fun LoginPhoneScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // iOS-deviation: iOS LoginView shows a single combined sentence
+            // ("By continuing, you agree to our Privacy Policy and Terms of
+            // Service") whereas Android exposes the two documents as
+            // separate tappable links — Material idiom for legal footers.
             Row(
                 modifier =
                     Modifier

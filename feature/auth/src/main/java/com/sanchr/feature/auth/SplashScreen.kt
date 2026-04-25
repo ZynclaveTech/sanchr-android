@@ -34,6 +34,11 @@ import kotlinx.coroutines.delay
 /**
  * Cold-launch splash screen. Android counterpart of iOS `SplashView.swift`.
  *
+ * iOS-parity copy synced 2026-04-25 against `SplashView.swift`. Wordmark
+ * ("Sanchr"), tagline ("Encrypted. Synced. Secure."), and loading caption
+ * ("Initializing secure connection...") match the iOS strings character-for-
+ * character, including the three-dot ASCII ellipsis used on iOS line 86.
+ *
  * Structurally mirrors the iOS animation sequence (ambient glow, logo spring,
  * wordmark + tagline fade-up, spinner). The scene is always dark, matching the
  * iOS `preferredColorScheme(.dark)` directive, so the splash looks identical
@@ -166,7 +171,8 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 CircularProgressIndicator(color = SanchrIndigo500)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "Initializing secure connection\u2026",
+                    // iOS parity: literal three-dot ASCII ellipsis, not U+2026.
+                    text = "Initializing secure connection...",
                     color = SplashTextSecondary,
                     fontSize = 12.sp,
                 )

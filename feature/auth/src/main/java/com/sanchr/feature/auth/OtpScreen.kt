@@ -40,6 +40,23 @@ private const val RESEND_COOLDOWN_SECONDS = 30
  * digit via [SanchrOtpInput.onComplete]; a separate Verify button is kept for
  * explicit confirmation / accessibility.
  *
+ * iOS-parity copy synced 2026-04-25 against `OTPView.swift`. Title
+ * ("Verify your number"), subtitle ("Enter the 6-digit code sent to"),
+ * resend prompt ("Didn't receive the code?") and resend label ("Resend")
+ * are taken character-for-character from `OTPView.swift:30-83`. The
+ * resend countdown format ("Resend in 0:30") matches iOS line 69's
+ * `Resend in \(viewModel.formattedCountdown)` output.
+ *
+ * iOS-deviation: Material `TopAppBar` carries the static title
+ * "Verification" — Android navigation idiom requires a top-bar title,
+ * iOS leaves the bar empty save for the `Back` chevron.
+ *
+ * iOS-deviation: an explicit "Verify" CTA (and its loading variant
+ * "Verifying...") sits below the input. iOS auto-submits silently on the
+ * 6th digit with no visible button; Android keeps the button for
+ * accessibility (TalkBack users may not realise auto-submit fired) and
+ * for users who paste a code mid-typing.
+ *
  * Unconditionally applies [SecureScreen] — the OTP code is sensitive and must
  * not leak via screenshots or the app-switcher thumbnail (M6 security checklist,
  * iOS parity).
@@ -76,6 +93,7 @@ fun OtpScreen(
 
     Scaffold(
         topBar = {
+            // iOS-deviation: Material top bar requires a title; iOS shows none.
             SanchrTopBar(title = "Verification", onNavigateBack = onNavigateBack)
         },
         modifier = modifier,
@@ -92,14 +110,14 @@ fun OtpScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
             Text(
-                text = "Enter the 6-digit code",
+                text = "Verify your number",
                 style = MaterialTheme.typography.headlineMedium,
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             Text(
-                text = "We sent a verification code to",
+                text = "Enter the 6-digit code sent to",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -144,6 +162,11 @@ fun OtpScreen(
                     color = SanchrGray400,
                 )
             } else {
+                Text(
+                    text = "Didn't receive the code?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 SanchrTextButton(
                     onClick = {
                         canResend = false
@@ -153,7 +176,7 @@ fun OtpScreen(
                     },
                 ) {
                     Text(
-                        text = "Didn't receive? Resend code",
+                        text = "Resend",
                         style = MaterialTheme.typography.labelLarge,
                         color = SanchrIndigo500,
                     )
@@ -162,6 +185,8 @@ fun OtpScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
+            // iOS-deviation: iOS auto-submits on 6th digit without a button.
+            // Android keeps a Verify button for accessibility and paste UX.
             SanchrButton(
                 text = if (otpEntry.isSubmitting) "Verifying..." else "Verify",
                 onClick = {

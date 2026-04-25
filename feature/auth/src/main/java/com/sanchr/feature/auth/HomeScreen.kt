@@ -48,6 +48,16 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
  * [AuthState.LoginPhone]; tapping "Sign up" transitions to
  * [AuthState.RegisterPhoneAndName].
  *
+ * iOS-parity copy synced 2026-04-25 against `LoginView.swift`. The hero
+ * title ("Welcome to Sanchr") and tagline ("Encrypted. Synced. Secure.")
+ * are taken character-for-character from `LoginView.swift:81-89`.
+ *
+ * iOS-deviation: iOS has no separate "Home" landing — `LoginView` is both
+ * the hero and the phone-entry screen, and there is no explicit "Sign up"
+ * affordance (registration is implicit on first OTP verification). Android
+ * splits the two; the "Log in" / "New to Sanchr?" / "Sign up" copy is
+ * Android-only and has no iOS counterpart to mirror.
+ *
  * On first composition this screen fires [AuthViewModel.attemptFastLogin].
  * When the device has cached credentials the VM transitions straight to
  * [AuthState.Done] and `AuthFlowHost` navigates out before the user ever
@@ -127,6 +137,8 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // iOS-deviation: dual-CTA chooser is Android-only; iOS LoginView
+            // merges hero + phone entry into a single screen.
             SanchrButton(
                 text = "Log in",
                 onClick = { viewModel.chooseLogin() },
@@ -160,6 +172,10 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
+            // iOS-deviation: iOS LoginView shows a single combined sentence
+            // ("By continuing, you agree to our Privacy Policy and Terms of
+            // Service") whereas Android exposes the two documents as
+            // separate tappable links — Material idiom for legal footers.
             Row(
                 modifier =
                     Modifier
