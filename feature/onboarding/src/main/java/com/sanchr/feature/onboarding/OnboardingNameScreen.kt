@@ -22,7 +22,10 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,8 +62,11 @@ import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
  *    (iOS lines 40-44).
  *  - 30dp gap, 56dp height TextField on `surfaceMuted` with rounded-18 corners
  *    (iOS lines 47-66). Capitalization=Words, IME=Done.
- *  - Auto-focus on first composition matches `onAppear { isNameFocused = true }`
- *    (iOS line 86).
+ *  - Auto-focus once per logical screen presentation matches iOS
+ *    `onAppear { isNameFocused = true }` (iOS line 86). The
+ *    [rememberSaveable] guard prevents configuration changes (rotation,
+ *    dark-mode toggle) from re-stealing focus and re-opening the IME after
+ *    the user has dismissed it.
  *  - Bottom-anchored progress (step 1) + GradientButton, 36dp bottom inset.
  *
  * iOS-parity 40-character cap (iOS lines 56-60) is enforced screen-side here;
@@ -82,6 +88,7 @@ fun OnboardingNameScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
     val fieldShape = remember { RoundedCornerShape(18.dp) }
     val focusRequester = remember { FocusRequester() }
     val surfaces = LocalSanchrSurfaces.current
+    var didAutoFocus by rememberSaveable { mutableStateOf(false) }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -178,7 +185,12 @@ fun OnboardingNameScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
                     .height(56.dp)
                     .focusRequester(focusRequester),
         )
-        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+        LaunchedEffect(Unit) {
+            if (!didAutoFocus) {
+                focusRequester.requestFocus()
+                didAutoFocus = true
+            }
+        }
 
         Spacer(Modifier.weight(1f))
 

@@ -6,10 +6,10 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,10 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.SanchrOnboardingProgress
 import com.sanchr.core.designsystem.component.SanchrStepEyebrow
@@ -60,10 +62,11 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo500
  *  - Leading chevron-back row (iOS lines 18-29) wired to
  *    [OnboardingViewModel.back].
  *  - Centered "YOU'RE ALL SET" eyebrow (iOS lines 34-37).
- *  - 96dp circular avatar (iOS lines 41-58): `AsyncImage` if
- *    [OnboardingState.WelcomeConfirm.avatarUri] is set, otherwise a
- *    [SanchrIndigo500] -> [SanchrCyan500] gradient fallback with the first
- *    letter of the name.
+ *  - 96dp circular avatar (iOS lines 41-58): Coil [SubcomposeAsyncImage] when
+ *    [OnboardingState.WelcomeConfirm.avatarUri] is set, with [AvatarFallback]
+ *    rendered in both the `loading` and `error` slots so an unresolvable URI
+ *    never collapses to an empty circle. When the URI is null we render the
+ *    fallback directly.
  *  - displaySmall "Welcome, {name}!" + bodySmall E2EE tagline pinned to a
  *    260dp max width (iOS line 71).
  *  - Conditional [NotificationCard] — only rendered while
@@ -119,8 +122,11 @@ fun OnboardingWelcomeScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
         }
     }
 
-    val gradientBrush = remember { Brush.linearGradient(listOf(SanchrIndigo500, SanchrCyan500)) }
     val avatarShape = remember { CircleShape }
+    val avatarModifier =
+        Modifier
+            .size(96.dp)
+            .clip(avatarShape)
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -152,34 +158,16 @@ fun OnboardingWelcomeScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
         Spacer(Modifier.height(16.dp))
 
         if (welcomeState.avatarUri != null) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = welcomeState.avatarUri,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier =
-                    Modifier
-                        .size(96.dp)
-                        .clip(avatarShape),
+                loading = { AvatarFallback(name = welcomeState.name, modifier = Modifier.fillMaxSize()) },
+                error = { AvatarFallback(name = welcomeState.name, modifier = Modifier.fillMaxSize()) },
+                modifier = avatarModifier,
             )
         } else {
-            Box(
-                modifier =
-                    Modifier
-                        .size(96.dp)
-                        .clip(avatarShape)
-                        .background(gradientBrush),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text =
-                        welcomeState.name
-                            .firstOrNull()
-                            ?.uppercase()
-                            ?: "",
-                    style =
-                        MaterialTheme.typography.displayLarge.copy(color = Color.White),
-                )
-            }
+            AvatarFallback(name = welcomeState.name, modifier = avatarModifier)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -242,10 +230,40 @@ fun OnboardingWelcomeScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
 }
 
 /**
+ * Indigo -> cyan gradient circle with the first letter of [name] uppercased
+ * in displayLarge white. Shared between the avatar's null/loading/error
+ * states so an unresolvable [coil.compose.SubcomposeAsyncImage] model never
+ * collapses to an empty circle.
+ */
+@Composable
+private fun AvatarFallback(
+    name: String,
+    modifier: Modifier = Modifier,
+) {
+    val gradientBrush = remember { Brush.linearGradient(listOf(SanchrIndigo500, SanchrCyan500)) }
+    Box(
+        modifier = modifier.background(gradientBrush),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text =
+                name
+                    .firstOrNull()
+                    ?.uppercase()
+                    ?: "",
+            style = MaterialTheme.typography.displayLarge.copy(color = Color.White),
+        )
+    }
+}
+
+/**
  * Inline notification permission card (iOS lines 134-168). 16dp rounded
  * surface card with leading [Icons.Filled.NotificationsActive] tinted
  * [SanchrIndigo500], two-line copy, and a trailing 8dp-rounded primary pill
- * "Enable" button that delegates to [onEnable].
+ * "Enable" button that delegates to [onEnable]. Uses Material3 [TextButton]
+ * for the pill so we get a proper bounded ripple, `Role.Button` semantics
+ * (announced as a button by TalkBack), and the standard 48dp minimum touch
+ * target — none of which a raw `Box.clickable` provides.
  */
 @Composable
 private fun NotificationCard(
@@ -286,18 +304,19 @@ private fun NotificationCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Box(
-            modifier =
-                Modifier
-                    .clip(pillShape)
-                    .background(SanchrIndigo500)
-                    .clickable(onClick = onEnable)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+        TextButton(
+            onClick = onEnable,
+            shape = pillShape,
+            colors =
+                ButtonDefaults.textButtonColors(
+                    containerColor = SanchrIndigo500,
+                    contentColor = Color.White,
+                ),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Text(
                 text = "Enable",
                 style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
             )
         }
     }
