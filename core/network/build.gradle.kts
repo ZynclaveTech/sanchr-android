@@ -9,9 +9,10 @@ plugins {
 
 // Per-machine overrides for gRPC backend host/port/TLS. Devs can set keys
 // like `sanchr.grpc.host=10.0.2.2` in `local.properties` (gitignored) or
-// inject `SANCHR_GRPC_HOST` etc. via env (CI). Defaults below preserve the
-// production wiring (api-dev.sanchr.com:443, TLS on) so a fresh checkout
-// without overrides behaves identically to before.
+// inject `SANCHR_GRPC_HOST` etc. via env (CI). Defaults match iOS dev env
+// (`SanchrShared/Config/AppConfiguration.swift:104-117`):
+//   gRPC core: api.sanchr.com:443 TLS
+//   gRPC call: call.sanchr.com:443 TLS
 val sanchrLocalProperties =
     Properties().apply {
         val f = rootProject.file("local.properties")
@@ -38,7 +39,7 @@ android {
         buildConfigField(
             "String",
             "GRPC_CORE_HOST",
-            "\"${sanchrOverride("sanchr.grpc.host", "SANCHR_GRPC_HOST", "api-dev.sanchr.com")}\"",
+            "\"${sanchrOverride("sanchr.grpc.host", "SANCHR_GRPC_HOST", "api.sanchr.com")}\"",
         )
         buildConfigField(
             "int",
@@ -48,7 +49,7 @@ android {
         buildConfigField(
             "String",
             "GRPC_CALL_HOST",
-            "\"${sanchrOverride("sanchr.grpc.call.host", "SANCHR_GRPC_CALL_HOST", "call-dev.sanchr.com")}\"",
+            "\"${sanchrOverride("sanchr.grpc.call.host", "SANCHR_GRPC_CALL_HOST", "call.sanchr.com")}\"",
         )
         buildConfigField(
             "int",
