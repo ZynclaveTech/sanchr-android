@@ -1,6 +1,6 @@
 package com.sanchr.feature.auth
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,10 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -24,9 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -35,11 +30,8 @@ import com.sanchr.core.designsystem.component.SanchrTextButton
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
-import com.sanchr.core.designsystem.theme.SanchrIndigo400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
-import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.core.designsystem.theme.SanchrWhite
 
 /**
  * Unified Login / Register landing. Mirrors iOS `LoginView` hero + dual CTA
@@ -50,7 +42,9 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
  *
  * iOS-parity copy synced 2026-04-25 against `LoginView.swift`. The hero
  * title ("Welcome to Sanchr") and tagline ("Encrypted. Synced. Secure.")
- * are taken character-for-character from `LoginView.swift:81-89`.
+ * are taken character-for-character from `LoginView.swift:81-89`. The logo
+ * uses the raster `sanchr_logo` asset sized 120dp to match
+ * `LoginView.swift:72-75`.
  *
  * iOS-deviation: iOS has no separate "Home" landing — `LoginView` is both
  * the hero and the phone-entry screen, and there is no explicit "Sign up"
@@ -90,31 +84,15 @@ fun HomeScreen(
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
 
+            // Raster SanchrLogo asset — 120dp to match `LoginView.swift:75`.
             Box(
-                modifier =
-                    Modifier
-                        .size(96.dp)
-                        .clip(SanchrShapeTokens.CornerExtraLarge)
-                        .background(
-                            Brush.linearGradient(colors = listOf(SanchrIndigo500, SanchrIndigo400)),
-                        ),
+                modifier = Modifier.size(120.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Chat,
-                    contentDescription = null,
-                    tint = SanchrWhite,
-                    modifier = Modifier.size(44.dp),
-                )
-                Icon(
-                    imageVector = Icons.Filled.Shield,
-                    contentDescription = "Sanchr logo",
-                    tint = SanchrWhite.copy(alpha = 0.6f),
-                    modifier =
-                        Modifier
-                            .size(24.dp)
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = 6.dp, end = 6.dp),
+                Image(
+                    painter = painterResource(id = com.sanchr.core.designsystem.R.drawable.sanchr_logo),
+                    contentDescription = "Sanchr",
+                    modifier = Modifier.size(120.dp),
                 )
             }
 

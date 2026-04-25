@@ -2,6 +2,7 @@ package com.sanchr.feature.auth
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,9 +42,10 @@ import kotlinx.coroutines.delay
  * character, including the three-dot ASCII ellipsis used on iOS line 86.
  *
  * Structurally mirrors the iOS animation sequence (ambient glow, logo spring,
- * wordmark + tagline fade-up, spinner). The scene is always dark, matching the
- * iOS `preferredColorScheme(.dark)` directive, so the splash looks identical
- * in light and dark modes.
+ * wordmark + tagline fade-up, spinner). The logo uses the raster `sanchr_logo`
+ * asset (96dp) to match `SplashView.swift:45-49`. The scene is always dark,
+ * matching the iOS `preferredColorScheme(.dark)` directive, so the splash
+ * looks identical in light and dark modes.
  *
  * After [SPLASH_DURATION_MS] the composable invokes [onSplashComplete] exactly
  * once. The callback is **not** wired into navigation in Phase 1 — that's
@@ -126,19 +129,15 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                                 shape = CircleShape,
                             ),
                 )
-                // Logo placeholder — tinted disc matching the primary indigo.
-                // A raster `SanchrLogo` asset will drop in during Phase 6 polish;
-                // the structural mass + scale animation is what matters here.
-                Box(
+                // Raster SanchrLogo asset — 96dp to match `SplashView.swift:49`.
+                Image(
+                    painter = painterResource(id = com.sanchr.core.designsystem.R.drawable.sanchr_logo),
+                    contentDescription = "Sanchr",
                     modifier =
                         Modifier
                             .size(96.dp)
                             .scale(logoScale)
-                            .alpha(logoAlpha)
-                            .background(
-                                color = SanchrIndigo500,
-                                shape = CircleShape,
-                            ),
+                            .alpha(logoAlpha),
                 )
             }
 
