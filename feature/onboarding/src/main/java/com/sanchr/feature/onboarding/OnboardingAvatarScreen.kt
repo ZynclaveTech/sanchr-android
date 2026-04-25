@@ -3,6 +3,7 @@ package com.sanchr.feature.onboarding
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +29,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +44,7 @@ import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo100
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
+import com.sanchr.core.designsystem.theme.SanchrIndigo600
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -50,8 +56,6 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
  *     13+ "photo picker" with automatic fallback to `GetContent` on older
  *     devices via the androidx compat library). iOS uses PhotosUI directly.
  *   - Selected image preview uses Coil `AsyncImage` on a local URI.
- *   - No gradient "camera/pencil" overlay badge — that's pure visual polish,
- *     deferred to Phase 6 (design-system pass).
  *   - No upload-on-Continue — iOS blocks advancement on `saveProfile` success;
  *     Android defers server persistence to Phase 6 (`ProfileService.UpdateProfile`
  *     wiring, see `OnboardingViewModel.swift:86-97`).
@@ -62,6 +66,12 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
  * CTA all match iOS verbatim (lines 29, 35, 40, 88, 134). The "Skip for now"
  * secondary action is an Android-only addition because Android defers server
  * upload until Phase 6 — see iOS-deviation comment.
+ *
+ * The gradient camera/pencil badge mirrors `OnboardingAvatarStepView.swift:71-84`:
+ * a 38dp circle filled with a horizontal LinearGradient from `SanchrIndigo500`
+ * (iOS `SanchrColors.primary` = 0x6366F1) to `SanchrIndigo600` (iOS literal
+ * `Color(hex: 0x4F46E5)`), with `camera.fill` when no image is selected and
+ * `pencil` (Material `Edit`) once one is.
  */
 @Composable
 fun OnboardingAvatarScreen(
@@ -111,47 +121,86 @@ fun OnboardingAvatarScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
+            // Outer Box is NOT clipped so the gradient badge can extend past
+            // the avatar circle on its BottomEnd corner (iOS parity —
+            // `OnboardingAvatarStepView.swift:71-85`). Tap target stays the
+            // full 148dp circle so the hit region matches iOS.
             Box(
-                modifier =
-                    Modifier
-                        .size(148.dp)
-                        .clip(CircleShape)
-                        .clickable {
-                            pickMedia.launch(
-                                PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly,
-                                ),
-                            )
-                        },
-                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(148.dp),
+                contentAlignment = Alignment.BottomEnd,
             ) {
-                val uri = avatarState.avatarUri
-                if (uri != null) {
-                    AsyncImage(
-                        model = uri.toUri(),
-                        contentDescription = "Selected avatar",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        shape = CircleShape,
-                        color = SanchrIndigo100,
-                    ) {
-                        Column(
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .clickable {
+                                pickMedia.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                    ),
+                                )
+                            },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val uri = avatarState.avatarUri
+                    if (uri != null) {
+                        AsyncImage(
+                            model = uri.toUri(),
+                            contentDescription = "Selected avatar",
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = CircleShape,
+                            color = SanchrIndigo100,
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Person,
-                                contentDescription = null,
-                                tint = SanchrIndigo500,
-                                modifier = Modifier.size(64.dp),
-                            )
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = SanchrIndigo500,
+                                    modifier = Modifier.size(64.dp),
+                                )
+                            }
                         }
                     }
+                }
+
+                // Gradient camera / pencil badge — 38dp circle, iOS parity
+                // (`OnboardingAvatarStepView.swift:71-84`). Horizontal gradient
+                // from `SanchrIndigo500` (0x6366F1) to `SanchrIndigo600`
+                // (0x4F46E5) matches `[SanchrColors.primary, Color(hex: 0x4F46E5)]`.
+                Box(
+                    modifier =
+                        Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                brush =
+                                    Brush.horizontalGradient(
+                                        colors = listOf(SanchrIndigo500, SanchrIndigo600),
+                                    ),
+                            ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector =
+                            if (avatarState.avatarUri == null) {
+                                Icons.Filled.CameraAlt
+                            } else {
+                                Icons.Filled.Edit
+                            },
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
 
