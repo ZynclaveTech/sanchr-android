@@ -16,21 +16,32 @@ import kotlinx.coroutines.launch
  * Drives the onboarding flow.
  *
  * iOS reference: `OnboardingViewModel.swift:60-112` (`saveProfile` +
- * `goToNextStep`/`goToPreviousStep`). Android splits the combined
- * `currentStep: Int` + mutable fields into the [OnboardingState] sealed
- * hierarchy because Compose state-hoisting is idiomatically per-step.
+ * `goToNextStep`/`goToPreviousStep` + `requestNotificationPermission`).
+ * Android splits the combined `currentStep: Int` + mutable fields into the
+ * [OnboardingState] sealed hierarchy because Compose state-hoisting is
+ * idiomatically per-step.
  *
- * Phase 5 scope additions on top of Phase 4a:
- *  - Terminal [onContactSyncFinish] persists
- *    `UserPreferences.setOnboardingCompleted(true)` BEFORE emitting
- *    [OnboardingState.Completed] so the NavHost's gating flow observes the
- *    flip before routing to Main. Any DataStore write failure is logged and
- *    swallowed — the user must not be trapped in onboarding because of a
- *    disk-write error; Phase X will add a retry on next cold-launch when we
- *    implement the logout wipe path anyway.
+ * Phase H5a (iOS-parity terminal Welcome):
+ *  - Initial state is now [OnboardingState.NameEntry] (matches iOS step 1).
+ *    The pre-name `Welcome` landing screen has been removed.
+ *  - [onContactSyncFinish] now advances to [OnboardingState.WelcomeConfirm]
+ *    instead of [OnboardingState.Completed]. The DataStore write is deferred
+ *    to [finishOnboarding].
+ *  - [finishOnboarding] (CTA on the WelcomeConfirm screen) writes
+ *    `UserPreferences.setOnboardingCompleted(true)` and then emits
+ *    [OnboardingState.Completed]. Fail-safe contract preserved: a DataStore
+ *    write failure is logged and swallowed; we still emit Completed so the
+ *    user is not trapped in onboarding.
+ *  - [requestNotificationPermission] / [notificationGranted] expose a hook
+ *    for the screen-level `rememberLauncherForActivityResult` to flip the
+ *    `notificationsEnabled` flag on the current WelcomeConfirm state.
+ *  - [back] supports the chevron.left back button on WelcomeConfirm
+ *    (`OnboardingWelcomeStepView` toolbar leading item) by returning to
+ *    ContactSync while preserving name + avatarUri.
  *
- * Still deferred: Avatar persistence to `ProfileService.UpdateProfile` lands
- * in Phase 6 (see `OnboardingViewModel.swift:86-97`).
+ * Avatar persistence to `ProfileService.UpdateProfile` is still deferred
+ * (Phase H5b/H6 — see `OnboardingViewModel.swift:86-97`). Display name was
+ * already saved at OTP time in Phase H2.
  *
  * Validation: display name is trimmed, length 1..128. Matches iOS
  * `isNameValid` (>=2 chars) loosely — we accept >=1 and cap at 128 to match
@@ -44,13 +55,12 @@ class OnboardingViewModel
         private val userPreferences: UserPreferences,
     ) : ViewModel() {
         private val _state: MutableStateFlow<OnboardingState> =
-            MutableStateFlow(OnboardingState.Welcome)
+            MutableStateFlow(initialState())
         val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
-        /** Welcome -> NameEntry, seeded with any previously-saved display name. */
-        fun onWelcomeContinue() {
+        private fun initialState(): OnboardingState {
             val prefill = sessionManager.getDisplayName().orEmpty()
-            _state.value = OnboardingState.NameEntry(prefilledName = prefill, name = prefill)
+            return OnboardingState.NameEntry(prefilledName = prefill, name = prefill)
         }
 
         /** TextField onValueChange — 128-char hard cap, no trimming while typing. */
@@ -97,14 +107,73 @@ class OnboardingViewModel
         }
 
         /**
-         * Terminal step. Persists the `has_completed_onboarding` DataStore flag
-         * BEFORE flipping state to [OnboardingState.Completed] so the NavHost
-         * sees the updated flag on its next recomposition. On persistence
-         * failure we log and still advance — trapping the user in onboarding
-         * over a disk-write error is worse than a one-time re-onboard after
-         * relaunch.
+         * ContactSync -> WelcomeConfirm. Phase H5a no longer writes the
+         * `has_completed_onboarding` flag here; that write is deferred to
+         * [finishOnboarding] when the user taps the CTA on the terminal
+         * WelcomeConfirm screen, matching iOS where `saveProfile` runs at the
+         * very end of the flow.
          */
         fun onContactSyncFinish() {
+            val current = _state.value as? OnboardingState.ContactSync ?: return
+            _state.value =
+                OnboardingState.WelcomeConfirm(
+                    name = current.name,
+                    avatarUri = current.avatarUri,
+                )
+        }
+
+        /**
+         * Hook for the screen's `rememberLauncherForActivityResult` to flip
+         * the `notificationsEnabled` flag once the OS permission dialog
+         * resolves. On API < 33, [OnboardingWelcomeScreen] should call this
+         * with `true` directly because POST_NOTIFICATIONS is implicitly
+         * granted pre-Tiramisu.
+         *
+         * iOS reference: `OnboardingViewModel.swift:53-55`
+         * (`requestNotificationPermission` -> `notificationsEnabled = granted`).
+         */
+        fun notificationGranted(granted: Boolean) {
+            val current = _state.value as? OnboardingState.WelcomeConfirm ?: return
+            _state.value = current.copy(notificationsEnabled = granted)
+        }
+
+        /**
+         * Stub kept for API-symmetry with iOS's
+         * `OnboardingViewModel.requestNotificationPermission(pushManager:)`.
+         * The actual OS call is screen-side via Compose's
+         * `rememberLauncherForActivityResult` (Activity Result API requires
+         * a Composable scope). This VM-side entry point exists so the screen
+         * can centralize "should I prompt?" logic if it grows beyond the
+         * launcher pattern; for now it's a no-op marker.
+         */
+        fun requestNotificationPermission() {
+            // No-op: see KDoc. Screen owns the launcher; result is reported
+            // back via [notificationGranted].
+        }
+
+        /**
+         * Back-nav from [OnboardingState.WelcomeConfirm] -> [ContactSync],
+         * preserving name + avatarUri. Mirrors iOS
+         * `OnboardingWelcomeStepView` toolbar's `chevron.left` leading item.
+         */
+        fun back() {
+            val current = _state.value as? OnboardingState.WelcomeConfirm ?: return
+            _state.value =
+                OnboardingState.ContactSync(
+                    name = current.name,
+                    avatarUri = current.avatarUri,
+                )
+        }
+
+        /**
+         * Terminal CTA on the WelcomeConfirm screen ("Start Chatting" on iOS).
+         * Persists the `has_completed_onboarding` DataStore flag and then
+         * flips state to [OnboardingState.Completed] so the NavHost routes
+         * out to Main. On persistence failure we log and still advance —
+         * trapping the user in onboarding over a disk-write error is worse
+         * than a one-time re-onboard after relaunch.
+         */
+        fun finishOnboarding() {
             viewModelScope.launch {
                 try {
                     userPreferences.setOnboardingCompleted(true)

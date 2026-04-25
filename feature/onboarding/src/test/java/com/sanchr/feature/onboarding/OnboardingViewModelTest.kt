@@ -12,8 +12,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -23,20 +25,26 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
 /**
- * State-machine unit tests for [OnboardingViewModel]. Locks in Phase 4-5
- * behavior prior to polish:
+ * State-machine unit tests for [OnboardingViewModel].
  *
- *   Welcome -> NameEntry -> AvatarEntry -> ContactSync -> Completed
+ * Phase H5a re-aligned the flow to iOS: there is no longer a pre-name
+ * `Welcome` landing. The state machine is now:
  *
- * Plus trimmed-name validation (1..128), avatar skip/preserve, and the
- * fail-safe DataStore write on [OnboardingViewModel.onContactSyncFinish].
+ *   NameEntry -> AvatarEntry -> ContactSync -> WelcomeConfirm -> Completed
+ *
+ * Tests cover:
+ *  - Initial state seeded from SessionManager display name.
+ *  - Trimmed-name validation (1..128).
+ *  - Avatar skip / preserve.
+ *  - ContactSync -> WelcomeConfirm transition (no DataStore write here).
+ *  - finishOnboarding writes the DataStore flag and emits Completed.
+ *  - Fail-safe: DataStore throw still emits Completed.
+ *  - notificationGranted updates WelcomeConfirm.notificationsEnabled.
+ *  - back() from WelcomeConfirm returns to ContactSync preserving state.
  *
  * Conventions match `:feature:auth`'s `AuthViewModelStateTest` — MockK,
  * `StandardTestDispatcher` + `Dispatchers.setMain`, `runTest { ... }`,
- * `advanceUntilIdle()` for suspend paths. No Turbine needed: we assert on
- * the terminal StateFlow value after idling the scheduler, and verify
- * write-before-state ordering by mocking the suspend call to block until
- * we inspect the state.
+ * `advanceUntilIdle()` for suspend paths.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnboardingViewModelTest {
@@ -64,33 +72,10 @@ class OnboardingViewModelTest {
     }
 
     @Test
-    fun initialState_isWelcome() =
-        runTest {
-            val vm = newViewModel()
-            assertEquals(OnboardingState.Welcome, vm.state.value)
-        }
-
-    @Test
-    fun onWelcomeContinue_transitionsToNameEntry_withPrefillFromSession() =
-        runTest {
-            every { sessionManager.getDisplayName() } returns "Alice"
-            val vm = newViewModel()
-
-            vm.onWelcomeContinue()
-
-            val s = vm.state.value
-            assertIs<OnboardingState.NameEntry>(s)
-            assertEquals("Alice", s.prefilledName)
-            assertEquals("Alice", s.name)
-        }
-
-    @Test
-    fun onWelcomeContinue_whenNoStoredName_prefillsEmpty() =
+    fun initialState_isNameEntry_withEmptyPrefill_whenNoStoredName() =
         runTest {
             every { sessionManager.getDisplayName() } returns null
             val vm = newViewModel()
-
-            vm.onWelcomeContinue()
 
             val s = vm.state.value
             assertIs<OnboardingState.NameEntry>(s)
@@ -99,10 +84,21 @@ class OnboardingViewModelTest {
         }
 
     @Test
+    fun initialState_isNameEntry_withStoredDisplayName_prefilled() =
+        runTest {
+            every { sessionManager.getDisplayName() } returns "Alice"
+            val vm = newViewModel()
+
+            val s = vm.state.value
+            assertIs<OnboardingState.NameEntry>(s)
+            assertEquals("Alice", s.prefilledName)
+            assertEquals("Alice", s.name)
+        }
+
+    @Test
     fun onNameChanged_updatesNameField() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
 
             vm.onNameChanged("Bob")
 
@@ -115,7 +111,6 @@ class OnboardingViewModelTest {
     fun onNameChanged_capsAt128Chars() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
 
             val overlong = "x".repeat(200)
             vm.onNameChanged(overlong)
@@ -129,7 +124,6 @@ class OnboardingViewModelTest {
     fun submitName_withValidName_transitionsToAvatarEntry() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("Carol")
 
             vm.submitName()
@@ -144,12 +138,10 @@ class OnboardingViewModelTest {
     fun submitName_withEmptyName_doesNotAdvance() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("")
 
             vm.submitName()
 
-            // Contract: validation is a no-op, caller disables CTA.
             assertIs<OnboardingState.NameEntry>(vm.state.value)
         }
 
@@ -157,7 +149,6 @@ class OnboardingViewModelTest {
     fun submitName_withWhitespaceOnlyName_doesNotAdvance() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("   ")
 
             vm.submitName()
@@ -169,7 +160,6 @@ class OnboardingViewModelTest {
     fun submitName_trimsWhitespace() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("  Bob  ")
 
             vm.submitName()
@@ -183,7 +173,6 @@ class OnboardingViewModelTest {
     fun onAvatarSelected_updatesUri() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("Dave")
             vm.submitName()
 
@@ -199,7 +188,6 @@ class OnboardingViewModelTest {
     fun skipAvatar_transitionsToContactSync_withNullUri() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("Eve")
             vm.submitName()
             vm.onAvatarSelected("content://photo")
@@ -216,7 +204,6 @@ class OnboardingViewModelTest {
     fun submitAvatar_withSelectedUri_transitionsToContactSync_preservingUri() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("Frank")
             vm.submitName()
             vm.onAvatarSelected("content://frank.jpg")
@@ -230,15 +217,39 @@ class OnboardingViewModelTest {
         }
 
     @Test
-    fun onContactSyncFinish_writesFlagToUserPreferences_thenTransitionsToCompleted() =
+    fun onContactSyncFinish_transitionsToWelcomeConfirm_withoutWritingDataStore() =
         runTest {
             val vm = newViewModel()
-            vm.onWelcomeContinue()
             vm.onNameChanged("Grace")
             vm.submitName()
+            vm.onAvatarSelected("content://grace.jpg")
             vm.submitAvatar()
 
             vm.onContactSyncFinish()
+            advanceUntilIdle()
+
+            val s = vm.state.value
+            assertIs<OnboardingState.WelcomeConfirm>(s)
+            assertEquals("Grace", s.name)
+            assertEquals("content://grace.jpg", s.avatarUri)
+            assertFalse(s.notificationsEnabled)
+            assertNull(s.errorMessage)
+            assertFalse(s.isSubmitting)
+            // DataStore write deferred to finishOnboarding.
+            coVerify(exactly = 0) { userPreferences.setOnboardingCompleted(any()) }
+        }
+
+    @Test
+    fun finishOnboarding_writesDataStoreFlag_thenEmitsCompleted() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Heidi")
+            vm.submitName()
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+            advanceUntilIdle()
+
+            vm.finishOnboarding()
             advanceUntilIdle()
 
             assertEquals(OnboardingState.Completed, vm.state.value)
@@ -246,18 +257,19 @@ class OnboardingViewModelTest {
         }
 
     @Test
-    fun onContactSyncFinish_whenUserPreferencesThrows_stillTransitionsToCompleted() =
+    fun finishOnboarding_whenUserPreferencesThrows_stillEmitsCompleted() =
         runTest {
             coEvery { userPreferences.setOnboardingCompleted(true) } throws
                 RuntimeException("disk full")
 
             val vm = newViewModel()
-            vm.onWelcomeContinue()
-            vm.onNameChanged("Heidi")
+            vm.onNameChanged("Ivan")
             vm.submitName()
             vm.submitAvatar()
-
             vm.onContactSyncFinish()
+            advanceUntilIdle()
+
+            vm.finishOnboarding()
             advanceUntilIdle()
 
             // Fail-safe: user must not be trapped in onboarding on disk-write error.
@@ -266,19 +278,98 @@ class OnboardingViewModelTest {
         }
 
     @Test
+    fun notificationGranted_updatesNotificationsEnabledOnWelcomeConfirm() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Judy")
+            vm.submitName()
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+
+            vm.notificationGranted(true)
+
+            val s = vm.state.value
+            assertIs<OnboardingState.WelcomeConfirm>(s)
+            assertTrue(s.notificationsEnabled)
+        }
+
+    @Test
+    fun notificationGranted_whenDenied_setsFlagFalse() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Kim")
+            vm.submitName()
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+            vm.notificationGranted(true)
+
+            vm.notificationGranted(false)
+
+            val s = vm.state.value
+            assertIs<OnboardingState.WelcomeConfirm>(s)
+            assertFalse(s.notificationsEnabled)
+        }
+
+    @Test
+    fun notificationGranted_fromNonWelcomeConfirmState_isNoOp() =
+        runTest {
+            val vm = newViewModel()
+            // Still in NameEntry.
+            vm.notificationGranted(true)
+
+            assertIs<OnboardingState.NameEntry>(vm.state.value)
+        }
+
+    @Test
+    fun back_fromWelcomeConfirm_returnsToContactSync_preservingNameAndAvatar() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Laura")
+            vm.submitName()
+            vm.onAvatarSelected("content://laura.jpg")
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+
+            vm.back()
+
+            val s = vm.state.value
+            assertIs<OnboardingState.ContactSync>(s)
+            assertEquals("Laura", s.name)
+            assertEquals("content://laura.jpg", s.avatarUri)
+        }
+
+    @Test
+    fun back_fromNonWelcomeConfirmState_isNoOp() =
+        runTest {
+            val vm = newViewModel()
+            // Still in NameEntry.
+            vm.back()
+
+            assertIs<OnboardingState.NameEntry>(vm.state.value)
+        }
+
+    @Test
     fun onNameChanged_fromNonNameEntryState_isNoOp() =
         runTest {
             val vm = newViewModel()
-            // Still on Welcome.
+            vm.onNameChanged("Mallory")
+            vm.submitName()
+            // Now in AvatarEntry.
+
             vm.onNameChanged("Ignored")
-            assertEquals(OnboardingState.Welcome, vm.state.value)
+
+            val s = vm.state.value
+            assertIs<OnboardingState.AvatarEntry>(s)
+            assertEquals("Mallory", s.name)
         }
 
     @Test
     fun onAvatarSelected_fromNonAvatarEntryState_isNoOp() =
         runTest {
             val vm = newViewModel()
+            // Still in NameEntry.
             vm.onAvatarSelected("content://nope")
-            assertEquals(OnboardingState.Welcome, vm.state.value)
+
+            assertIs<OnboardingState.NameEntry>(vm.state.value)
         }
 }

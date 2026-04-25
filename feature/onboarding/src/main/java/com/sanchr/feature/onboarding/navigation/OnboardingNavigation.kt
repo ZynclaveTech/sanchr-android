@@ -19,10 +19,10 @@ import com.sanchr.feature.onboarding.OnboardingViewModel
 import com.sanchr.feature.onboarding.OnboardingWelcomeScreen
 
 const val ONBOARDING_GRAPH_ROUTE = "onboarding"
-const val ONBOARDING_WELCOME = "onboarding/welcome"
 const val ONBOARDING_NAME = "onboarding/name"
 const val ONBOARDING_AVATAR = "onboarding/avatar"
 const val ONBOARDING_CONTACT_SYNC = "onboarding/contactsync"
+const val ONBOARDING_WELCOME_CONFIRM = "onboarding/welcome-confirm"
 
 /**
  * Onboarding navigation graph.
@@ -33,25 +33,21 @@ const val ONBOARDING_CONTACT_SYNC = "onboarding/contactsync"
  * `getBackStackEntry(ONBOARDING_GRAPH_ROUTE)` and observes [OnboardingState]
  * inside a shared `OnboardingFlowHost` wrapper that converts state to route.
  *
- * Terminal state [OnboardingState.Completed] fires [onOnboardingComplete]
- * instead of navigating — Phase 5 wires that callback in `:app`'s NavHost to
- * flip the `has_completed_onboarding` DataStore key and navigate to Main.
+ * Phase H5a: pre-name `Welcome` route removed. The flow now starts at
+ * [ONBOARDING_NAME] and [OnboardingWelcomeScreen] is mounted at
+ * [ONBOARDING_WELCOME_CONFIRM] as the post-ContactSync terminal confirmation
+ * step (matches iOS `OnboardingView` 3-step container, with the welcome view
+ * reused as the post-profile YOU'RE ALL SET screen).
  *
- * This file defines the graph-builder function only; it is NOT yet attached
- * to `:app`'s NavHost. Phase 5 integrates it.
+ * Terminal state [OnboardingState.Completed] fires [onOnboardingComplete]
+ * instead of navigating — the `:app` NavHost flips the
+ * `has_completed_onboarding` DataStore key and navigates to Main from there.
  */
 fun NavGraphBuilder.onboardingGraph(
     navController: NavController,
     onOnboardingComplete: () -> Unit,
 ) {
-    navigation(startDestination = ONBOARDING_WELCOME, route = ONBOARDING_GRAPH_ROUTE) {
-        composable(ONBOARDING_WELCOME) { entry ->
-            val parent = remember(entry) { navController.getBackStackEntry(ONBOARDING_GRAPH_ROUTE) }
-            val vm: OnboardingViewModel = hiltViewModel(parent)
-            OnboardingFlowHost(vm = vm, navController = navController, onComplete = onOnboardingComplete) {
-                OnboardingWelcomeScreen(viewModel = vm)
-            }
-        }
+    navigation(startDestination = ONBOARDING_NAME, route = ONBOARDING_GRAPH_ROUTE) {
         composable(ONBOARDING_NAME) { entry ->
             val parent = remember(entry) { navController.getBackStackEntry(ONBOARDING_GRAPH_ROUTE) }
             val vm: OnboardingViewModel = hiltViewModel(parent)
@@ -73,6 +69,13 @@ fun NavGraphBuilder.onboardingGraph(
                 OnboardingContactSyncScreen(viewModel = vm)
             }
         }
+        composable(ONBOARDING_WELCOME_CONFIRM) { entry ->
+            val parent = remember(entry) { navController.getBackStackEntry(ONBOARDING_GRAPH_ROUTE) }
+            val vm: OnboardingViewModel = hiltViewModel(parent)
+            OnboardingFlowHost(vm = vm, navController = navController, onComplete = onOnboardingComplete) {
+                OnboardingWelcomeScreen(viewModel = vm)
+            }
+        }
     }
 }
 
@@ -90,13 +93,18 @@ private data class OnboardingRouteTarget(
 
 private fun OnboardingState.toRouteTarget(): OnboardingRouteTarget =
     when (this) {
-        OnboardingState.Welcome -> OnboardingRouteTarget(route = ONBOARDING_WELCOME)
         is OnboardingState.NameEntry -> OnboardingRouteTarget(route = ONBOARDING_NAME)
         is OnboardingState.AvatarEntry -> OnboardingRouteTarget(route = ONBOARDING_AVATAR)
         is OnboardingState.ContactSync ->
             // Prevent back-nav into completed steps once permissions are being granted.
             OnboardingRouteTarget(
                 route = ONBOARDING_CONTACT_SYNC,
+                popUpTo = ONBOARDING_GRAPH_ROUTE,
+                popInclusive = false,
+            )
+        is OnboardingState.WelcomeConfirm ->
+            OnboardingRouteTarget(
+                route = ONBOARDING_WELCOME_CONFIRM,
                 popUpTo = ONBOARDING_GRAPH_ROUTE,
                 popInclusive = false,
             )

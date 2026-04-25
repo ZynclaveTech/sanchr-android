@@ -20,12 +20,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
@@ -34,37 +36,27 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
- * Onboarding entry / welcome step.
+ * Onboarding terminal confirmation step ("YOU'RE ALL SET" on iOS).
  *
- * iOS reference: `OnboardingWelcomeStepView.swift:15-130` — logo + headline +
- * value-props + primary CTA. Android deviates in two places:
- *   1. No notification-permission card inline on Welcome. On iOS this surfaces
- *      because iOS requires an explicit prompt; Android's prompt is part of the
- *      ContactSync step instead (lines up with `PermissionsScreen.kt`).
- *   2. No avatar preview / "Welcome, <name>" — on iOS this view is reused as
- *      the post-profile confirmation step. Android splits that responsibility
- *      so Welcome is purely the landing; the name/avatar preview belongs on a
- *      future post-ContactSync confirmation if we choose to add one.
+ * iOS reference: `OnboardingWelcomeStepView.swift:15-130`. Reached after
+ * ContactSync; the CTA fires [OnboardingViewModel.finishOnboarding] which
+ * persists the DataStore flag and emits [OnboardingState.Completed].
  *
- * iOS-parity copy synced 2026-04-25 against `OnboardingWelcomeStepView.swift`.
- * Because Android's Welcome runs *pre*-name (vs iOS post-profile), we align
- * what we can: the E2EE value-prop body now mirrors the iOS tagline
- * (line 67) verbatim. The hero title, the other two value-prop strings, and
- * the "Get started" CTA have no direct iOS equivalent on this screen and are
- * kept as Android-idiom landing copy (see iOS-deviation comments below).
- *
- * Iconography note (Phase 6b-3, 2026-04-25): iOS `OnboardingWelcomeStepView`
- * renders no 3-bullet value-prop list — only a single E2EE tagline (line 67)
- * with no bullet icon at all. The three bullets below are Android-only. The
- * icon set is a Material-idiom trio chosen to avoid duplicating the hero
- * `Shield`: `Lock` (E2EE), `VisibilityOff` (no ads/trackers — privacy of
- * view), and `Tune` (user control over name/photo/sharing).
+ * Phase H5a: this file is a transitional compile-only shim. The visual
+ * pixel-parity rebuild against iOS (avatar preview, "Welcome, {name}!"
+ * headline, notification permission card, gradient CTA) lands in Phase H5b.
+ * Until then we keep the existing landing-style body but plumb the new
+ * [OnboardingState.WelcomeConfirm] state through and wire the CTA to
+ * `finishOnboarding`.
  */
 @Composable
 fun OnboardingWelcomeScreen(
     modifier: Modifier = Modifier,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val confirmState = state as? OnboardingState.WelcomeConfirm ?: return
+
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
             modifier =
@@ -97,38 +89,35 @@ fun OnboardingWelcomeScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // iOS-deviation: iOS uses "Welcome, {name}!" only post-profile; Android's
-            // Welcome runs pre-name so we use a generic landing title.
+            // H5b will replace this with the iOS "YOU'RE ALL SET" eyebrow +
+            // "Welcome, {name}!" headline + avatar preview composition.
             Text(
-                text = "Welcome to Sanchr",
+                text = "Welcome, ${confirmState.name}!",
                 style = MaterialTheme.typography.headlineMedium,
                 color = SanchrGray900,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
-                text = "Private, secure messaging — built for conversations that matter.",
+                text = "You're all set. Private, secure messaging — built for conversations that matter.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = SanchrGray500,
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // iOS parity: body text matches `OnboardingWelcomeStepView.swift:67` verbatim.
             ValueProp(
                 icon = Icons.Filled.Lock,
                 title = "End-to-end encrypted",
                 body = "Your messages are end-to-end encrypted. Only you and the people you chat with can read them.",
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
-            // iOS-deviation: no equivalent on iOS Welcome; Android landing-only copy.
             ValueProp(
                 icon = Icons.Filled.VisibilityOff,
                 title = "No ads, no trackers",
                 body = "We don't sell data. We don't have any to sell.",
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
-            // iOS-deviation: no equivalent on iOS Welcome; Android landing-only copy.
             ValueProp(
                 icon = Icons.Filled.Tune,
                 title = "You're in control",
@@ -137,11 +126,11 @@ fun OnboardingWelcomeScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // iOS-deviation: iOS CTA "Start Chatting" only fires post-profile-save.
-            // Android Welcome is pre-name, so "Get started" matches the landing intent.
+            // iOS parity: CTA matches `OnboardingWelcomeStepView.swift` "Start Chatting".
             SanchrButton(
-                text = "Get started",
-                onClick = viewModel::onWelcomeContinue,
+                text = "Start Chatting",
+                onClick = viewModel::finishOnboarding,
+                isLoading = confirmState.isSubmitting,
                 modifier =
                     Modifier
                         .fillMaxWidth()
