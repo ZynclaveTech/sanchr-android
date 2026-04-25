@@ -11,8 +11,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -51,6 +52,13 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
  * (line 67) verbatim. The hero title, the other two value-prop strings, and
  * the "Get started" CTA have no direct iOS equivalent on this screen and are
  * kept as Android-idiom landing copy (see iOS-deviation comments below).
+ *
+ * Iconography note (Phase 6b-3, 2026-04-25): iOS `OnboardingWelcomeStepView`
+ * renders no 3-bullet value-prop list — only a single E2EE tagline (line 67)
+ * with no bullet icon at all. The three bullets below are Android-only. The
+ * icon set is a Material-idiom trio chosen to avoid duplicating the hero
+ * `Shield`: `Lock` (E2EE), `VisibilityOff` (no ads/trackers — privacy of
+ * view), and `Tune` (user control over name/photo/sharing).
  */
 @Composable
 fun OnboardingWelcomeScreen(
@@ -115,14 +123,14 @@ fun OnboardingWelcomeScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
             // iOS-deviation: no equivalent on iOS Welcome; Android landing-only copy.
             ValueProp(
-                icon = Icons.Filled.People,
+                icon = Icons.Filled.VisibilityOff,
                 title = "No ads, no trackers",
                 body = "We don't sell data. We don't have any to sell.",
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
             // iOS-deviation: no equivalent on iOS Welcome; Android landing-only copy.
             ValueProp(
-                icon = Icons.Filled.Shield,
+                icon = Icons.Filled.Tune,
                 title = "You're in control",
                 body = "Pick a name, pick a photo, decide who to share with.",
             )
