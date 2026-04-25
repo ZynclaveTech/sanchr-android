@@ -23,11 +23,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -39,6 +40,9 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo950
  *
  * Capsule shape, 64dp height, indigo->indigo-dark horizontal gradient,
  * shadow (20dp blur, 10dp y-offset, primary @ 22% alpha), scale 0.98 on press.
+ *
+ * Disabled state fades the whole button (gradient + shadow + content) to 0.58
+ * alpha to match iOS `LoginView.swift:248-249` `.opacity(... ? 1 : 0.58)`.
  *
  * Dark end-stop maps to [SanchrIndigo950] (#4C1D95), the existing "Dark primary"
  * token in `Color.kt:18` — the plan's nominal `SanchrIndigoDark` is not a
@@ -59,23 +63,26 @@ fun SanchrGradientButton(
         targetValue = if (pressed) 0.98f else 1f,
         label = "SanchrGradientButton.scale",
     )
-    val alpha = if (enabled) 1f else 0.58f
+    val gradientBrush =
+        remember { Brush.horizontalGradient(listOf(SanchrIndigo500, SanchrIndigo950)) }
 
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .scale(scale)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }.alpha(if (enabled) 1f else 0.58f)
                 .shadow(
                     elevation = 20.dp,
                     shape = CircleShape,
                     ambientColor = SanchrIndigo500.copy(alpha = 0.22f),
                     spotColor = SanchrIndigo500.copy(alpha = 0.22f),
                 ).clip(CircleShape)
-                .background(
-                    Brush.horizontalGradient(listOf(SanchrIndigo500, SanchrIndigo950)),
-                ).clickable(
+                .background(gradientBrush)
+                .clickable(
                     enabled = enabled && !isLoading,
                     interactionSource = interactionSource,
                     indication = null,
@@ -97,13 +104,13 @@ fun SanchrGradientButton(
                 Text(
                     text = text,
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = alpha),
+                    color = Color.White,
                 )
                 trailingIcon?.let {
                     Icon(
                         imageVector = it,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = alpha),
+                        tint = Color.White,
                         modifier = Modifier.height(18.dp),
                     )
                 }
