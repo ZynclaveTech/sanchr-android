@@ -5,11 +5,14 @@ package com.sanchr.feature.auth
  *
  * Flow (iOS-parity):
  *
- *   Splash -> Home -> (LoginPhone | RegisterPhoneAndName) -> OtpEntry
- *           -> Registering (post-OTP bootstrap pipeline) -> Done
+ *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done
+ *          \-> RegisterPhoneAndName -> OtpEntry ...
  *
- * [AppLocked] is a parallel authenticated-but-gated landing used when the
- * device has app-lock enabled and a valid session is already on disk.
+ * The unauthenticated path lands directly on [LoginPhone], matching the iOS
+ * canonical `Splash -> LoginView` transition in `SanchrApp.swift:350-396`.
+ * [LoginPhoneScreen] surfaces a "New to Sanchr? Sign up" footer affordance
+ * that switches to [RegisterPhoneAndName]; Android keeps the dual-path UI
+ * while the backend still exposes split Login/Register entry points.
  *
  * Each state carries exactly the data the next step needs so the view model
  * never has to reach back into [com.sanchr.core.datastore.SessionManager] for
@@ -19,20 +22,6 @@ package com.sanchr.feature.auth
 sealed interface AuthState {
     /** Animated splash shown at cold launch while DI warms up and the session is read. */
     data object Splash : AuthState
-
-    /**
-     * Login/Register chooser landing. Mirrors iOS `LoginView`, which surfaces both
-     * "I already have an account" and "Create account" choices inline.
-     *
-     * @param prefilledPhone optional pre-populated subscriber number (e.g. after
-     *   returning from the register flow with an already-registered phone).
-     */
-    data class Home(
-        val prefilledPhone: String = "",
-    ) : AuthState
-
-    /** Biometric gate shown between Splash and Main for authenticated users with app-lock on. */
-    data object AppLocked : AuthState
 
     /** Phone-only existing-user entry. Mirrors iOS `LoginView` phone screen. */
     data class LoginPhone(

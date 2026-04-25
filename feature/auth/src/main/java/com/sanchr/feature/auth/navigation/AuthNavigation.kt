@@ -24,10 +24,8 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
-import com.sanchr.feature.auth.AppLockGateScreen
 import com.sanchr.feature.auth.AuthState
 import com.sanchr.feature.auth.AuthViewModel
-import com.sanchr.feature.auth.HomeScreen
 import com.sanchr.feature.auth.LoginPhoneScreen
 import com.sanchr.feature.auth.OtpScreen
 import com.sanchr.feature.auth.RegisterScreen
@@ -40,8 +38,6 @@ const val AUTH_GRAPH_ROUTE = "auth"
 // from there the `AuthFlowHost` observer drives route transitions based on
 // `AuthState`. `OTP_ROUTE` is shared by both login and register paths.
 const val SPLASH_ROUTE = "auth/splash"
-const val HOME_ROUTE = "auth/home"
-const val APP_LOCK_ROUTE = "auth/applock"
 const val LOGIN_PHONE_ROUTE = "auth/login"
 const val REGISTER_ROUTE = "auth/register"
 const val OTP_ROUTE = "auth/otp"
@@ -51,11 +47,9 @@ const val OTP_ROUTE = "auth/otp"
  * [AuthViewModel] scoped to the `auth` nav graph (via `getBackStackEntry`), so
  * the flow's state survives route transitions.
  *
- * Route mapping:
+ * Route mapping (iOS parity — `SanchrApp.swift:350-396`):
  *
  *   Splash               -> SPLASH_ROUTE              (startDestination)
- *   Home                 -> HOME_ROUTE
- *   AppLocked            -> APP_LOCK_ROUTE
  *   LoginPhone           -> LOGIN_PHONE_ROUTE
  *   RegisterPhoneAndName -> REGISTER_ROUTE
  *   OtpEntry             -> OTP_ROUTE
@@ -72,23 +66,12 @@ fun NavGraphBuilder.authGraph(
             val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
             val vm: AuthViewModel = hiltViewModel(parent)
             AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
-                SplashScreen(onSplashComplete = vm::onSplashComplete)
-            }
-        }
-        composable(APP_LOCK_ROUTE) { entry ->
-            val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
-            val vm: AuthViewModel = hiltViewModel(parent)
-            AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
-                // AppLockGate is a stub; unlocking hands control back to the
-                // NavHost which routes to Home.
-                AppLockGateScreen(onUnlocked = onAuthSuccess)
-            }
-        }
-        composable(HOME_ROUTE) { entry ->
-            val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
-            val vm: AuthViewModel = hiltViewModel(parent)
-            AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
-                HomeScreen(viewModel = vm)
+                // Pass the nav-graph-scoped VM explicitly so SplashScreen's
+                // attemptFastLogin() call targets the shared state instance.
+                SplashScreen(
+                    onSplashComplete = vm::onSplashComplete,
+                    viewModel = vm,
+                )
             }
         }
         composable(LOGIN_PHONE_ROUTE) { entry ->
@@ -140,12 +123,11 @@ private data class RouteTarget(
 private fun AuthState.toRouteTarget(): RouteTarget =
     when (this) {
         AuthState.Splash -> RouteTarget(route = SPLASH_ROUTE)
-        AuthState.AppLocked -> RouteTarget(route = APP_LOCK_ROUTE)
-        is AuthState.Home ->
-            // Splash is one-shot; drop it from the back stack so Back from Home
-            // exits the app (see realignment plan §8 RISK#1).
-            RouteTarget(route = HOME_ROUTE, popUpTo = SPLASH_ROUTE, popInclusive = true)
-        is AuthState.LoginPhone -> RouteTarget(route = LOGIN_PHONE_ROUTE)
+        is AuthState.LoginPhone ->
+            // Splash is one-shot; drop it from the back stack so Back from the
+            // login screen exits the app (matches iOS where Splash is a scene
+            // transition, not a back-navigable destination).
+            RouteTarget(route = LOGIN_PHONE_ROUTE, popUpTo = SPLASH_ROUTE, popInclusive = true)
         is AuthState.RegisterPhoneAndName -> RouteTarget(route = REGISTER_ROUTE)
         is AuthState.OtpEntry -> RouteTarget(route = OTP_ROUTE)
         AuthState.Done -> RouteTarget(route = null, terminal = true)

@@ -36,8 +36,8 @@ import kotlinx.coroutines.test.setMain
 /**
  * State-machine unit tests for [AuthViewModel]. Covers the iOS-parity flow:
  *
- *   Splash -> Home -> (LoginPhone | RegisterPhoneAndName) -> OtpEntry
- *          -> Registering -> Done
+ *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done
+ *          \-> RegisterPhoneAndName -> OtpEntry ...
  *
  * Plus [AuthViewModel.attemptFastLogin] (silent warm-start) and [AuthViewModel.retry].
  */
@@ -92,7 +92,7 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun onSplashComplete_withNoCachedSession_transitionsToHome() =
+    fun onSplashComplete_withNoCachedSession_transitionsToLoginPhone() =
         runTest {
             every { sessionManager.getAccessToken() } returns null
             every { sessionManager.getStoredPhoneE164() } returns null
@@ -100,15 +100,6 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            assertEquals(AuthState.Home(), vm.state.value)
-        }
-
-    @Test
-    fun chooseLogin_fromHome_transitionsToLoginPhone() =
-        runTest {
-            val vm = newViewModel()
-            vm.onSplashComplete()
-            vm.chooseLogin()
 
             val s = vm.state.value
             assertIs<AuthState.LoginPhone>(s)
@@ -117,13 +108,33 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun chooseRegister_fromHome_transitionsToRegisterPhoneAndName() =
+    fun switchToRegister_fromLoginPhone_carriesPhoneDigits() =
         runTest {
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseRegister()
+            vm.onLoginPhoneChanged("+44", "7700900000")
+            vm.switchToRegister()
 
-            assertIs<AuthState.RegisterPhoneAndName>(vm.state.value)
+            val s = vm.state.value
+            assertIs<AuthState.RegisterPhoneAndName>(s)
+            assertEquals("+44", s.countryCode)
+            assertEquals("7700900000", s.phone)
+            assertEquals("", s.displayName)
+        }
+
+    @Test
+    fun switchToLogin_fromRegister_carriesPhoneDigits() =
+        runTest {
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.switchToRegister()
+            vm.onRegisterChanged("+44", "7700900000", "Alice")
+            vm.switchToLogin()
+
+            val s = vm.state.value
+            assertIs<AuthState.LoginPhone>(s)
+            assertEquals("+44", s.countryCode)
+            assertEquals("7700900000", s.phone)
         }
 
     @Test
@@ -131,7 +142,6 @@ class AuthViewModelStateTest {
         runTest {
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseLogin()
             vm.onLoginPhoneChanged("+1", "123-abc-456")
 
             val s = vm.state.value
@@ -144,7 +154,6 @@ class AuthViewModelStateTest {
         runTest {
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseLogin()
             vm.onLoginPhoneChanged("+1", "")
             vm.submitLoginPhone()
 
@@ -161,7 +170,6 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseLogin()
             vm.onLoginPhoneChanged("+1", "4155551234")
             vm.submitLoginPhone()
             advanceUntilIdle()
@@ -186,7 +194,7 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseRegister()
+            vm.switchToRegister()
             vm.onRegisterChanged("+1", "4155551234", "  Alice  ")
             vm.submitRegister()
             advanceUntilIdle()
@@ -209,7 +217,7 @@ class AuthViewModelStateTest {
         runTest {
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseRegister()
+            vm.switchToRegister()
             // onRegisterChanged caps at MAX_DISPLAY_NAME_LENGTH (128); bypass it
             // by pushing the name directly via repeated calls is futile — assert
             // on the validation branch by driving the trimmed-empty case instead.
@@ -228,7 +236,6 @@ class AuthViewModelStateTest {
             // Force state to OtpEntry via the login path.
             coEvery { authServiceClient.register(any()) } returns AuthResponse()
             vm.onSplashComplete()
-            vm.chooseLogin()
             vm.onLoginPhoneChanged("+1", "4155551234")
             vm.submitLoginPhone()
             advanceUntilIdle()
@@ -254,7 +261,7 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseRegister()
+            vm.switchToRegister()
             vm.onRegisterChanged("+1", "4155551234", "Alice")
             vm.submitRegister()
             advanceUntilIdle()
@@ -303,7 +310,7 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseRegister()
+            vm.switchToRegister()
             vm.onRegisterChanged("+1", "4155551234", "Alice")
             vm.submitRegister()
             advanceUntilIdle()
@@ -364,7 +371,7 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun attemptFastLogin_onLoginFailure_silentlyStaysAtHome() =
+    fun attemptFastLogin_onLoginFailure_silentlyStaysOnSplash() =
         runTest {
             every { sessionManager.getAccessToken() } returns null
             every { sessionManager.getStoredPhoneE164() } returns "+14155551234"
@@ -372,16 +379,15 @@ class AuthViewModelStateTest {
             coEvery { authServiceClient.login(any()) } throws RuntimeException("net")
 
             val vm = newViewModel()
-            // Drive past Splash so Home is the observable landing.
-            vm.onSplashComplete()
-            assertEquals(AuthState.Home(), vm.state.value)
+            assertEquals(AuthState.Splash, vm.state.value)
 
             val job = vm.attemptFastLogin()
             assertTrue(job != null, "fast-login should have launched a job")
             advanceUntilIdle()
 
-            // Silent failure contract: stay on Home, never transition to Error.
-            assertEquals(AuthState.Home(), vm.state.value)
+            // Silent failure contract: stay on Splash so the splash-duration
+            // delay can advance the user to LoginPhone. Never transition to Error.
+            assertEquals(AuthState.Splash, vm.state.value)
         }
 
     @Test
@@ -389,7 +395,6 @@ class AuthViewModelStateTest {
         runTest {
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.chooseLogin()
             vm.onLoginPhoneChanged("+1", "")
             vm.submitLoginPhone()
             assertIs<AuthState.Error>(vm.state.value)

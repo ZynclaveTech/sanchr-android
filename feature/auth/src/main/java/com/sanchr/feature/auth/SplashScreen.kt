@@ -30,6 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import kotlinx.coroutines.delay
 
@@ -47,12 +48,22 @@ import kotlinx.coroutines.delay
  * matching the iOS `preferredColorScheme(.dark)` directive, so the splash
  * looks identical in light and dark modes.
  *
- * After [SPLASH_DURATION_MS] the composable invokes [onSplashComplete] exactly
- * once. The callback is **not** wired into navigation in Phase 1 — that's
- * Phase 5 of the realignment plan.
+ * Flow control: on first composition we race two paths:
+ *
+ * 1. [AuthViewModel.attemptFastLogin] — if cached credentials succeed, the
+ *    view model transitions to [AuthState.Done] and `AuthFlowHost` navigates
+ *    out before [SPLASH_DURATION_MS] elapses.
+ * 2. A [SPLASH_DURATION_MS] delay — on expiry we invoke [onSplashComplete]
+ *    which the view model maps to [AuthState.LoginPhone] (iOS parity with
+ *    `SanchrApp.swift:350-396`). The VM guards the transition with an
+ *    `is Splash` check, so if fast-login already won the user is not bounced
+ *    back to LoginPhone.
  */
 @Composable
-fun SplashScreen(onSplashComplete: () -> Unit) {
+fun SplashScreen(
+    onSplashComplete: () -> Unit,
+    viewModel: AuthViewModel = hiltViewModel(),
+) {
     var appeared by remember { mutableStateOf(false) }
 
     val logoScale by animateFloatAsState(
@@ -88,6 +99,9 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
 
     LaunchedEffect(Unit) {
         appeared = true
+        // Best-effort silent session restore; races the splash delay below.
+        // Failures are swallowed inside the VM and leave state on Splash.
+        viewModel.attemptFastLogin()
         delay(SPLASH_DURATION_MS)
         onSplashComplete()
     }

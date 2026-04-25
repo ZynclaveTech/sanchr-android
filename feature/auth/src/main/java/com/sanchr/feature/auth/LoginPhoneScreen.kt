@@ -66,6 +66,12 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
  * has already moved the flow forward, so this composable renders an empty
  * [Box] to avoid a last-frame flicker during route transitions.
  *
+ * This screen is the canonical landing after the splash, matching iOS
+ * `SanchrApp.swift:350-396` (`Splash -> LoginView`). New users reach the
+ * register path via the "New to Sanchr? Sign up" footer affordance which
+ * invokes [AuthViewModel.switchToRegister] — iOS has no equivalent because
+ * its backend exposes a single Register-for-everyone call.
+ *
  * iOS-parity copy synced 2026-04-25 against `LoginView.swift`. Hero title
  * ("Welcome to Sanchr"), tagline ("Encrypted. Synced. Secure."), phone
  * label ("Phone Number"), placeholder ("(555) 123-4567"), helper text
@@ -77,8 +83,6 @@ import com.sanchr.core.designsystem.theme.SanchrWhite
  * iOS-deviation: the OutlinedTextField label uses Title Case "Phone Number"
  * mirroring iOS line 99; this also doubles as the Material floating-label,
  * which Android requires (iOS draws a separate label above the field).
- *
- * First-time users take [RegisterScreen] instead.
  *
  * TODO(copy): the Privacy Policy / Terms URLs below point at the placeholder
  *   `sanchr.app/privacy` and `sanchr.app/terms`. Replace with the final
@@ -290,10 +294,7 @@ fun LoginPhoneScreen(
             // Service") whereas Android exposes the two documents as
             // separate tappable links — Material idiom for legal footers.
             Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = SanchrTheme.spacing.xl),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
             ) {
                 SanchrTextButton(onClick = { uriHandler.openUri(PRIVACY_URL) }) {
@@ -314,6 +315,35 @@ fun LoginPhoneScreen(
                         text = "Terms of Service",
                         style = MaterialTheme.typography.labelSmall,
                         color = SanchrIndigo500,
+                    )
+                }
+            }
+
+            // iOS-deviation: iOS surfaces no "Sign up" affordance because its
+            // Register endpoint is called for every first-time verification.
+            // Android's backend still exposes split Register/Login entry so we
+            // offer an explicit switch to the register flow. Placement below
+            // the legal footer keeps the primary CTA (Continue) visually
+            // dominant while still giving new users a discoverable path.
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = SanchrTheme.spacing.xl),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "New to Sanchr?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SanchrGray500,
+                )
+                SanchrTextButton(onClick = { viewModel.switchToRegister() }) {
+                    Text(
+                        text = "Sign up",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SanchrIndigo500,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
             }

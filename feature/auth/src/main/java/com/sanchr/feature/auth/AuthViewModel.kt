@@ -42,13 +42,18 @@ internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
  * Drives the onboarding state machine defined in [AuthState]:
  *
  * ```
- * Splash -> Home -> (LoginPhone | RegisterPhoneAndName) -> OtpEntry
- *                -> Registering -> Done
+ * Splash -> LoginPhone -> OtpEntry -> Registering -> Done
+ *        \-> RegisterPhoneAndName -> OtpEntry ...
  * ```
  *
+ * iOS-parity: `Splash -> LoginView` is the canonical path (SanchrApp.swift
+ * 350-396). Android lands directly on [AuthState.LoginPhone] after the splash
+ * and surfaces "New to Sanchr? Sign up" on that screen via
+ * [switchToRegister] for the new-user path.
+ *
  * [attemptFastLogin] restores the session silently using the cached phone +
- * password when we have them, so warm-start returning users skip the Home
- * chooser entirely.
+ * password when we have them, so warm-start returning users skip the phone
+ * entry entirely.
  */
 @HiltViewModel
 class AuthViewModel
@@ -65,25 +70,46 @@ class AuthViewModel
         private val _state = MutableStateFlow<AuthState>(AuthState.Splash)
         val state: StateFlow<AuthState> = _state.asStateFlow()
 
-        // region ── Splash / Home chooser ────────────────────────────────────
+        // region ── Splash / entry ───────────────────────────────────────────
 
-        /** Splash -> Home; no-op if we're already past the splash. */
+        /**
+         * Splash -> LoginPhone. No-op if [attemptFastLogin] already moved the
+         * flow past Splash (e.g. into [AuthState.Done] for a warm-start user).
+         * Mirrors iOS `SanchrApp.swift:350-396` where the splash fades into
+         * `LoginView` for unauthenticated sessions.
+         */
         fun onSplashComplete() {
             if (_state.value is AuthState.Splash) {
-                _state.value = AuthState.Home()
+                _state.value = AuthState.LoginPhone()
             }
         }
 
-        /** Home -> LoginPhone. Carries over any pre-filled phone for continuity. */
-        fun chooseLogin() {
-            val home = _state.value as? AuthState.Home ?: return
-            _state.value = AuthState.LoginPhone(phone = home.prefilledPhone)
+        /**
+         * LoginPhone -> RegisterPhoneAndName. Bound to the "New to Sanchr?
+         * Sign up" footer affordance on [LoginPhoneScreen]. Carries over any
+         * phone digits the user typed so they don't retype after switching.
+         */
+        fun switchToRegister() {
+            val current = _state.value as? AuthState.LoginPhone ?: return
+            _state.value =
+                AuthState.RegisterPhoneAndName(
+                    countryCode = current.countryCode,
+                    phone = current.phone,
+                )
         }
 
-        /** Home -> RegisterPhoneAndName. Carries over any pre-filled phone. */
-        fun chooseRegister() {
-            val home = _state.value as? AuthState.Home ?: return
-            _state.value = AuthState.RegisterPhoneAndName(phone = home.prefilledPhone)
+        /**
+         * RegisterPhoneAndName -> LoginPhone. Symmetric to [switchToRegister]
+         * so the register screen can offer a "Already have an account? Log in"
+         * affordance without duplicating state-transition logic.
+         */
+        fun switchToLogin() {
+            val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
+            _state.value =
+                AuthState.LoginPhone(
+                    countryCode = current.countryCode,
+                    phone = current.phone,
+                )
         }
 
         // endregion
@@ -409,16 +435,18 @@ class AuthViewModel
         // region ── Fast-login ───────────────────────────────────────────────
 
         /**
-         * Best-effort silent session restore. Called from the Home screen on
-         * first composition. Three paths:
+         * Best-effort silent session restore. Called from [SplashScreen] on
+         * first composition, racing the splash-duration delay. Three paths:
          *
          * 1. Valid unexpired access token already on disk → jump straight to
-         *    [AuthState.Done]; the NavHost routes the user out.
+         *    [AuthState.Done]; the NavHost routes the user out before the
+         *    splash delay elapses.
          * 2. Cached phone + account password → call `Login` (handlers.rs:413-463
          *    returns tokens directly, no OTP round-trip) and persist the
-         *    session. On any failure, stay on Home silently — this is a best-
-         *    effort path and surfacing an error would be hostile UX.
-         * 3. No cached credentials → return null.
+         *    session. On any failure, stay on [AuthState.Splash] silently and
+         *    let [onSplashComplete] advance to [AuthState.LoginPhone].
+         * 3. No cached credentials → return null; [onSplashComplete] handles
+         *    the transition to [AuthState.LoginPhone].
          *
          * @return the launched [Job] when an RPC attempt was kicked off, or
          * `null` if no attempt was made (nothing to await).
@@ -444,7 +472,10 @@ class AuthViewModel
                         }
                     val userId = response.user?.id.orEmpty()
                     if (response.accessToken.isEmpty() || userId.isEmpty() || response.deviceId <= 0) {
-                        Log.w("AuthViewModel", "Fast-login response missing session data; staying on Home")
+                        Log.w(
+                            "AuthViewModel",
+                            "Fast-login response missing session data; staying on Splash",
+                        )
                         return@launch
                     }
                     // Order matters: see submitOtp for the full rationale. Persist
@@ -464,8 +495,9 @@ class AuthViewModel
                     )
                     _state.value = AuthState.Done
                 } catch (e: Exception) {
-                    // Silent by design — user sees Home and can continue manually.
-                    Log.w("AuthViewModel", "Fast-login failed; falling back to Home", e)
+                    // Silent by design — the splash delay will advance the
+                    // user to LoginPhone so they can continue manually.
+                    Log.w("AuthViewModel", "Fast-login failed; falling back to LoginPhone", e)
                 }
             }
         }
