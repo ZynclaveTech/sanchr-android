@@ -237,9 +237,12 @@ fun LoginPhoneScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
 
+            // iOS parity: SanchrExportMetrics.cardRadius = 20
+            // (ios/.../DesignSystem/ExportComponents.swift line 9). The
+            // E2E security info card renders at 20pt on iOS LoginView.
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = SanchrShapeTokens.CornerMedium,
+                shape = SanchrShapeTokens.CornerCard,
                 colors = CardDefaults.cardColors(containerColor = SanchrIndigo100),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {

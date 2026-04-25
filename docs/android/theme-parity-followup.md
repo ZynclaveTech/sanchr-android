@@ -58,21 +58,37 @@ re-audit. Effort legend: S = <1h, M = 1-4h, L = >4h.
 - **Why deferred**: requires touching a consumer composable (≤5 file budget
   consumed by color/type/shape/plan-doc).
 
-## 4. `cardRadius` rollout to consumer cards
+## 4. `cardRadius` rollout to consumer cards — DONE (Phase 6f-2)
 
 - **iOS ref**: `ios/.../DesignSystem/ExportComponents.swift` line 9
   (`cardRadius = 20`).
 - **Android state**: Phase 6f-1 exposed `SanchrShapeTokens.CornerCard` and
   pointed Material `Shapes.large` at it, so `Card(...)` without an explicit
-  `shape` now matches iOS. However, several screens pass explicit shapes (e.g.
-  `shape = RoundedCornerShape(16.dp)` in feature files) that override the
-  default.
-- **Fix**: Audit `feature/*/**/*.kt` for hardcoded `RoundedCornerShape(16.dp)`
-  on cards and swap to `SanchrShapeTokens.CornerCard` where the intent is a
-  card; leave inputs/chips at CornerSmall/CornerFull.
-- **Effort**: M (grep + mechanical replace across ~10 files).
-- **Why deferred**: touches feature modules (out of ≤5 file budget, and some
-  uses are inputs/chips where 16dp is correct).
+  `shape` now matches iOS. Phase 6f-2 swept `feature/*/**/*.kt` for explicit
+  card shapes that bypassed the default.
+- **Audit result (Phase 6f-2)**: a single feature-side `Card` declared an
+  explicit non-CornerCard shape with card semantics:
+  - `feature/auth/.../LoginPhoneScreen.kt` line 242 — E2E security info card
+    was `SanchrShapeTokens.CornerMedium` (12dp); swapped to
+    `SanchrShapeTokens.CornerCard` (20dp) to match iOS LoginView.
+- **Sites left untouched (verified non-card semantics)**:
+  - `feature/auth/.../RegisterScreen.kt` lines 230, 289 — `OutlinedTextField`
+    inputs; CornerMedium (12dp) is correct for fields.
+  - `feature/auth/.../LoginPhoneScreen.kt` line 230 — `OutlinedTextField`
+    input; CornerMedium correct.
+  - `feature/chats/.../NewChatBottomSheet.kt` line 67 — `Surface` inline
+    error pill inside a sheet; not a card.
+  - `feature/chats/.../ChatDetailScreen.kt` line 544 — image message bubble;
+    16dp matches the bubble radius family (`BubbleSent/Received` use 16dp),
+    not the card system.
+  - `feature/calls/.../ActiveCallScreen.kt` line 574 — "End-to-end encrypted"
+    badge pill (`Surface`, not `Card`); chip-style affordance.
+  - `feature/calls/.../ActiveCallScreen.kt` lines 542, 546 — local/remote
+    video tiles at 12dp; not card surfaces.
+  - `feature/settings/.../AppearanceScreen.kt` `ThemePreviewCard`,
+    `ChatSettingsScreen.kt`, `EncryptionKeysScreen.kt` — small selection
+    tiles / option chips at 12dp; intentionally not card-radius.
+- **Effort**: M (delivered).
 
 ## 5. Tracking / letter-spacing specifics
 
@@ -133,7 +149,7 @@ re-audit. Effort legend: S = <1h, M = 1-4h, L = >4h.
 ## Suggested sequencing
 
 1. Ticket 7 (status/nav bar, S) — lowest risk, ships alone.
-2. Ticket 4 (cardRadius rollout, M) — mechanical, parallelisable via sub-agent.
+2. Ticket 4 (cardRadius rollout, M) — DONE in Phase 6f-2.
 3. Ticket 3 (shadow parity, M) — unlocks card visual parity fully.
 4. Ticket 1 (font assets, M) — pending licensing.
 5. Ticket 6 (chat color tokens, M-L) — coordinate with chat feature refactor.
