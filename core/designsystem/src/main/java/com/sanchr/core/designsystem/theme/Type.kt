@@ -22,6 +22,13 @@ import com.sanchr.core.designsystem.R
  * `fontFamily` slot is swapped from the previous SansSerif fallback to the
  * bundled Afacad variable font. Sizes / weights / line-heights / letter-spacings
  * are intentionally untouched so Phase 6f-1 parity holds.
+ *
+ * Opt-in note: although `Font(resId, weight, variationSettings = ...)` is
+ * stable as of compose-ui-text 1.6.0, the `FontVariation.weight(...)` /
+ * `FontVariation.Settings(...)` factory helpers used below are still annotated
+ * `@ExperimentalTextApi` in the compose-ui-text shipped with compose-bom
+ * 2024.12.01 (verified by build failure when the opt-in is removed). Keep the
+ * `@OptIn(ExperimentalTextApi::class)` until those helpers are promoted.
  */
 @OptIn(ExperimentalTextApi::class)
 private val Afacad =
