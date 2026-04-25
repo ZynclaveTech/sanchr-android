@@ -73,6 +73,13 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo600
  * with [AvatarPlaceholder] as both loading + error fallback so a missing
  * file or a slow load never shows a blank gap.
  *
+ * Hit region: the click layer is a 148dp Box clipped to [CircleShape], so
+ * taps in the rectangular corners outside the visible circle do not trigger
+ * the picker and the default ripple is bounded by the circle. This matches
+ * iOS `.contentShape(Circle())`. The gradient badge sits in a sibling Box
+ * outside the click layer, so its own square corner does not extend the hit
+ * region, and tapping the badge still bubbles to the parent dropzone Box.
+ *
  * Gradient camera/pencil badge (38dp, BottomEnd): horizontal gradient from
  * [SanchrIndigo500] (#6366F1) to [SanchrIndigo600] (#4F46E5) — matches iOS
  * `[SanchrColors.primary, Color(hex: 0x4F46E5)]`. Icon switches between
@@ -142,37 +149,44 @@ fun OnboardingAvatarScreen(
         Spacer(Modifier.height(30.dp))
 
         // 148dp avatar dropzone with dashed-stroke placeholder + gradient badge.
-        // The outer Box is the tap target; the badge is positioned BottomEnd.
+        // The click layer is clipped to a circle (see KDoc — Hit region) so
+        // taps and ripple respect the visible circle, matching iOS
+        // `.contentShape(Circle())`. The badge is a sibling overlay so its
+        // square corner does not re-rectangularize the hit region.
         Box(
             contentAlignment = Alignment.BottomEnd,
-            modifier =
-                Modifier
-                    .size(148.dp)
-                    .clickable {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly,
-                            ),
-                        )
-                    },
+            modifier = Modifier.size(148.dp),
         ) {
-            val uri = avatarState.avatarUri
-            if (uri != null) {
-                SubcomposeAsyncImage(
-                    model = uri.toUri(),
-                    contentDescription = "Selected profile photo",
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .size(148.dp)
-                            .clip(avatarShape),
-                    error = { AvatarPlaceholder(modifier = Modifier.size(148.dp)) },
-                    loading = { AvatarPlaceholder(modifier = Modifier.size(148.dp)) },
-                )
-            } else {
-                AvatarPlaceholder(modifier = Modifier.size(148.dp))
+            // Circular click + visual layer.
+            Box(
+                modifier =
+                    Modifier
+                        .size(148.dp)
+                        .clip(avatarShape)
+                        .clickable {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                ),
+                            )
+                        },
+            ) {
+                val uri = avatarState.avatarUri
+                if (uri != null) {
+                    SubcomposeAsyncImage(
+                        model = uri.toUri(),
+                        contentDescription = "Selected profile photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(148.dp),
+                        error = { AvatarPlaceholder(modifier = Modifier.size(148.dp)) },
+                        loading = { AvatarPlaceholder(modifier = Modifier.size(148.dp)) },
+                    )
+                } else {
+                    AvatarPlaceholder(modifier = Modifier.size(148.dp))
+                }
             }
 
+            // Gradient badge — sibling overlay, outside the click layer.
             Box(
                 modifier =
                     Modifier
@@ -264,9 +278,11 @@ private fun AvatarPlaceholder(modifier: Modifier = Modifier) {
 }
 
 /**
- * Draws a dashed-stroke circle inside the composable's layout box, inset by
- * half the stroke width so the stroke sits flush with the bounds (no
- * clipping). Spec §6.3 recipe.
+ * Draws a dashed circular stroke inside the bounds. The circle radius is
+ * `(min(width, height) - strokeWidth) / 2`, which centers the stroke path
+ * such that its outer edge meets the bounds (the stroke is inset by half
+ * its width on each side, so it never clips). Matches iOS
+ * `Circle().strokeBorder(...)` behavior.
  */
 private fun Modifier.dashedCircleBorder(
     stroke: Dp,
