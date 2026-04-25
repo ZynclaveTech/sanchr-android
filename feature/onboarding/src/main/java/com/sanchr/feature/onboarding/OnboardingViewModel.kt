@@ -38,10 +38,11 @@ import kotlinx.coroutines.launch
  *    `rememberLauncherForActivityResult`) and reports the resolved flag back
  *    via this setter. On API < 33, the screen should call this with `true`
  *    directly because POST_NOTIFICATIONS is implicitly granted pre-Tiramisu.
- *  - [back] supports the chevron.left back button on WelcomeConfirm
- *    (`OnboardingWelcomeStepView` toolbar leading item) by returning to
- *    ContactSync while preserving name + avatarUri. No-ops while a submit
- *    is in flight to prevent racing the [finishOnboarding] coroutine.
+ *  - [back] supports the chevron.left back button on both WelcomeConfirm
+ *    (-> ContactSync) and AvatarEntry (-> NameEntry, Phase H6 iOS-parity
+ *    `OnboardingAvatarStepView` chevron). Preserves carried-forward fields
+ *    (name, avatarUri). No-ops while a submit is in flight to prevent racing
+ *    the [finishOnboarding] coroutine on WelcomeConfirm.
  *
  * Avatar persistence to `ProfileService.UpdateProfile` is still deferred
  * (Phase H5b/H6 — see `OnboardingViewModel.swift:86-97`). Display name was
@@ -144,23 +145,45 @@ class OnboardingViewModel
         }
 
         /**
-         * Back-nav from [OnboardingState.WelcomeConfirm] -> [ContactSync],
-         * preserving name + avatarUri. Mirrors iOS
-         * `OnboardingWelcomeStepView` toolbar's `chevron.left` leading item.
+         * Back-nav supporting two transitions:
+         *   - [OnboardingState.WelcomeConfirm] -> [OnboardingState.ContactSync]
+         *     (mirrors `OnboardingWelcomeStepView` toolbar `chevron.left`).
+         *   - [OnboardingState.AvatarEntry]    -> [OnboardingState.NameEntry]
+         *     (Phase H6 iOS parity — `OnboardingAvatarStepView` chevron-back).
          *
-         * No-ops when [OnboardingState.WelcomeConfirm.isSubmitting] is true,
-         * to prevent racing an in-flight [finishOnboarding] coroutine that
-         * would otherwise overwrite the ContactSync state with Completed
-         * after the user pressed back.
+         * Preserves carried-forward fields. WelcomeConfirm no-ops if a submit
+         * is in flight, to prevent racing an in-flight [finishOnboarding]
+         * coroutine that would otherwise overwrite the ContactSync state with
+         * Completed after the user pressed back. AvatarEntry has no in-flight
+         * submit gate today (server upload is deferred to a later phase), so
+         * back is unconditional from that step.
+         *
+         * For NameEntry we re-fetch the cached display name as the
+         * placeholder, matching `initialState()` (the user may have typed and
+         * advanced; we restore an empty bound input + the cached prefill,
+         * which is what iOS does because the iOS step is index-based and the
+         * `TextField` re-reads `prefilledName` from the VM on each render).
          */
         fun back() {
-            val current = _state.value as? OnboardingState.WelcomeConfirm ?: return
-            if (current.isSubmitting) return
-            _state.value =
-                OnboardingState.ContactSync(
-                    name = current.name,
-                    avatarUri = current.avatarUri,
-                )
+            when (val current = _state.value) {
+                is OnboardingState.WelcomeConfirm -> {
+                    if (current.isSubmitting) return
+                    _state.value =
+                        OnboardingState.ContactSync(
+                            name = current.name,
+                            avatarUri = current.avatarUri,
+                        )
+                }
+                is OnboardingState.AvatarEntry -> {
+                    val prefill = sessionManager.getDisplayName().orEmpty()
+                    _state.value =
+                        OnboardingState.NameEntry(
+                            prefilledName = prefill,
+                            name = current.name,
+                        )
+                }
+                else -> Unit
+            }
         }
 
         /**
