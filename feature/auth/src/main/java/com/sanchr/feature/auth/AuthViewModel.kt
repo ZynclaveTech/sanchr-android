@@ -12,7 +12,6 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.DeviceInfo
-import com.sanchr.proto.auth.LoginRequest
 import com.sanchr.proto.auth.RegisterRequest
 import com.sanchr.proto.auth.VerifyOTPRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -51,9 +50,10 @@ internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
  * short-circuit (handlers.rs:267-328) handles new vs. returning phones
  * transparently, exactly as iOS does.
  *
- * [attemptFastLogin] restores the session silently using the cached phone +
- * sentinel password when we have them, so warm-start returning users skip the
- * phone entry entirely.
+ * [attemptFastLogin] only short-circuits when a still-valid access token is
+ * already on disk; otherwise the user is routed through the normal phone +
+ * OTP flow. There is no cached-password Login-RPC fast path on Android,
+ * matching iOS `LoginView` which has no equivalent silent-Login capability.
  */
 @HiltViewModel
 class AuthViewModel
@@ -341,73 +341,31 @@ class AuthViewModel
 
         /**
          * Best-effort silent session restore. Called from [SplashScreen] on
-         * first composition, racing the splash-duration delay. Three paths:
+         * first composition, racing the splash-duration delay.
          *
-         * 1. Valid unexpired access token already on disk → jump straight to
-         *    [AuthState.Done]; the NavHost routes the user out before the
-         *    splash delay elapses.
-         * 2. Cached phone → call `Login` with the bootstrap sentinel
-         *    (handlers.rs:413-463 returns tokens directly, no OTP round-trip)
-         *    and persist the session. On any failure, stay on [AuthState.Splash]
-         *    silently and let [onSplashComplete] advance to [AuthState.LoginPhone].
-         * 3. No cached phone → return null; [onSplashComplete] handles
-         *    the transition to [AuthState.LoginPhone].
+         * Single supported path: a still-valid access token is already on disk
+         * → jump straight to [AuthState.Done]; the NavHost routes the user out
+         * before the splash delay elapses. Otherwise stay on
+         * [AuthState.Splash] and let [onSplashComplete] advance to
+         * [AuthState.LoginPhone] for the normal phone + OTP flow.
          *
-         * Both success branches emit `Done(isNewUser = false)` — fast-login is
-         * by definition a returning-user path.
+         * There is no cached-password Login-RPC fall-back: post-H2 nothing in
+         * the auth feature persists an account password, and iOS `LoginView`
+         * has no equivalent silent-Login path either, so this matches iOS
+         * behaviour.
          *
-         * @return the launched [Job] when an RPC attempt was kicked off, or
-         * `null` if no attempt was made (nothing to await).
+         * Emits `Done(isNewUser = false)` on the early-out — fast-login is by
+         * definition a returning-user path.
+         *
+         * @return always `null`; no RPC is launched. Returning [Job]? keeps
+         * the call-site signature stable for [SplashScreen]'s race-with-delay
+         * pattern in case future paths re-introduce an async branch.
          */
         fun attemptFastLogin(): Job? {
             if (sessionManager.getAccessToken() != null && !sessionManager.isTokenExpired()) {
                 _state.value = AuthState.Done(isNewUser = false)
-                return null
             }
-            val phoneE164 = sessionManager.getStoredPhoneE164() ?: return null
-            val password = sessionManager.getAccountPassword() ?: return null
-            return viewModelScope.launch {
-                try {
-                    val response =
-                        withContext(dispatchers.io) {
-                            authServiceClient.login(
-                                LoginRequest(
-                                    phoneNumber = phoneE164,
-                                    password = password,
-                                    device = buildDeviceInfo(),
-                                ),
-                            )
-                        }
-                    val userId = response.user?.id.orEmpty()
-                    if (response.accessToken.isEmpty() || userId.isEmpty() || response.deviceId <= 0) {
-                        Log.w(
-                            "AuthViewModel",
-                            "Fast-login response missing session data; staying on Splash",
-                        )
-                        return@launch
-                    }
-                    // Order matters: see submitOtp for the full rationale. Persist
-                    // displayName before saveSession flips _isAuthenticated, so
-                    // AppBootstrapViewModel.hasCompletedOnboarding's isAuthenticated-
-                    // triggered re-read of getDisplayName() sees the fresh value.
-                    val serverDisplayName = response.user?.displayName.orEmpty()
-                    if (serverDisplayName.isNotBlank()) {
-                        sessionManager.saveDisplayName(serverDisplayName)
-                    }
-                    sessionManager.saveDeviceId(response.deviceId.toString())
-                    sessionManager.saveSession(
-                        accessToken = response.accessToken,
-                        refreshToken = response.refreshToken,
-                        userId = userId,
-                        expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
-                    )
-                    _state.value = AuthState.Done(isNewUser = false)
-                } catch (e: Exception) {
-                    // Silent by design — the splash delay will advance the
-                    // user to LoginPhone so they can continue manually.
-                    Log.w("AuthViewModel", "Fast-login failed; falling back to LoginPhone", e)
-                }
-            }
+            return null
         }
 
         // endregion

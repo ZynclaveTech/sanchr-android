@@ -8,7 +8,6 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthResponse
 import com.sanchr.proto.auth.AuthServiceClient
-import com.sanchr.proto.auth.LoginRequest
 import com.sanchr.proto.auth.RegisterRequest
 import com.sanchr.proto.auth.User
 import com.sanchr.proto.auth.VerifyOTPRequest
@@ -95,7 +94,6 @@ class AuthViewModelStateTest {
         runTest {
             every { sessionManager.getAccessToken() } returns null
             every { sessionManager.getStoredPhoneE164() } returns null
-            every { sessionManager.getAccountPassword() } returns null
 
             val vm = newViewModel()
             vm.onSplashComplete()
@@ -173,7 +171,7 @@ class AuthViewModelStateTest {
         }
 
     /**
-     * Returning user: backend's existing-phone short-circuit (handlers.rs:297-305)
+     * Returning user: backend's existing-phone short-circuit (handlers.rs:267-328)
      * yields a populated `displayName` on the verify-OTP response. Surface
      * `Done(isNewUser = false)` so downstream onboarding routing skips the
      * profile-setup detour for someone who already has a profile.
@@ -297,63 +295,48 @@ class AuthViewModelStateTest {
             }
         }
 
+    /**
+     * Path 1 of [AuthViewModel.attemptFastLogin]: a still-valid access token
+     * is already on disk, so we short-circuit straight to
+     * `Done(isNewUser = false)` without any RPC. This is the only fast-login
+     * path post-H2 (the cached-password Login-RPC branch was removed because
+     * nothing in the auth feature persists an account password anymore, and
+     * iOS `LoginView` has no equivalent silent-Login path either).
+     */
     @Test
-    fun attemptFastLogin_withCachedCredentials_transitionsToDoneIsNewUserFalse() =
+    fun attemptFastLogin_withValidAccessToken_transitionsToDoneIsNewUserFalse() =
         runTest {
-            every { sessionManager.getAccessToken() } returns null
-            every { sessionManager.getStoredPhoneE164() } returns "+14155551234"
-            every { sessionManager.getAccountPassword() } returns "cached-pw"
-            val request = slot<LoginRequest>()
-            coEvery { authServiceClient.login(capture(request)) } returns
-                AuthResponse(
-                    accessToken = "at",
-                    refreshToken = "rt",
-                    expiresIn = 3600,
-                    user = User(id = "user-42", displayName = "Alice"),
-                    deviceId = 9,
-                )
+            every { sessionManager.getAccessToken() } returns "live-at"
+            every { sessionManager.isTokenExpired() } returns false
 
             val vm = newViewModel()
             val job = vm.attemptFastLogin()
-            assertTrue(job != null, "fast-login should have launched a job")
             advanceUntilIdle()
 
+            assertEquals(null, job, "fast-login no longer launches any RPC")
             val s = vm.state.value
             assertIs<AuthState.Done>(s)
             assertFalse(s.isNewUser, "fast-login is by definition a returning user")
-            val captured = request.captured
-            assertEquals("+14155551234", captured.phoneNumber)
-            assertEquals("cached-pw", captured.password)
-            assertEquals("install-1", captured.device?.installationId)
-            verify {
-                sessionManager.saveSession(
-                    accessToken = "at",
-                    refreshToken = "rt",
-                    userId = "user-42",
-                    expiresAtMillis = any(),
-                )
-                sessionManager.saveDeviceId("9")
-                sessionManager.saveDisplayName("Alice")
-            }
         }
 
+    /**
+     * No cached session at all: stay on [AuthState.Splash] silently so the
+     * splash-duration delay can advance the user to [AuthState.LoginPhone]
+     * via [AuthViewModel.onSplashComplete].
+     */
     @Test
-    fun attemptFastLogin_onLoginFailure_silentlyStaysOnSplash() =
+    fun attemptFastLogin_withNoCachedSession_staysOnSplash() =
         runTest {
             every { sessionManager.getAccessToken() } returns null
-            every { sessionManager.getStoredPhoneE164() } returns "+14155551234"
-            every { sessionManager.getAccountPassword() } returns "cached-pw"
-            coEvery { authServiceClient.login(any()) } throws RuntimeException("net")
+            every { sessionManager.getStoredPhoneE164() } returns null
 
             val vm = newViewModel()
             assertEquals(AuthState.Splash, vm.state.value)
 
             val job = vm.attemptFastLogin()
-            assertTrue(job != null, "fast-login should have launched a job")
             advanceUntilIdle()
 
-            // Silent failure contract: stay on Splash so the splash-duration
-            // delay can advance the user to LoginPhone. Never transition to Error.
+            assertEquals(null, job, "no RPC should have been launched")
             assertEquals(AuthState.Splash, vm.state.value)
         }
 
