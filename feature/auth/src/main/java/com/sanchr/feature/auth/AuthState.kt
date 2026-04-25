@@ -5,14 +5,15 @@ package com.sanchr.feature.auth
  *
  * Flow (iOS-parity):
  *
- *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done
- *          \-> RegisterPhoneAndName -> OtpEntry ...
+ *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done(isNewUser)
  *
  * The unauthenticated path lands directly on [LoginPhone], matching the iOS
  * canonical `Splash -> LoginView` transition in `SanchrApp.swift:350-396`.
- * [LoginPhoneScreen] surfaces a "New to Sanchr? Sign up" footer affordance
- * that switches to [RegisterPhoneAndName]; Android keeps the dual-path UI
- * while the backend still exposes split Login/Register entry points.
+ * [LoginPhone] is the single phone-only entry for both new and returning
+ * users; the backend's existing-phone short-circuit
+ * (`backend-oss/.../auth/handlers.rs:267-328`) handles the dispatch
+ * transparently. New-user vs returning-user routing is signalled by
+ * [Done.isNewUser], computed from the verify-OTP response's `displayName`.
  *
  * Each state carries exactly the data the next step needs so the view model
  * never has to reach back into [com.sanchr.core.datastore.SessionManager] for
@@ -23,22 +24,14 @@ sealed interface AuthState {
     /** Animated splash shown at cold launch while DI warms up and the session is read. */
     data object Splash : AuthState
 
-    /** Phone-only existing-user entry. Mirrors iOS `LoginView` phone screen. */
+    /** Phone-only entry. Mirrors iOS `LoginView` phone screen. Single entry for new + returning users. */
     data class LoginPhone(
         val countryCode: String = "+1",
         val phone: String = "",
         val isSubmitting: Boolean = false,
     ) : AuthState
 
-    /** Combined phone+displayName new-user entry. Mirrors iOS `RegisterView`. */
-    data class RegisterPhoneAndName(
-        val countryCode: String = "+1",
-        val phone: String = "",
-        val displayName: String = "",
-        val isSubmitting: Boolean = false,
-    ) : AuthState
-
-    /** OTP-verification step shared by both login and register paths. */
+    /** OTP-verification step. */
     data class OtpEntry(
         val phoneE164: String,
         val displayName: String,
@@ -58,8 +51,18 @@ sealed interface AuthState {
         val deviceId: Int,
     ) : AuthState
 
-    /** Terminal success state; the NavHost observer fires `onAuthSuccess`. */
-    data object Done : AuthState
+    /**
+     * Terminal success state; the NavHost observer fires `onAuthSuccess`.
+     *
+     * @property isNewUser true when the verify-OTP response carried no
+     *   server-side `displayName` (freshly created account). Downstream
+     *   onboarding routing uses this to decide whether to send the user
+     *   through profile setup. Always false on the fast-login path
+     *   (returning user by definition).
+     */
+    data class Done(
+        val isNewUser: Boolean,
+    ) : AuthState
 
     data class Error(
         val previousState: AuthState,

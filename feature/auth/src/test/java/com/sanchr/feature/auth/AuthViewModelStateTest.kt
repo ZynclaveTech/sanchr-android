@@ -22,8 +22,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,8 +36,7 @@ import kotlinx.coroutines.test.setMain
 /**
  * State-machine unit tests for [AuthViewModel]. Covers the iOS-parity flow:
  *
- *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done
- *          \-> RegisterPhoneAndName -> OtpEntry ...
+ *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done(isNewUser)
  *
  * Plus [AuthViewModel.attemptFastLogin] (silent warm-start) and [AuthViewModel.retry].
  */
@@ -108,36 +107,6 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun switchToRegister_fromLoginPhone_carriesPhoneDigits() =
-        runTest {
-            val vm = newViewModel()
-            vm.onSplashComplete()
-            vm.onLoginPhoneChanged("+44", "7700900000")
-            vm.switchToRegister()
-
-            val s = vm.state.value
-            assertIs<AuthState.RegisterPhoneAndName>(s)
-            assertEquals("+44", s.countryCode)
-            assertEquals("7700900000", s.phone)
-            assertEquals("", s.displayName)
-        }
-
-    @Test
-    fun switchToLogin_fromRegister_carriesPhoneDigits() =
-        runTest {
-            val vm = newViewModel()
-            vm.onSplashComplete()
-            vm.switchToRegister()
-            vm.onRegisterChanged("+44", "7700900000", "Alice")
-            vm.switchToLogin()
-
-            val s = vm.state.value
-            assertIs<AuthState.LoginPhone>(s)
-            assertEquals("+44", s.countryCode)
-            assertEquals("7700900000", s.phone)
-        }
-
-    @Test
     fun onLoginPhoneChanged_filtersNonDigits() =
         runTest {
             val vm = newViewModel()
@@ -187,49 +156,6 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun submitRegister_validInput_callsRegisterWithGeneratedPassword_andTransitionsToOtpEntry() =
-        runTest {
-            val request = slot<RegisterRequest>()
-            coEvery { authServiceClient.register(capture(request)) } returns AuthResponse()
-
-            val vm = newViewModel()
-            vm.onSplashComplete()
-            vm.switchToRegister()
-            vm.onRegisterChanged("+1", "4155551234", "  Alice  ")
-            vm.submitRegister()
-            advanceUntilIdle()
-
-            assertEquals(
-                AuthState.OtpEntry(phoneE164 = "+14155551234", displayName = "Alice"),
-                vm.state.value,
-            )
-            val captured = request.captured
-            assertEquals("+14155551234", captured.phoneNumber)
-            assertEquals("Alice", captured.displayName)
-            assertTrue(captured.password.isNotEmpty(), "generated password must be non-empty")
-            assertNotEquals(BOOTSTRAP_PASSWORD, captured.password)
-            verify { sessionManager.saveAccountPassword(captured.password) }
-            verify { sessionManager.saveStoredPhoneE164("+14155551234") }
-        }
-
-    @Test
-    fun submitRegister_nameTooLong_transitionsToError() =
-        runTest {
-            val vm = newViewModel()
-            vm.onSplashComplete()
-            vm.switchToRegister()
-            // onRegisterChanged caps at MAX_DISPLAY_NAME_LENGTH (128); bypass it
-            // by pushing the name directly via repeated calls is futile — assert
-            // on the validation branch by driving the trimmed-empty case instead.
-            vm.onRegisterChanged("+1", "4155551234", "   ")
-            vm.submitRegister()
-
-            val s = vm.state.value
-            assertIs<AuthState.Error>(s)
-            assertIs<AuthState.RegisterPhoneAndName>(s.previousState)
-        }
-
-    @Test
     fun onOtpChanged_filtersNonDigitsAndCapsLength() =
         runTest {
             val vm = newViewModel()
@@ -246,8 +172,14 @@ class AuthViewModelStateTest {
             assertEquals("123456", s.otp)
         }
 
+    /**
+     * Returning user: backend's existing-phone short-circuit (handlers.rs:297-305)
+     * yields a populated `displayName` on the verify-OTP response. Surface
+     * `Done(isNewUser = false)` so downstream onboarding routing skips the
+     * profile-setup detour for someone who already has a profile.
+     */
     @Test
-    fun submitOtp_validCode_invokesVerifyAndTransitionsViaRegisteringToDone() =
+    fun submitOtp_returningUser_emitsDoneIsNewUserFalse() =
         runTest {
             coEvery { authServiceClient.register(any()) } returns AuthResponse()
             coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
@@ -261,15 +193,16 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.switchToRegister()
-            vm.onRegisterChanged("+1", "4155551234", "Alice")
-            vm.submitRegister()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
             advanceUntilIdle()
             vm.onOtpChanged("123456")
             vm.submitOtp()
             advanceUntilIdle()
 
-            assertEquals(AuthState.Done, vm.state.value)
+            val s = vm.state.value
+            assertIs<AuthState.Done>(s)
+            assertFalse(s.isNewUser, "server-side displayName means returning user")
             verify {
                 sessionManager.saveSession(
                     accessToken = "at",
@@ -280,6 +213,39 @@ class AuthViewModelStateTest {
                 sessionManager.saveDeviceId("7")
                 sessionManager.saveDisplayName("Alice")
             }
+        }
+
+    /**
+     * New user: backend returns an empty/blank `displayName` on the first
+     * verify-OTP because the freshly created account has no profile yet.
+     * Surface `Done(isNewUser = true)` so downstream routes the user through
+     * profile setup.
+     */
+    @Test
+    fun submitOtp_newUser_emitsDoneIsNewUserTrue() =
+        runTest {
+            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
+                AuthResponse(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    expiresIn = 3600,
+                    user = User(id = "user-99", displayName = ""),
+                    deviceId = 3,
+                )
+
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
+            advanceUntilIdle()
+            vm.onOtpChanged("123456")
+            vm.submitOtp()
+            advanceUntilIdle()
+
+            val s = vm.state.value
+            assertIs<AuthState.Done>(s)
+            assertTrue(s.isNewUser, "blank server displayName means new user")
         }
 
     /**
@@ -310,9 +276,8 @@ class AuthViewModelStateTest {
 
             val vm = newViewModel()
             vm.onSplashComplete()
-            vm.switchToRegister()
-            vm.onRegisterChanged("+1", "4155551234", "Alice")
-            vm.submitRegister()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
             advanceUntilIdle()
             vm.onOtpChanged("123456")
             vm.submitOtp()
@@ -333,7 +298,7 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun attemptFastLogin_withCachedCredentials_transitionsToDone() =
+    fun attemptFastLogin_withCachedCredentials_transitionsToDoneIsNewUserFalse() =
         runTest {
             every { sessionManager.getAccessToken() } returns null
             every { sessionManager.getStoredPhoneE164() } returns "+14155551234"
@@ -353,7 +318,9 @@ class AuthViewModelStateTest {
             assertTrue(job != null, "fast-login should have launched a job")
             advanceUntilIdle()
 
-            assertEquals(AuthState.Done, vm.state.value)
+            val s = vm.state.value
+            assertIs<AuthState.Done>(s)
+            assertFalse(s.isNewUser, "fast-login is by definition a returning user")
             val captured = request.captured
             assertEquals("+14155551234", captured.phoneNumber)
             assertEquals("cached-pw", captured.password)

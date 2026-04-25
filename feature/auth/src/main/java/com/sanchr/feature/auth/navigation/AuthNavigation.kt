@@ -28,7 +28,6 @@ import com.sanchr.feature.auth.AuthState
 import com.sanchr.feature.auth.AuthViewModel
 import com.sanchr.feature.auth.LoginPhoneScreen
 import com.sanchr.feature.auth.OtpScreen
-import com.sanchr.feature.auth.RegisterScreen
 import com.sanchr.feature.auth.RegistrationStep
 import com.sanchr.feature.auth.SplashScreen
 
@@ -36,10 +35,9 @@ const val AUTH_GRAPH_ROUTE = "auth"
 
 // Live routes for the iOS-parity flow. `startDestination` is `SPLASH_ROUTE`;
 // from there the `AuthFlowHost` observer drives route transitions based on
-// `AuthState`. `OTP_ROUTE` is shared by both login and register paths.
+// `AuthState`. `OTP_ROUTE` is the shared verification step.
 const val SPLASH_ROUTE = "auth/splash"
 const val LOGIN_PHONE_ROUTE = "auth/login"
-const val REGISTER_ROUTE = "auth/register"
 const val OTP_ROUTE = "auth/otp"
 
 /**
@@ -49,13 +47,12 @@ const val OTP_ROUTE = "auth/otp"
  *
  * Route mapping (iOS parity — `SanchrApp.swift:350-396`):
  *
- *   Splash               -> SPLASH_ROUTE              (startDestination)
- *   LoginPhone           -> LOGIN_PHONE_ROUTE
- *   RegisterPhoneAndName -> REGISTER_ROUTE
- *   OtpEntry             -> OTP_ROUTE
- *   Registering          -> stays on current route; overlay renders on top
- *   Done                 -> fires [onAuthSuccess]
- *   Error                -> stays on current route; screens render inline error
+ *   Splash        -> SPLASH_ROUTE              (startDestination)
+ *   LoginPhone    -> LOGIN_PHONE_ROUTE
+ *   OtpEntry      -> OTP_ROUTE
+ *   Registering   -> stays on current route; overlay renders on top
+ *   Done          -> fires [onAuthSuccess]
+ *   Error         -> stays on current route; screens render inline error
  */
 fun NavGraphBuilder.authGraph(
     navController: NavController,
@@ -79,13 +76,6 @@ fun NavGraphBuilder.authGraph(
             val vm: AuthViewModel = hiltViewModel(parent)
             AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
                 LoginPhoneScreen(viewModel = vm)
-            }
-        }
-        composable(REGISTER_ROUTE) { entry ->
-            val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
-            val vm: AuthViewModel = hiltViewModel(parent)
-            AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
-                RegisterScreen(viewModel = vm)
             }
         }
         composable(OTP_ROUTE) { entry ->
@@ -128,9 +118,8 @@ private fun AuthState.toRouteTarget(): RouteTarget =
             // login screen exits the app (matches iOS where Splash is a scene
             // transition, not a back-navigable destination).
             RouteTarget(route = LOGIN_PHONE_ROUTE, popUpTo = SPLASH_ROUTE, popInclusive = true)
-        is AuthState.RegisterPhoneAndName -> RouteTarget(route = REGISTER_ROUTE)
         is AuthState.OtpEntry -> RouteTarget(route = OTP_ROUTE)
-        AuthState.Done -> RouteTarget(route = null, terminal = true)
+        is AuthState.Done -> RouteTarget(route = null, terminal = true)
         is AuthState.Registering, is AuthState.Error -> RouteTarget(route = null)
     }
 

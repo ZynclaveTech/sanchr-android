@@ -16,8 +16,6 @@ import com.sanchr.proto.auth.LoginRequest
 import com.sanchr.proto.auth.RegisterRequest
 import com.sanchr.proto.auth.VerifyOTPRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.security.SecureRandom
-import java.util.Base64
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,14 +25,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Shared sentinel password sent on the *existing-phone* branch of Register.
+ * Shared sentinel password sent on every Register call from the phone-only
+ * entry path.
  *
  * Backend ignores this on the existing-phone path — see
- * `backend-oss/crates/sanchr-core/src/auth/handlers.rs:297-305`, where the
+ * `backend-oss/crates/sanchr-core/src/auth/handlers.rs:267-328`, where the
  * Register handler short-circuits to "re-issue OTP" for a verified phone and
- * never compares the submitted password against the stored one. Matches the
- * iOS sentinel pattern (AuthRepository.swift:61-86) so both clients hit the
- * same code path.
+ * never compares the submitted password against the stored one. For the
+ * brand-new-phone path the same sentinel is persisted server-side; the
+ * subsequent fast-login flow uses it transparently. Matches the iOS sentinel
+ * pattern (AuthRepository.swift:61-86) so both clients hit the same code path.
  */
 internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
 
@@ -42,18 +42,18 @@ internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
  * Drives the onboarding state machine defined in [AuthState]:
  *
  * ```
- * Splash -> LoginPhone -> OtpEntry -> Registering -> Done
- *        \-> RegisterPhoneAndName -> OtpEntry ...
+ * Splash -> LoginPhone -> OtpEntry -> Registering -> Done(isNewUser)
  * ```
  *
  * iOS-parity: `Splash -> LoginView` is the canonical path (SanchrApp.swift
- * 350-396). Android lands directly on [AuthState.LoginPhone] after the splash
- * and surfaces "New to Sanchr? Sign up" on that screen via
- * [switchToRegister] for the new-user path.
+ * 350-396). Android lands directly on [AuthState.LoginPhone] after the splash.
+ * There is no separate Sign-up entry point — the backend's existing-phone
+ * short-circuit (handlers.rs:267-328) handles new vs. returning phones
+ * transparently, exactly as iOS does.
  *
  * [attemptFastLogin] restores the session silently using the cached phone +
- * password when we have them, so warm-start returning users skip the phone
- * entry entirely.
+ * sentinel password when we have them, so warm-start returning users skip the
+ * phone entry entirely.
  */
 @HiltViewModel
 class AuthViewModel
@@ -84,34 +84,6 @@ class AuthViewModel
             }
         }
 
-        /**
-         * LoginPhone -> RegisterPhoneAndName. Bound to the "New to Sanchr?
-         * Sign up" footer affordance on [LoginPhoneScreen]. Carries over any
-         * phone digits the user typed so they don't retype after switching.
-         */
-        fun switchToRegister() {
-            val current = _state.value as? AuthState.LoginPhone ?: return
-            _state.value =
-                AuthState.RegisterPhoneAndName(
-                    countryCode = current.countryCode,
-                    phone = current.phone,
-                )
-        }
-
-        /**
-         * RegisterPhoneAndName -> LoginPhone. Symmetric to [switchToRegister]
-         * so the register screen can offer a "Already have an account? Log in"
-         * affordance without duplicating state-transition logic.
-         */
-        fun switchToLogin() {
-            val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
-            _state.value =
-                AuthState.LoginPhone(
-                    countryCode = current.countryCode,
-                    phone = current.phone,
-                )
-        }
-
         // endregion
 
         // region ── LoginPhone ────────────────────────────────────────────────
@@ -129,11 +101,13 @@ class AuthViewModel
         }
 
         /**
-         * Existing-phone login path. Dispatches `Register` with an empty display
-         * name + bootstrap password, mirroring iOS `AuthRepository.requestOTP`
-         * (AuthRepository.swift:61-86). Backend short-circuits on a verified
-         * phone (handlers.rs:297-305) and re-issues an OTP without touching the
-         * stored password.
+         * Phone-only entry path. Dispatches `Register` with an empty display
+         * name + bootstrap sentinel password, mirroring iOS
+         * `AuthRepository.requestOTP` (AuthRepository.swift:61-86). Backend
+         * handles both branches transparently (handlers.rs:267-328): a verified
+         * phone short-circuits to OTP re-issue without touching the stored
+         * password; a brand-new phone creates the pending registration with
+         * the sentinel.
          */
         fun submitLoginPhone() {
             val current = _state.value as? AuthState.LoginPhone ?: return
@@ -157,7 +131,6 @@ class AuthViewModel
                             ),
                         )
                     }
-                    // Empty displayName signals the login path to downstream screens.
                     _state.value =
                         AuthState.OtpEntry(
                             phoneE164 = phoneE164,
@@ -167,72 +140,6 @@ class AuthViewModel
                     _state.value =
                         AuthState.Error(
                             current.copy(isSubmitting = false),
-                            e.message ?: "Failed to request verification code",
-                        )
-                }
-            }
-        }
-
-        // endregion
-
-        // region ── RegisterPhoneAndName ─────────────────────────────────────
-
-        fun onRegisterChanged(
-            countryCode: String,
-            phone: String,
-            displayName: String,
-        ) {
-            val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
-            _state.value =
-                current.copy(
-                    countryCode = countryCode,
-                    phone = phone.filter { it.isDigit() },
-                    displayName = displayName.take(MAX_DISPLAY_NAME_LENGTH),
-                )
-        }
-
-        /**
-         * New-user registration path. Generates a per-account password, persists
-         * it, and calls Register with the submitted display name. Mirrors iOS
-         * `AuthRepository.register`.
-         */
-        fun submitRegister() {
-            val current = _state.value as? AuthState.RegisterPhoneAndName ?: return
-            val trimmedName = current.displayName.trim()
-            if (trimmedName.isEmpty() || trimmedName.length > MAX_DISPLAY_NAME_LENGTH) {
-                _state.value = AuthState.Error(current, "Display name must be 1-128 characters")
-                return
-            }
-            if (!isValidCountryCode(current.countryCode) || !isValidSubscriber(current.phone)) {
-                _state.value = AuthState.Error(current, "Please enter a valid phone number")
-                return
-            }
-            val phoneE164 = current.countryCode + current.phone
-            _state.value = current.copy(displayName = trimmedName, isSubmitting = true)
-            viewModelScope.launch {
-                try {
-                    val password = generateAccountPassword()
-                    sessionManager.saveAccountPassword(password)
-                    sessionManager.saveStoredPhoneE164(phoneE164)
-                    withContext(dispatchers.io) {
-                        authServiceClient.register(
-                            RegisterRequest(
-                                phoneNumber = phoneE164,
-                                displayName = trimmedName,
-                                password = password,
-                                device = buildDeviceInfo(),
-                            ),
-                        )
-                    }
-                    _state.value =
-                        AuthState.OtpEntry(
-                            phoneE164 = phoneE164,
-                            displayName = trimmedName,
-                        )
-                } catch (e: Exception) {
-                    _state.value =
-                        AuthState.Error(
-                            current.copy(displayName = trimmedName, isSubmitting = false),
                             e.message ?: "Failed to request verification code",
                         )
                 }
@@ -258,21 +165,12 @@ class AuthViewModel
             _state.value = current.copy(otp = "", isSubmitting = true)
             viewModelScope.launch {
                 try {
-                    // Login path: empty displayName uses the bootstrap sentinel so
-                    // the backend short-circuits without mutating the stored pw.
-                    val password =
-                        if (current.displayName.isEmpty()) {
-                            BOOTSTRAP_PASSWORD
-                        } else {
-                            sessionManager.getAccountPassword()
-                                ?: generateAccountPassword().also { sessionManager.saveAccountPassword(it) }
-                        }
                     withContext(dispatchers.io) {
                         authServiceClient.register(
                             RegisterRequest(
                                 phoneNumber = current.phoneE164,
                                 displayName = current.displayName,
-                                password = password,
+                                password = BOOTSTRAP_PASSWORD,
                                 device = buildDeviceInfo(),
                             ),
                         )
@@ -319,7 +217,12 @@ class AuthViewModel
                         return@launch
                     }
 
+                    // Server displayName is the source of truth: a blank/missing
+                    // value identifies a brand-new account that still needs
+                    // profile setup; a populated value identifies a returning
+                    // user (existing-phone short-circuit on the backend).
                     val serverDisplayName = response.user?.displayName.orEmpty()
+                    val isNewUser = serverDisplayName.isBlank()
                     val resolvedDisplayName =
                         if (serverDisplayName.isNotBlank() && serverDisplayName != current.displayName) {
                             serverDisplayName
@@ -349,6 +252,7 @@ class AuthViewModel
                         displayName = resolvedDisplayName,
                         userId = userId,
                         deviceId = response.deviceId,
+                        isNewUser = isNewUser,
                     )
                 } catch (e: Exception) {
                     _state.value =
@@ -369,6 +273,7 @@ class AuthViewModel
             displayName: String,
             userId: String,
             deviceId: Int,
+            isNewUser: Boolean,
         ) {
             fun stage(step: RegistrationStep) =
                 AuthState.Registering(
@@ -411,7 +316,7 @@ class AuthViewModel
                     )
                 }
 
-                _state.value = AuthState.Done
+                _state.value = AuthState.Done(isNewUser = isNewUser)
             } catch (e: Exception) {
                 _state.value =
                     AuthState.Error(
@@ -441,19 +346,22 @@ class AuthViewModel
          * 1. Valid unexpired access token already on disk → jump straight to
          *    [AuthState.Done]; the NavHost routes the user out before the
          *    splash delay elapses.
-         * 2. Cached phone + account password → call `Login` (handlers.rs:413-463
-         *    returns tokens directly, no OTP round-trip) and persist the
-         *    session. On any failure, stay on [AuthState.Splash] silently and
-         *    let [onSplashComplete] advance to [AuthState.LoginPhone].
-         * 3. No cached credentials → return null; [onSplashComplete] handles
+         * 2. Cached phone → call `Login` with the bootstrap sentinel
+         *    (handlers.rs:413-463 returns tokens directly, no OTP round-trip)
+         *    and persist the session. On any failure, stay on [AuthState.Splash]
+         *    silently and let [onSplashComplete] advance to [AuthState.LoginPhone].
+         * 3. No cached phone → return null; [onSplashComplete] handles
          *    the transition to [AuthState.LoginPhone].
+         *
+         * Both success branches emit `Done(isNewUser = false)` — fast-login is
+         * by definition a returning-user path.
          *
          * @return the launched [Job] when an RPC attempt was kicked off, or
          * `null` if no attempt was made (nothing to await).
          */
         fun attemptFastLogin(): Job? {
             if (sessionManager.getAccessToken() != null && !sessionManager.isTokenExpired()) {
-                _state.value = AuthState.Done
+                _state.value = AuthState.Done(isNewUser = false)
                 return null
             }
             val phoneE164 = sessionManager.getStoredPhoneE164() ?: return null
@@ -493,7 +401,7 @@ class AuthViewModel
                         userId = userId,
                         expiresAtMillis = System.currentTimeMillis() + (response.expiresIn * 1_000L),
                     )
-                    _state.value = AuthState.Done
+                    _state.value = AuthState.Done(isNewUser = false)
                 } catch (e: Exception) {
                     // Silent by design — the splash delay will advance the
                     // user to LoginPhone so they can continue manually.
@@ -514,11 +422,6 @@ class AuthViewModel
                 supportsDeliveryAck = true,
             )
 
-        private fun generateAccountPassword(): String {
-            val bytes = ByteArray(PASSWORD_BYTES).also { SecureRandom().nextBytes(it) }
-            return Base64.getEncoder().withoutPadding().encodeToString(bytes)
-        }
-
         private fun isValidCountryCode(countryCode: String): Boolean = Regex("^\\+\\d{1,3}$").matches(countryCode)
 
         private fun isValidSubscriber(phone: String): Boolean =
@@ -527,8 +430,6 @@ class AuthViewModel
         // endregion
 
         private companion object {
-            const val MAX_DISPLAY_NAME_LENGTH = 128
-            const val PASSWORD_BYTES = 32
             const val OTP_LENGTH = 6
             const val MIN_SUBSCRIBER_DIGITS = 7
             const val MAX_SUBSCRIBER_DIGITS = 15
