@@ -21,9 +21,17 @@ package com.sanchr.feature.onboarding
  * `:feature:auth`.
  */
 sealed interface OnboardingState {
+    /**
+     * iOS-parity: [prefilledName] is the cached display name from
+     * [com.sanchr.core.datastore.SessionManager] and is rendered as TextField
+     * placeholder text only. The bound input [name] starts empty and
+     * accumulates as the user types, matching `OnboardingNameStepView.swift`
+     * where the `TextField`'s `text` binding starts empty and `prefilledName`
+     * is wired to the placeholder.
+     */
     data class NameEntry(
         val prefilledName: String = "",
-        val name: String = prefilledName,
+        val name: String = "",
         val isSubmitting: Boolean = false,
     ) : OnboardingState
 

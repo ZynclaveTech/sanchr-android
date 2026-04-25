@@ -16,6 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -33,11 +34,15 @@ import kotlinx.coroutines.test.setMain
  *   NameEntry -> AvatarEntry -> ContactSync -> WelcomeConfirm -> Completed
  *
  * Tests cover:
- *  - Initial state seeded from SessionManager display name.
+ *  - Initial state seeded from SessionManager display name (placeholder only;
+ *    bound input always starts empty for iOS parity).
  *  - Trimmed-name validation (1..128).
  *  - Avatar skip / preserve.
  *  - ContactSync -> WelcomeConfirm transition (no DataStore write here).
- *  - finishOnboarding writes the DataStore flag and emits Completed.
+ *  - finishOnboarding flips isSubmitting, writes the DataStore flag, and
+ *    emits Completed.
+ *  - finishOnboarding debounces double-taps via the isSubmitting guard.
+ *  - back() during an in-flight submit is a no-op.
  *  - Fail-safe: DataStore throw still emits Completed.
  *  - notificationGranted updates WelcomeConfirm.notificationsEnabled.
  *  - back() from WelcomeConfirm returns to ContactSync preserving state.
@@ -84,15 +89,18 @@ class OnboardingViewModelTest {
         }
 
     @Test
-    fun initialState_isNameEntry_withStoredDisplayName_prefilled() =
+    fun initialState_isNameEntry_withStoredDisplayName_placeholderOnly_inputEmpty() =
         runTest {
             every { sessionManager.getDisplayName() } returns "Alice"
             val vm = newViewModel()
 
             val s = vm.state.value
             assertIs<OnboardingState.NameEntry>(s)
+            // iOS parity: prefilledName drives placeholder text; the bound
+            // input always starts empty so the user's first keystroke does
+            // not have to clear pre-existing text.
             assertEquals("Alice", s.prefilledName)
-            assertEquals("Alice", s.name)
+            assertEquals("", s.name)
         }
 
     @Test
@@ -254,6 +262,108 @@ class OnboardingViewModelTest {
 
             assertEquals(OnboardingState.Completed, vm.state.value)
             coVerify(exactly = 1) { userPreferences.setOnboardingCompleted(true) }
+        }
+
+    @Test
+    fun finishOnboarding_setsIsSubmittingTrue_whileWriteIsInFlight() =
+        runTest {
+            // Suspend the DataStore write until we explicitly release it so we
+            // can observe the mid-flight WelcomeConfirm(isSubmitting = true).
+            val gate = CompletableDeferred<Unit>()
+            coEvery { userPreferences.setOnboardingCompleted(true) } coAnswers
+                {
+                    gate.await()
+                }
+
+            val vm = newViewModel()
+            vm.onNameChanged("Heidi")
+            vm.submitName()
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+            advanceUntilIdle()
+
+            vm.finishOnboarding()
+            // Drive the launched coroutine up to its first suspension point
+            // (the gated DataStore write).
+            advanceUntilIdle()
+
+            val midFlight = vm.state.value
+            assertIs<OnboardingState.WelcomeConfirm>(midFlight)
+            assertTrue(midFlight.isSubmitting)
+
+            // Release the gate; the coroutine should now emit Completed.
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(OnboardingState.Completed, vm.state.value)
+            coVerify(exactly = 1) { userPreferences.setOnboardingCompleted(true) }
+        }
+
+    @Test
+    fun finishOnboarding_doubleTap_isDebouncedByIsSubmittingGuard() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            coEvery { userPreferences.setOnboardingCompleted(true) } coAnswers
+                {
+                    gate.await()
+                }
+
+            val vm = newViewModel()
+            vm.onNameChanged("Heidi")
+            vm.submitName()
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+            advanceUntilIdle()
+
+            vm.finishOnboarding()
+            advanceUntilIdle()
+            // Second tap while the first write is gated must be a no-op
+            // (isSubmitting guard) — no second DataStore write should be
+            // launched.
+            vm.finishOnboarding()
+            advanceUntilIdle()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(OnboardingState.Completed, vm.state.value)
+            coVerify(exactly = 1) { userPreferences.setOnboardingCompleted(true) }
+        }
+
+    @Test
+    fun back_duringInFlightSubmit_isNoOp() =
+        runTest {
+            val gate = CompletableDeferred<Unit>()
+            coEvery { userPreferences.setOnboardingCompleted(true) } coAnswers
+                {
+                    gate.await()
+                }
+
+            val vm = newViewModel()
+            vm.onNameChanged("Heidi")
+            vm.submitName()
+            vm.onAvatarSelected("content://heidi.jpg")
+            vm.submitAvatar()
+            vm.onContactSyncFinish()
+            advanceUntilIdle()
+
+            vm.finishOnboarding()
+            advanceUntilIdle()
+
+            // back() must be ignored mid-submit; otherwise the launched
+            // coroutine would race and overwrite the user's ContactSync
+            // state with Completed.
+            vm.back()
+            val midFlight = vm.state.value
+            assertIs<OnboardingState.WelcomeConfirm>(midFlight)
+            assertTrue(midFlight.isSubmitting)
+            assertEquals("Heidi", midFlight.name)
+            assertEquals("content://heidi.jpg", midFlight.avatarUri)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(OnboardingState.Completed, vm.state.value)
         }
 
     @Test
