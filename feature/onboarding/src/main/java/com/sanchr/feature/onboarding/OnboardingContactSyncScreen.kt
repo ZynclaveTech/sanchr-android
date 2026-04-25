@@ -4,165 +4,312 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PanTool
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.sanchr.core.designsystem.component.SanchrButton
-import com.sanchr.core.designsystem.component.SanchrTextButton
-import com.sanchr.core.designsystem.theme.SanchrGray500
-import com.sanchr.core.designsystem.theme.SanchrGray900
-import com.sanchr.core.designsystem.theme.SanchrIndigo100
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sanchr.core.designsystem.R
+import com.sanchr.core.designsystem.component.SanchrGradientButton
+import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
+import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
-import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
- * Contact-sync / notification-permission step.
+ * Contact-sync / notification-permission step (Phase H7 — pixel-parity rebuild).
  *
- * iOS reference: `OnboardingContactSyncStepView.swift:4-22` (wraps
- * `ContactSyncView`). Android reimplements the permission-request pattern
- * from `feature/auth/.../PermissionsScreen.kt:124-127` — we replicate the
- * `rememberLauncherForActivityResult(RequestMultiplePermissions())` shape
- * rather than import from `:feature:auth`, because `:feature:onboarding` must
- * stay decoupled (see realignment plan §3 and §8 OPEN-Q#4).
+ * iOS reference: `OnboardingContactSyncStepView.swift` (delegates to
+ * `ContactSyncView`). Layout mirrors `ContactSyncView.swift:76-161`
+ * (`permissionRequestView` + `permissionCard`). Sync-progress / results states
+ * (`syncProgressView`, `syncResultsView`) are deferred — Android currently
+ * fires the OS permission dialog and advances on any result, regardless of
+ * grant outcome (iOS UX parity: tapping "Sync All Contacts" requests the
+ * permission then advances).
  *
  * Permission set:
  *   - `READ_CONTACTS` (always)
  *   - `POST_NOTIFICATIONS` (API 33+; implicit grant on older)
  *
- * User behaviour matches iOS: granting is optional. On either grant or deny,
- * we advance to [OnboardingState.Completed]. Declined permissions are handled
- * contextually later (future Settings surfaces).
- *
- * iOS-parity copy synced 2026-04-25 against `ContactSyncView.swift`
- * (the iOS step view itself just wraps that screen). Title ("Find Your
- * Friends", line 99), subtitle (line 103-105), primary CTA ("Sync All
- * Contacts", line 274), and secondary action ("Skip", line 38) now match
- * iOS verbatim. Sync-progress / sync-complete states from iOS
- * (`syncProgressView`, `syncResultsView`) are deferred — Android currently
- * fires the OS permission dialog and advances on any result, regardless of
- * grant outcome (see iOS-deviation comment on the launcher).
+ * iOS-bug-compat: per-card `tint` argument is accepted by `permissionCard`
+ * but the icon foreground is hardcoded to `.sanchrPrimary` (see
+ * `ContactSyncView.swift:142`). We replicate that — every card icon renders
+ * indigo regardless of the conceptual tint. Cited in spec §6.4.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingContactSyncScreen(
     modifier: Modifier = Modifier,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
-    val requestedPermissions =
-        buildList {
-            add(Manifest.permission.READ_CONTACTS)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }.toTypedArray()
-
-    val launcher =
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions(),
-        ) { _ ->
-            // iOS-deviation: iOS runs an in-app sync flow with progress + results UI
-            // after permission grant (`ContactSyncView.syncContacts`). Android defers
-            // that to Phase 7 — for now grant or deny, we always move on.
-            viewModel.onContactSyncFinish()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val syncState =
+        state as? OnboardingState.ContactSync ?: run {
+            Box(modifier.fillMaxSize())
+            return
         }
 
-    Scaffold(modifier = modifier) { innerPadding ->
+    val avatarLogoShape = remember { RoundedCornerShape(28.dp) }
+
+    val contactsPermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+            onResult = { _ ->
+                // iOS-deviation: iOS runs an in-app sync flow with progress + results UI
+                // after permission grant (`ContactSyncView.syncContacts`). Android defers
+                // that — for now grant-or-deny we always advance, matching the iOS UX
+                // where "Sync All Contacts" requests the permission then advances.
+                viewModel.onContactSyncFinish()
+            },
+        )
+
+    Scaffold(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Sync Contacts",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = viewModel::back) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                actions = {
+                    if (!syncState.isSubmitting) {
+                        TextButton(onClick = viewModel::onContactSyncFinish) {
+                            Text(
+                                text = "Skip",
+                                style =
+                                    MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                    ),
+                                color = SanchrIndigo500,
+                            )
+                        }
+                    }
+                },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
+            )
+        },
+    ) { padding ->
         Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = SanchrTheme.spacing.xl),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(padding)
+                    .padding(horizontal = 28.dp)
+                    .verticalScroll(rememberScrollState()),
         ) {
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
+            Spacer(Modifier.height(24.dp))
 
-            Text(
-                text = "STEP 3 OF 3",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-
-            Surface(
-                modifier = Modifier.size(72.dp),
-                shape = CircleShape,
-                color = SanchrIndigo100,
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+            // Hero: 120dp logo with 40dp cyan sync badge offset (8,8) BottomEnd.
+            // iOS: `ContactSyncView.swift:80-96`.
+            Box(contentAlignment = Alignment.BottomEnd) {
+                Image(
+                    painter = painterResource(R.drawable.sanchr_logo),
+                    contentDescription = null,
+                    modifier =
+                        Modifier
+                            .size(120.dp)
+                            .clip(avatarLogoShape),
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .size(40.dp)
+                            .offset(x = 8.dp, y = 8.dp)
+                            .clip(CircleShape)
+                            .background(SanchrCyan500),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Contacts,
+                        imageVector = Icons.Filled.Sync,
                         contentDescription = null,
-                        tint = SanchrIndigo500,
-                        modifier = Modifier.size(36.dp),
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
+            Spacer(Modifier.height(28.dp))
 
-            // iOS parity: matches `ContactSyncView.swift:99` verbatim (title-case).
+            // iOS parity: `ContactSyncView.swift:99` ("Find Your Friends").
             Text(
                 text = "Find Your Friends",
-                style = MaterialTheme.typography.headlineMedium,
-                color = SanchrGray900,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.displayMedium,
+                color = MaterialTheme.colorScheme.onBackground,
             )
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
-            // iOS parity: matches `ContactSyncView.swift:103-105` verbatim.
+            Spacer(Modifier.height(12.dp))
+            // iOS parity: `ContactSyncView.swift:103-105` verbatim.
             Text(
-                text = "Sync your contacts to see who's already on Sanchr and start secure conversations",
+                text =
+                    "Sync your contacts to see who's already on Sanchr and start secure conversations",
                 style = MaterialTheme.typography.bodyMedium,
-                color = SanchrGray500,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 8.dp),
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(Modifier.height(24.dp))
 
-            // iOS parity: primary CTA matches `ContactSyncView.swift:274` ("Sync All Contacts").
-            SanchrButton(
-                text = "Sync All Contacts",
-                onClick = { launcher.launch(requestedPermissions) },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-            )
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
-            // iOS parity: secondary action matches `ContactSyncView.swift:38` ("Skip").
-            // iOS-deviation: iOS positions Skip in the nav-bar trailing slot; Android
-            // uses an inline TextButton because Compose Scaffold here has no top bar.
-            SanchrTextButton(
-                onClick = viewModel::onContactSyncFinish,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = SanchrTheme.spacing.xl),
+            // Three permission cards verbatim from `ContactSyncView.swift:111-131`.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(text = "Skip")
+                PermissionCard(
+                    icon = Icons.Filled.Shield,
+                    title = "Private & Secure",
+                    subtitle =
+                        "Your contacts are encrypted and never shared with third parties",
+                )
+                PermissionCard(
+                    icon = Icons.Filled.VerifiedUser,
+                    title = "Instant Matching",
+                    subtitle = "Automatically find friends who are already using Sanchr",
+                )
+                PermissionCard(
+                    icon = Icons.Filled.PanTool,
+                    title = "No Spam, Ever",
+                    subtitle =
+                        "We won't send notifications to your contacts without your permission",
+                )
             }
+
+            Spacer(Modifier.height(24.dp))
+
+            SanchrGradientButton(
+                text = if (syncState.isSubmitting) "Syncing\u2026" else "Sync All Contacts",
+                onClick = {
+                    val perms =
+                        buildList {
+                            add(Manifest.permission.READ_CONTACTS)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                add(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }.toTypedArray()
+                    contactsPermissionLauncher.launch(perms)
+                },
+                isLoading = syncState.isSubmitting,
+                trailingIcon = null,
+            )
+
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/**
+ * Icon-on-tinted-square card row. iOS reference:
+ * `ContactSyncView.swift:138-165`. Spec §6.4 `permissionCard` recipe:
+ *   - Outer: `RoundedCornerShape(20.dp)` on `surfaces.surface`, padding 16.dp.
+ *   - Icon container: 44.dp `RoundedCornerShape(14.dp)` on `surfaces.surfaceMuted`.
+ *   - Icon: 18.dp, tint hardcoded `SanchrIndigo500` (iOS bug-compat — see file header).
+ *   - Title: `labelLarge` on `onBackground`.
+ *   - Subtitle: `bodySmall` on `onSurfaceVariant`, 2.dp gap.
+ */
+@Composable
+private fun PermissionCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+) {
+    val cardShape = remember { RoundedCornerShape(20.dp) }
+    val iconBoxShape = remember { RoundedCornerShape(14.dp) }
+    val surfaces = LocalSanchrSurfaces.current
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(cardShape)
+                .background(surfaces.surface)
+                .padding(16.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(44.dp)
+                    .clip(iconBoxShape)
+                    .background(surfaces.surfaceMuted),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = SanchrIndigo500,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

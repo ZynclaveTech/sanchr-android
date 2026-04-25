@@ -145,18 +145,22 @@ class OnboardingViewModel
         }
 
         /**
-         * Back-nav supporting two transitions:
+         * Back-nav supporting three transitions:
          *   - [OnboardingState.WelcomeConfirm] -> [OnboardingState.ContactSync]
          *     (mirrors `OnboardingWelcomeStepView` toolbar `chevron.left`).
+         *   - [OnboardingState.ContactSync]    -> [OnboardingState.AvatarEntry]
+         *     (Phase H7 iOS parity — `ContactSyncView` leading `arrow.left`).
          *   - [OnboardingState.AvatarEntry]    -> [OnboardingState.NameEntry]
          *     (Phase H6 iOS parity — `OnboardingAvatarStepView` chevron-back).
          *
          * Preserves carried-forward fields. WelcomeConfirm no-ops if a submit
          * is in flight, to prevent racing an in-flight [finishOnboarding]
          * coroutine that would otherwise overwrite the ContactSync state with
-         * Completed after the user pressed back. AvatarEntry has no in-flight
-         * submit gate today (server upload is deferred to a later phase), so
-         * back is unconditional from that step.
+         * Completed after the user pressed back. ContactSync no-ops while
+         * `isSubmitting` is true (the screen owns the permission launcher
+         * round-trip) so back can't fire mid-launch. AvatarEntry has no
+         * in-flight submit gate today (server upload is deferred to a later
+         * phase), so back is unconditional from that step.
          *
          * For NameEntry we re-fetch the cached display name as the
          * placeholder, matching `initialState()` (the user may have typed and
@@ -172,6 +176,15 @@ class OnboardingViewModel
                         OnboardingState.ContactSync(
                             name = current.name,
                             avatarUri = current.avatarUri,
+                        )
+                }
+                is OnboardingState.ContactSync -> {
+                    if (current.isSubmitting) return
+                    _state.value =
+                        OnboardingState.AvatarEntry(
+                            name = current.name,
+                            avatarUri = current.avatarUri,
+                            isSubmitting = false,
                         )
                 }
                 is OnboardingState.AvatarEntry -> {
