@@ -128,6 +128,30 @@ fun LoginPhoneScreen(
     val darkTheme = isSystemInDarkTheme()
     val surfaces = LocalSanchrSurfaces.current
 
+    // Hoist shape + border-color allocations out of the recomposing modifier
+    // chain. Without `remember`, every keystroke into the phone field rebuilds
+    // a fresh RoundedCornerShape (consumed by shadow/clip/border) plus a fresh
+    // Color, allocating ~5 modifier nodes per character. Composable accessors
+    // (theme spacing, MaterialTheme error color) are captured into locals
+    // first so the `remember` calculation lambdas (which are
+    // @DisallowComposableCalls) only see plain values.
+    val phoneFieldRadius = SanchrTheme.spacing.phoneFieldRadius
+    val cardCorner = SanchrTheme.spacing.cardCorner
+    val errorColor = MaterialTheme.colorScheme.error
+    val lineColor = surfaces.line
+    val fieldShape = remember(phoneFieldRadius) { RoundedCornerShape(phoneFieldRadius) }
+    val borderColor =
+        remember(errorMessage, errorColor, lineColor) {
+            if (errorMessage != null) errorColor.copy(alpha = 0.35f) else lineColor
+        }
+    val logoShape = remember(cardCorner) { RoundedCornerShape(cardCorner) }
+    val securityShape = remember { RoundedCornerShape(24.dp) }
+    val securityIconShape = remember { RoundedCornerShape(14.dp) }
+    val securityBorder =
+        remember(darkTheme) {
+            SanchrIndigo500.copy(alpha = if (darkTheme) 0.15f else 0.12f)
+        }
+
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
             modifier =
@@ -151,7 +175,7 @@ fun LoginPhoneScreen(
                     modifier =
                         Modifier
                             .size(120.dp)
-                            .clip(RoundedCornerShape(SanchrTheme.spacing.cardCorner)),
+                            .clip(logoShape),
                 )
                 Spacer(modifier = Modifier.height(40.dp))
                 Text(
@@ -178,14 +202,6 @@ fun LoginPhoneScreen(
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(modifier = Modifier.height(14.dp))
-
-            val borderColor =
-                if (errorMessage != null) {
-                    MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
-                } else {
-                    surfaces.line
-                }
-            val fieldShape = RoundedCornerShape(SanchrTheme.spacing.phoneFieldRadius)
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -274,8 +290,6 @@ fun LoginPhoneScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             // Security card — iOS LoginView.swift:181-215.
-            val securityShape = RoundedCornerShape(24.dp)
-            val securityBorder = SanchrIndigo500.copy(alpha = if (darkTheme) 0.15f else 0.12f)
             Row(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -291,7 +305,7 @@ fun LoginPhoneScreen(
                     modifier =
                         Modifier
                             .size(52.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(securityIconShape)
                             .background(SanchrIndigo500.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -323,13 +337,17 @@ fun LoginPhoneScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
+            // SanchrGradientButton already gates clicks via `enabled && !isLoading`
+            // and swaps in a spinner when isLoading=true (commit 69fc6dc); passing
+            // `!isSubmitting` here would double-fade the spinner with disabled-alpha.
+            // retry() unwraps Error → LoginPhone so submit can re-enter the validation gate.
             SanchrGradientButton(
                 text = "Continue",
                 onClick = {
                     if (state is AuthState.Error) viewModel.retry()
                     viewModel.submitLoginPhone()
                 },
-                enabled = isPhoneValid && !loginPhone.isSubmitting,
+                enabled = isPhoneValid,
                 isLoading = loginPhone.isSubmitting,
                 trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
             )
