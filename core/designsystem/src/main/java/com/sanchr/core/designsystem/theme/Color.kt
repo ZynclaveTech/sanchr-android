@@ -56,7 +56,21 @@ val SanchrGray950 = Color(0xFF030712)
 val SanchrWhite = Color(0xFFFFFFFF)
 val SanchrBlack = Color(0xFF000000)
 
+// --- Dark-mode tinted neutrals (parity with iOS SanchrColors) ---
+// Source: ios/Sanchr-iOS/SanchrShared/DesignSystem/Colors.swift lines 32-39.
+// iOS dark mode intentionally uses a slightly blue-violet tinted neutral rather than
+// pure gray; matching these values removes the "too black, wrong hue" delta vs iOS.
+val SanchrDarkBackground = Color(0xFF0F0F14) // iOS backgroundDark
+val SanchrDarkSurface = Color(0xFF1A1A24) // iOS surfaceDark
+val SanchrDarkSurfaceElevated = Color(0xFF24243A) // iOS surfaceElevatedDark
+val SanchrDarkBorder = Color(0xFF2D2D3F) // iOS borderDark
+val SanchrDarkDivider = Color(0xFF1F1F2E) // iOS dividerDark
+
 // --- Light Color Scheme ---
+// Parity with iOS SanchrColors light-mode semantics (Colors.swift lines 21-28):
+//   background = #FFFFFF, surface = #F9FAFB (subtle gray, NOT pure white),
+//   textPrimary = #111827 (gray900), textSecondary = #6B7280 (gray500),
+//   border = #E5E7EB (gray200), divider = #F3F4F6 (gray100).
 val SanchrLightColorScheme =
     lightColorScheme(
         primary = SanchrIndigo500,
@@ -75,12 +89,20 @@ val SanchrLightColorScheme =
         onErrorContainer = SanchrErrorDark,
         background = SanchrWhite,
         onBackground = SanchrGray900,
-        surface = SanchrWhite,
+        // iOS surfaceLight = #F9FAFB — subtle tint vs background. Using SanchrGray50
+        // (same hex) ensures Card/surface elements visually separate from the background
+        // matching iOS instead of vanishing into a flat white plane.
+        surface = SanchrGray50,
         onSurface = SanchrGray900,
         surfaceVariant = SanchrGray100,
-        onSurfaceVariant = SanchrGray600,
-        outline = SanchrGray300,
-        outlineVariant = SanchrGray200,
+        // iOS textSecondaryLight = #6B7280 (gray500). Android was using gray600 (#4B5563)
+        // which is noticeably darker and made secondary text look almost as strong as
+        // primary text. Parity: use SanchrGray500.
+        onSurfaceVariant = SanchrGray500,
+        // iOS borderLight = #E5E7EB (gray200). Android previously used gray300 which is
+        // too heavy and produced visible borders where iOS shows a soft hairline.
+        outline = SanchrGray200,
+        outlineVariant = SanchrGray100,
         inverseSurface = SanchrGray900,
         inverseOnSurface = SanchrGray100,
         inversePrimary = SanchrIndigo200,
@@ -88,6 +110,10 @@ val SanchrLightColorScheme =
     )
 
 // --- Dark Color Scheme ---
+// Parity with iOS SanchrColors dark-mode semantics (Colors.swift lines 32-39):
+//   background = #0F0F14, surface = #1A1A24, surfaceElevated = #24243A,
+//   textPrimary = #F9FAFB (gray50), textSecondary = #9CA3AF (gray400),
+//   border = #2D2D3F, divider = #1F1F2E.
 val SanchrDarkColorScheme =
     darkColorScheme(
         primary = SanchrIndigo400,
@@ -104,14 +130,16 @@ val SanchrDarkColorScheme =
         onError = SanchrErrorDark,
         errorContainer = SanchrErrorDark,
         onErrorContainer = SanchrErrorLight,
-        background = SanchrGray950,
-        onBackground = SanchrGray100,
-        surface = SanchrGray900,
-        onSurface = SanchrGray100,
-        surfaceVariant = SanchrGray800,
+        background = SanchrDarkBackground,
+        // iOS textPrimaryDark = #F9FAFB (gray50). Previously Android used gray100 (#F3F4F6)
+        // which is subtly dimmer. Align to gray50 for parity.
+        onBackground = SanchrGray50,
+        surface = SanchrDarkSurface,
+        onSurface = SanchrGray50,
+        surfaceVariant = SanchrDarkSurfaceElevated,
         onSurfaceVariant = SanchrGray400,
-        outline = SanchrGray600,
-        outlineVariant = SanchrGray700,
+        outline = SanchrDarkBorder,
+        outlineVariant = SanchrDarkDivider,
         inverseSurface = SanchrGray100,
         inverseOnSurface = SanchrGray900,
         inversePrimary = SanchrIndigo600,
