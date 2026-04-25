@@ -51,6 +51,15 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
  * User behaviour matches iOS: granting is optional. On either grant or deny,
  * we advance to [OnboardingState.Completed]. Declined permissions are handled
  * contextually later (future Settings surfaces).
+ *
+ * iOS-parity copy synced 2026-04-25 against `ContactSyncView.swift`
+ * (the iOS step view itself just wraps that screen). Title ("Find Your
+ * Friends", line 99), subtitle (line 103-105), primary CTA ("Sync All
+ * Contacts", line 274), and secondary action ("Skip", line 38) now match
+ * iOS verbatim. Sync-progress / sync-complete states from iOS
+ * (`syncProgressView`, `syncResultsView`) are deferred — Android currently
+ * fires the OS permission dialog and advances on any result, regardless of
+ * grant outcome (see iOS-deviation comment on the launcher).
  */
 @Composable
 fun OnboardingContactSyncScreen(
@@ -69,7 +78,9 @@ fun OnboardingContactSyncScreen(
         rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
         ) { _ ->
-            // Matches iOS: grant or deny, we always move on.
+            // iOS-deviation: iOS runs an in-app sync flow with progress + results UI
+            // after permission grant (`ContactSyncView.syncContacts`). Android defers
+            // that to Phase 7 — for now grant or deny, we always move on.
             viewModel.onContactSyncFinish()
         }
 
@@ -113,25 +124,26 @@ fun OnboardingContactSyncScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
+            // iOS parity: matches `ContactSyncView.swift:99` verbatim (title-case).
             Text(
-                text = "Find your contacts",
+                text = "Find Your Friends",
                 style = MaterialTheme.typography.headlineMedium,
                 color = SanchrGray900,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+            // iOS parity: matches `ContactSyncView.swift:103-105` verbatim.
             Text(
-                text =
-                    "Allow Sanchr to check which of your contacts are already here and " +
-                        "notify you when they message. You can change this later in Settings.",
+                text = "Sync your contacts to see who's already on Sanchr and start secure conversations",
                 style = MaterialTheme.typography.bodyMedium,
                 color = SanchrGray500,
             )
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // iOS parity: primary CTA matches `ContactSyncView.swift:274` ("Sync All Contacts").
             SanchrButton(
-                text = "Allow contacts",
+                text = "Sync All Contacts",
                 onClick = { launcher.launch(requestedPermissions) },
                 modifier =
                     Modifier
@@ -139,6 +151,9 @@ fun OnboardingContactSyncScreen(
                         .height(52.dp),
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+            // iOS parity: secondary action matches `ContactSyncView.swift:38` ("Skip").
+            // iOS-deviation: iOS positions Skip in the nav-bar trailing slot; Android
+            // uses an inline TextButton because Compose Scaffold here has no top bar.
             SanchrTextButton(
                 onClick = viewModel::onContactSyncFinish,
                 modifier =
@@ -146,7 +161,7 @@ fun OnboardingContactSyncScreen(
                         .fillMaxWidth()
                         .padding(bottom = SanchrTheme.spacing.xl),
             ) {
-                Text(text = "Not now")
+                Text(text = "Skip")
             }
         }
     }

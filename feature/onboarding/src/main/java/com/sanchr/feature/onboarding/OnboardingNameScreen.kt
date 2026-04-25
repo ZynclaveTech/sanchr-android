@@ -37,6 +37,10 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
  *   - Max-length cap is 128 (backend limit) instead of iOS's 40 (iOS's cap is
  *     aesthetic only — server accepts up to 128, see
  *     `sanchr-profile-service/src/proto/profile.proto`).
+ *
+ * iOS-parity copy synced 2026-04-25 against `OnboardingNameStepView.swift`.
+ * Kicker, title, subtitle, placeholder, and CTA all match iOS verbatim
+ * (lines 29, 35, 40, 47, 76).
  */
 @Composable
 fun OnboardingNameScreen(
@@ -95,6 +99,7 @@ fun OnboardingNameScreen(
                     KeyboardActions(
                         onDone = { viewModel.submitName() },
                     ),
+                // iOS-deviation: 128-char cap follows backend limit; iOS caps at 40 for layout only.
                 supportingText = {
                     Text(
                         text = "${nameState.name.length}/128",

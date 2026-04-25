@@ -55,6 +55,13 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
  *   - No upload-on-Continue — iOS blocks advancement on `saveProfile` success;
  *     Android defers server persistence to Phase 6 (`ProfileService.UpdateProfile`
  *     wiring, see `OnboardingViewModel.swift:86-97`).
+ *
+ * iOS-parity copy synced 2026-04-25 against `OnboardingAvatarStepView.swift`.
+ * Kicker ("STEP 2 OF 3"), title ("Add a photo"), subtitle, photo-picker
+ * caption ("Tap to choose photo" / "Tap to change photo"), and "Continue"
+ * CTA all match iOS verbatim (lines 29, 35, 40, 88, 134). The "Skip for now"
+ * secondary action is an Android-only addition because Android defers server
+ * upload until Phase 6 — see iOS-deviation comment.
  */
 @Composable
 fun OnboardingAvatarScreen(
@@ -168,6 +175,8 @@ fun OnboardingAvatarScreen(
                         .height(52.dp),
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+            // iOS-deviation: iOS has no Skip on this step (saveProfile gates Continue);
+            // Android defers server persistence to Phase 6, so Skip is allowed for now.
             SanchrTextButton(
                 onClick = viewModel::skipAvatar,
                 modifier =
