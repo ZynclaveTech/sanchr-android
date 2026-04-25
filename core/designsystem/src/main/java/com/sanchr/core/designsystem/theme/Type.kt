@@ -1,42 +1,52 @@
 package com.sanchr.core.designsystem.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.sanchr.core.designsystem.R
 
 /**
  * Sanchr typography scale.
  *
- * Design tokens call for two typefaces:
- *   Afacad -- display / heading font
- *   Inter  -- body / utility font
+ * Afacad variable font, copied from iOS at
+ * `ios/Sanchr-iOS/Resources/Fonts/Afacad-Variable.ttf`. The Compose runtime
+ * picks the closest weight axis on first composition. Available weights
+ * Regular(400) / Medium(500) / SemiBold(600) / Bold(700).
  *
- * TODO: Once the actual .ttf files are added to res/font/, replace the
- *       default font families below with proper FontFamily declarations:
- *
- *   val AfacadFontFamily = FontFamily(
- *       Font(R.font.afacad_regular, FontWeight.Normal),
- *       Font(R.font.afacad_medium, FontWeight.Medium),
- *       Font(R.font.afacad_semibold, FontWeight.SemiBold),
- *       Font(R.font.afacad_bold, FontWeight.Bold),
- *   )
- *
- *   val InterFontFamily = FontFamily(
- *       Font(R.font.inter_regular, FontWeight.Normal),
- *       Font(R.font.inter_medium, FontWeight.Medium),
- *       Font(R.font.inter_semibold, FontWeight.SemiBold),
- *       Font(R.font.inter_bold, FontWeight.Bold),
- *   )
- *
- * Font files should be placed in res/font/ as:
- *   afacad_regular.ttf, afacad_medium.ttf, afacad_semibold.ttf, afacad_bold.ttf
- *   inter_regular.ttf, inter_medium.ttf, inter_semibold.ttf, inter_bold.ttf
+ * iOS parity citations preserved from prior phase (Phase 6f-1) — only the
+ * `fontFamily` slot is swapped from the previous SansSerif fallback to the
+ * bundled Afacad variable font. Sizes / weights / line-heights / letter-spacings
+ * are intentionally untouched so Phase 6f-1 parity holds.
  */
-
-val AfacadFontFamily = FontFamily.SansSerif
-val InterFontFamily = FontFamily.SansSerif
+@OptIn(ExperimentalTextApi::class)
+private val Afacad =
+    FontFamily(
+        Font(
+            R.font.afacad_variable,
+            FontWeight.Normal,
+            variationSettings = FontVariation.Settings(FontVariation.weight(400)),
+        ),
+        Font(
+            R.font.afacad_variable,
+            FontWeight.Medium,
+            variationSettings = FontVariation.Settings(FontVariation.weight(500)),
+        ),
+        Font(
+            R.font.afacad_variable,
+            FontWeight.SemiBold,
+            variationSettings = FontVariation.Settings(FontVariation.weight(600)),
+        ),
+        Font(
+            R.font.afacad_variable,
+            FontWeight.Bold,
+            variationSettings = FontVariation.Settings(FontVariation.weight(700)),
+        ),
+    )
 
 /**
  * Design token sizes: 10, 12, 14, 16, 18, 20, 24, 30, 48 sp
@@ -56,7 +66,7 @@ val SanchrTypography =
     Typography(
         displayLarge =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Bold,
                 fontSize = 48.sp,
                 lineHeight = 56.sp,
@@ -67,7 +77,7 @@ val SanchrTypography =
         // the hero headings that iOS renders at SemiBold.
         displayMedium =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 36.sp,
                 lineHeight = 44.sp,
@@ -76,7 +86,7 @@ val SanchrTypography =
         // iOS `screenTitle` = 30pt SemiBold (Typography.swift line 76).
         displaySmall =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 30.sp,
                 lineHeight = 38.sp,
@@ -85,7 +95,7 @@ val SanchrTypography =
         // iOS `sectionHeader` = 24pt SemiBold (Typography.swift line 82).
         headlineLarge =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 24.sp,
                 lineHeight = 32.sp,
@@ -94,7 +104,7 @@ val SanchrTypography =
         // iOS `cardTitle` = 20pt SemiBold (Typography.swift line 85).
         headlineMedium =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp,
                 lineHeight = 28.sp,
@@ -103,7 +113,7 @@ val SanchrTypography =
         // iOS `bodyLarge` = 18pt Medium (Typography.swift line 88).
         headlineSmall =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Medium,
                 fontSize = 18.sp,
                 lineHeight = 26.sp,
@@ -111,7 +121,7 @@ val SanchrTypography =
             ),
         titleLarge =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp,
                 lineHeight = 28.sp,
@@ -120,7 +130,7 @@ val SanchrTypography =
         // iOS `conversationName` = 16pt SemiBold with -0.5 tracking (Typography.swift line 132).
         titleMedium =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
@@ -128,7 +138,7 @@ val SanchrTypography =
             ),
         titleSmall =
             TextStyle(
-                fontFamily = AfacadFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
@@ -138,7 +148,7 @@ val SanchrTypography =
         // Normal; bumping to Medium matches iOS body weight across cards and content text.
         bodyLarge =
             TextStyle(
-                fontFamily = InterFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Medium,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
@@ -147,7 +157,7 @@ val SanchrTypography =
         // iOS `caption` = 14pt Regular (Typography.swift line 97). Keep Normal to match.
         bodyMedium =
             TextStyle(
-                fontFamily = InterFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Normal,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
@@ -156,7 +166,7 @@ val SanchrTypography =
         // iOS `captionSmall` = 12pt Regular (Typography.swift line 100).
         bodySmall =
             TextStyle(
-                fontFamily = InterFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Normal,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
@@ -166,7 +176,7 @@ val SanchrTypography =
         // labelLarge is 14sp Medium which is both smaller and lighter than iOS. Align.
         labelLarge =
             TextStyle(
-                fontFamily = InterFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
@@ -175,7 +185,7 @@ val SanchrTypography =
         // iOS `sectionLabel` = 12pt SemiBold with +0.5 tracking (Typography.swift line 147/159).
         labelMedium =
             TextStyle(
-                fontFamily = InterFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
@@ -184,10 +194,25 @@ val SanchrTypography =
         // iOS `micro`/`e2eeBadge` = 10pt Regular/Medium (Typography.swift lines 103/153).
         labelSmall =
             TextStyle(
-                fontFamily = InterFontFamily,
+                fontFamily = Afacad,
                 fontWeight = FontWeight.Medium,
                 fontSize = 10.sp,
                 lineHeight = 14.sp,
                 letterSpacing = 0.5.sp,
             ),
+    )
+
+/**
+ * "STEP X OF 3" eyebrow — 10sp, 2.5sp letterSpacing.
+ *
+ * iOS parity: onboarding eyebrow tracking from
+ * `SanchrShared/DesignSystem/Typography.swift`. Color is applied at the use site
+ * (typically `MaterialTheme.colorScheme.primary`).
+ */
+val SanchrMicroEyebrowStyle: TextStyle =
+    TextStyle(
+        fontFamily = Afacad,
+        fontWeight = FontWeight.Normal,
+        fontSize = 10.sp,
+        letterSpacing = 2.5.sp,
     )

@@ -66,6 +66,25 @@ val SanchrDarkSurfaceElevated = Color(0xFF24243A) // iOS surfaceElevatedDark
 val SanchrDarkBorder = Color(0xFF2D2D3F) // iOS borderDark
 val SanchrDarkDivider = Color(0xFF1F1F2E) // iOS dividerDark
 
+// ---- iOS export tokens ----
+// Parity with SanchrShared/DesignSystem/ExportComponents.swift:29-39 — these mirror
+// the iOS UIKit semantic color exports used by onboarding / login surfaces:
+//   .secondarySystemBackground   -> SanchrSurface{Light,Dark}
+//   .tertiarySystemFill          -> SanchrSurfaceMuted{Light,Dark}
+//   .systemGroupedBackground     -> SanchrSurfaceSoft{Light,Dark}
+//   .separator                   -> SanchrLine{Light,Dark}
+val SanchrSurfaceLight = Color(0xFFF2F2F7)
+val SanchrSurfaceDark = Color(0xFF1C1C1E)
+val SanchrSurfaceMutedLight = Color(0x33767680)
+val SanchrSurfaceMutedDark = Color(0x5C767680)
+val SanchrSurfaceSoftLight = Color(0xFFF2F2F7)
+val SanchrSurfaceSoftDark = Color(0xFF000000)
+val SanchrLineLight = Color(0x4A3C3C43)
+
+// Note: plan H1 listed `0x995454548` (9 hex digits, malformed). Corrected to the
+// valid 8-digit ARGB literal `0x99545458` matching iOS .separator dark variant.
+val SanchrLineDark = Color(0x99545458)
+
 // --- Light Color Scheme ---
 // Parity with iOS SanchrColors light-mode semantics (Colors.swift lines 21-28):
 //   background = #FFFFFF, surface = #F9FAFB (subtle gray, NOT pure white),
