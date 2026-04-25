@@ -1,11 +1,15 @@
 package com.sanchr.feature.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,18 +18,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,57 +38,53 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.sanchr.core.designsystem.component.CountryCodePicker
-import com.sanchr.core.designsystem.component.SanchrButton
-import com.sanchr.core.designsystem.component.SanchrTextButton
+import com.sanchr.core.designsystem.component.CountryCodePickerInlineChip
+import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.findCountryByDialCode
 import com.sanchr.core.designsystem.component.resolveDefaultCountry
-import com.sanchr.core.designsystem.theme.SanchrGray400
-import com.sanchr.core.designsystem.theme.SanchrGray500
-import com.sanchr.core.designsystem.theme.SanchrGray900
-import com.sanchr.core.designsystem.theme.SanchrIndigo100
-import com.sanchr.core.designsystem.theme.SanchrIndigo400
+import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
-import com.sanchr.core.designsystem.theme.SanchrIndigo900
-import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.core.designsystem.theme.SanchrWhite
 
 /**
  * Phone-only entry. Android counterpart of iOS `LoginView` phone section
- * (LoginView.swift:97-179). Observes [AuthViewModel.state] and renders keyed
- * off [AuthState.LoginPhone]; any other state means the NavHost observer has
- * already moved the flow forward, so this composable renders an empty [Box]
- * to avoid a last-frame flicker during route transitions.
+ * (`LoginView.swift` complete file, with the inline country menu at lines
+ * 107-138 and the security card at lines 181-215). Observes
+ * [AuthViewModel.state] and renders keyed off [AuthState.LoginPhone]; any
+ * other state means the NavHost observer has already moved the flow forward,
+ * so this composable renders an empty [Box] to avoid a last-frame flicker
+ * during route transitions.
  *
- * This is the single landing after the splash for both new and returning
- * users, matching iOS `SanchrApp.swift:350-396` (`Splash -> LoginView`). The
- * backend's existing-phone short-circuit in `auth/handlers.rs:267-328`
- * dispatches the two cases transparently — no Sign-up affordance is needed.
+ * Layout follows §6.1 of `docs/android/ios-pixel-parity-spec.md` literally:
+ * 28dp horizontal screen padding; 54dp top spacer; 120dp logo with 28dp
+ * corner radius; 40dp gap; displayMedium "Welcome to Sanchr"; 14dp gap;
+ * bodyMedium tagline; 44dp gap; phone section (label + 14dp + 60dp tall
+ * country-chip+TextField row inside RoundedCornerShape(20.dp) with 1.2dp
+ * border and 18dp shadow at black/0.04); 18dp gap; security card
+ * (RoundedCornerShape(24.dp), 18×20dp padding, primary/0.12 border, 52dp
+ * tinted lock square + headlineSmall + bodyMedium); 28dp gap;
+ * [SanchrGradientButton] Continue CTA; 24dp gap; combined privacy line;
+ * 24dp bottom spacer.
  *
- * iOS-parity copy synced 2026-04-25 against `LoginView.swift`. Hero title
- * ("Welcome to Sanchr"), tagline ("Encrypted. Synced. Secure."), phone
- * label ("Phone Number"), placeholder ("(555) 123-4567"), helper text
- * ("We'll send you a verification code"), security card title
- * ("End-to-End Encrypted") and body ("Your messages are secured with
- * military-grade encryption. Only you and your contacts can read them.")
- * are taken character-for-character from `LoginView.swift:81-199`.
+ * Country chip is the new [CountryCodePickerInlineChip] which embeds inside
+ * the phone-field surface — matches iOS `LoginView.swift:106-147` where the
+ * Menu button sits in the same RoundedCornerShape(20) container as the
+ * TextField, separated by a 1×28dp `SanchrLine` divider.
  *
- * iOS-deviation: the OutlinedTextField label uses Title Case "Phone Number"
- * mirroring iOS line 99; this also doubles as the Material floating-label,
- * which Android requires (iOS draws a separate label above the field).
- *
- * TODO(copy): the Privacy Policy / Terms URLs below point at the placeholder
- *   `sanchr.app/privacy` and `sanchr.app/terms`. Replace with the final
- *   marketing URLs once legal sign-off lands.
+ * Privacy footer collapses to a single sentence ("By continuing, you agree
+ * to our Privacy Policy and Terms of Service") matching iOS
+ * `LoginView.swift:252-258`. The previous Material-style two-button row was
+ * removed in H4 to honor pixel parity; tappable links are deferred.
  */
 @Composable
 fun LoginPhoneScreen(
@@ -94,7 +93,6 @@ fun LoginPhoneScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val uriHandler = LocalUriHandler.current
     val deviceDefault = remember(context) { resolveDefaultCountry(context) }
 
     val loginPhone: AuthState.LoginPhone =
@@ -126,6 +124,9 @@ fun LoginPhoneScreen(
             ?: deviceDefault
 
     val errorMessage = (state as? AuthState.Error)?.message
+    val isPhoneValid = loginPhone.phone.length >= MIN_CONTINUE_DIGITS
+    val darkTheme = isSystemInDarkTheme()
+    val surfaces = LocalSanchrSurfaces.current
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
@@ -134,199 +135,221 @@ fun LoginPhoneScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = SanchrTheme.spacing.xl)
+                    .padding(horizontal = 28.dp)
                     .imePadding(),
-            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.heroTopGap))
 
-            Box(
-                modifier =
-                    Modifier
-                        .size(80.dp)
-                        .clip(SanchrShapeTokens.CornerExtraLarge)
-                        .background(
-                            Brush.linearGradient(colors = listOf(SanchrIndigo500, SanchrIndigo400)),
-                        ),
-                contentAlignment = Alignment.Center,
+            // Hero — iOS LoginView.swift:70-95.
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Chat,
-                    contentDescription = null,
-                    tint = SanchrWhite,
-                    modifier = Modifier.size(36.dp),
-                )
-                Icon(
-                    imageVector = Icons.Filled.Shield,
+                Image(
+                    painter = painterResource(id = com.sanchr.core.designsystem.R.drawable.sanchr_logo),
                     contentDescription = "Sanchr logo",
-                    tint = SanchrWhite.copy(alpha = 0.6f),
                     modifier =
                         Modifier
-                            .size(20.dp)
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = 4.dp, end = 4.dp),
+                            .size(120.dp)
+                            .clip(RoundedCornerShape(SanchrTheme.spacing.cardCorner)),
+                )
+                Spacer(modifier = Modifier.height(40.dp))
+                Text(
+                    text = "Welcome to Sanchr",
+                    style = MaterialTheme.typography.displayMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Encrypted. Synced. Secure.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
             }
 
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.heroBottomGap))
 
+            // Phone section — iOS LoginView.swift:97-179.
             Text(
-                text = "Welcome to Sanchr",
-                style = MaterialTheme.typography.headlineMedium,
-                color = SanchrGray900,
-                fontWeight = FontWeight.Bold,
+                text = "Phone Number",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onBackground,
             )
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+            val borderColor =
+                if (errorMessage != null) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+                } else {
+                    surfaces.line
+                }
+            val fieldShape = RoundedCornerShape(SanchrTheme.spacing.phoneFieldRadius)
 
-            Text(
-                text = "Encrypted. Synced. Secure.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = SanchrGray500,
-            )
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
-
-            OutlinedTextField(
-                value = loginPhone.phone,
-                onValueChange = { viewModel.onLoginPhoneChanged(loginPhone.countryCode, it) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Phone Number") },
-                placeholder = { Text("(555) 123-4567") },
-                leadingIcon = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 8.dp),
-                    ) {
-                        CountryCodePicker(
-                            selected = selectedCountry,
-                            onSelected = { country ->
-                                viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone)
-                            },
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                singleLine = true,
-                isError = errorMessage != null,
-                supportingText =
-                    if (errorMessage != null) {
-                        {
-                            Text(
-                                text = errorMessage,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    } else {
-                        {
-                            Text(
-                                text = "We'll send you a verification code",
-                                color = SanchrGray400,
-                            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 18.dp,
+                            shape = fieldShape,
+                            ambientColor = Color.Black.copy(alpha = 0.04f),
+                            spotColor = Color.Black.copy(alpha = 0.04f),
+                        ).clip(fieldShape)
+                        .background(surfaces.surface)
+                        .border(width = 1.2.dp, color = borderColor, shape = fieldShape)
+                        .defaultMinSize(minHeight = 60.dp),
+            ) {
+                CountryCodePickerInlineChip(
+                    selected = selectedCountry,
+                    onSelected = { country ->
+                        viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone)
+                    },
+                )
+                BasicTextField(
+                    value = loginPhone.phone,
+                    onValueChange = { viewModel.onLoginPhoneChanged(loginPhone.countryCode, it) },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                            .padding(horizontal = 18.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    textStyle =
+                        LocalTextStyle.current.merge(
+                            MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onBackground,
+                            ),
+                        ),
+                    cursorBrush = SolidColor(SanchrIndigo500),
+                    decorationBox = { inner ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            if (loginPhone.phone.isEmpty()) {
+                                Text(
+                                    text = "(555) 123-4567",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            inner()
                         }
                     },
-                shape = SanchrShapeTokens.CornerMedium,
-                colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SanchrIndigo500,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = "We'll send you a verification code",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
-
-            // iOS parity: SanchrExportMetrics.cardRadius = 20
-            // (ios/.../DesignSystem/ExportComponents.swift line 9). The
-            // E2E security info card renders at 20pt on iOS LoginView.
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = SanchrShapeTokens.CornerCard,
-                colors = CardDefaults.cardColors(containerColor = SanchrIndigo100),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
-                    modifier = Modifier.padding(SanchrTheme.spacing.default),
-                    verticalAlignment = Alignment.Top,
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Error,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Security card — iOS LoginView.swift:181-215.
+            val securityShape = RoundedCornerShape(24.dp)
+            val securityBorder = SanchrIndigo500.copy(alpha = if (darkTheme) 0.15f else 0.12f)
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(securityShape)
+                        .background(surfaces.surface)
+                        .border(width = 1.dp, color = securityBorder, shape = securityShape)
+                        .padding(horizontal = 18.dp, vertical = 20.dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(SanchrIndigo500.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Lock,
                         contentDescription = null,
                         tint = SanchrIndigo500,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(18.dp),
                     )
-                    Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
-                    Column {
-                        Text(
-                            text = "End-to-End Encrypted",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = SanchrIndigo900,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Your messages are secured with military-grade encryption. Only you and your contacts can read them.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SanchrIndigo500,
-                        )
-                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "End-to-End Encrypted",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Text(
+                        text =
+                            "Your messages are secured with military-grade encryption. " +
+                                "Only you and your contacts can read them.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            SanchrButton(
+            SanchrGradientButton(
                 text = "Continue",
                 onClick = {
                     if (state is AuthState.Error) viewModel.retry()
                     viewModel.submitLoginPhone()
                 },
-                enabled = loginPhone.phone.length >= MIN_CONTINUE_DIGITS && !loginPhone.isSubmitting,
+                enabled = isPhoneValid && !loginPhone.isSubmitting,
                 isLoading = loginPhone.isSubmitting,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
+                trailingIcon = Icons.AutoMirrored.Filled.ArrowForward,
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // iOS-deviation: iOS LoginView shows a single combined sentence
-            // ("By continuing, you agree to our Privacy Policy and Terms of
-            // Service") whereas Android exposes the two documents as
-            // separate tappable links — Material idiom for legal footers.
-            Row(
+            Text(
+                text = "By continuing, you agree to our Privacy Policy and Terms of Service",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(bottom = SanchrTheme.spacing.xl),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                SanchrTextButton(onClick = { uriHandler.openUri(PRIVACY_URL) }) {
-                    Text(
-                        text = "Privacy Policy",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SanchrIndigo500,
-                    )
-                }
-                Text(
-                    text = "  |  ",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SanchrGray400,
-                    modifier = Modifier.align(Alignment.CenterVertically),
-                )
-                SanchrTextButton(onClick = { uriHandler.openUri(TERMS_URL) }) {
-                    Text(
-                        text = "Terms of Service",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SanchrIndigo500,
-                    )
-                }
-            }
+                        .padding(horizontal = 16.dp),
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
 private const val MIN_CONTINUE_DIGITS = 7
-private const val PRIVACY_URL = "https://sanchr.app/privacy"
-private const val TERMS_URL = "https://sanchr.app/terms"
