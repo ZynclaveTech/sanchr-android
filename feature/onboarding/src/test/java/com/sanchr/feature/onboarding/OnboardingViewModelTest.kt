@@ -46,6 +46,9 @@ import kotlinx.coroutines.test.setMain
  *  - Fail-safe: DataStore throw still emits Completed.
  *  - notificationGranted updates WelcomeConfirm.notificationsEnabled.
  *  - back() from WelcomeConfirm returns to ContactSync preserving state.
+ *  - back() from ContactSync returns to AvatarEntry preserving state.
+ *  - back() from ContactSync no-ops while ContactSync.isSubmitting is true.
+ *  - back() from NameEntry is a no-op.
  *
  * Conventions match `:feature:auth`'s `AuthViewModelStateTest` — MockK,
  * `StandardTestDispatcher` + `Dispatchers.setMain`, `runTest { ... }`,
@@ -449,7 +452,68 @@ class OnboardingViewModelTest {
         }
 
     @Test
-    fun back_fromNonWelcomeConfirmState_isNoOp() =
+    fun back_fromContactSync_returnsToAvatarEntry_preservingNameAndAvatar() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Alice")
+            vm.submitName()
+            vm.onAvatarSelected("content://photo")
+            vm.submitAvatar()
+            // Now in ContactSync(name = "Alice", avatarUri = "content://photo").
+            assertIs<OnboardingState.ContactSync>(vm.state.value)
+
+            vm.back()
+
+            val s = vm.state.value
+            assertIs<OnboardingState.AvatarEntry>(s)
+            assertEquals("Alice", s.name)
+            assertEquals("content://photo", s.avatarUri)
+            assertFalse(s.isSubmitting)
+        }
+
+    @Test
+    fun back_fromContactSync_whileSubmitting_isNoOp() =
+        runTest {
+            // ContactSync.isSubmitting has no public setter today (the future
+            // contact-discovery RPC will own it). To pin the VM's documented
+            // `if (current.isSubmitting) return` guard for that future flow,
+            // we seed the private MutableStateFlow via reflection. Java
+            // reflection drives a non-suppressed setValue(Object) call on the
+            // MutableStateFlow, sidestepping the unchecked-cast warning that
+            // a Kotlin-level cast would produce.
+            val vm = newViewModel()
+            vm.onNameChanged("Alice")
+            vm.submitName()
+            vm.onAvatarSelected("content://photo")
+            vm.submitAvatar()
+            assertIs<OnboardingState.ContactSync>(vm.state.value)
+
+            val submittingState =
+                OnboardingState.ContactSync(
+                    name = "Alice",
+                    avatarUri = "content://photo",
+                    isSubmitting = true,
+                )
+            val stateField =
+                OnboardingViewModel::class.java.getDeclaredField("_state").apply {
+                    isAccessible = true
+                }
+            val flow = stateField.get(vm)
+            val setValue =
+                flow.javaClass.methods
+                    .first {
+                        it.name == "setValue" && it.parameterTypes.size == 1
+                    }.apply { isAccessible = true }
+            setValue.invoke(flow, submittingState)
+            assertEquals(submittingState, vm.state.value)
+
+            vm.back()
+
+            assertEquals(submittingState, vm.state.value)
+        }
+
+    @Test
+    fun back_fromNameEntry_isNoOp() =
         runTest {
             val vm = newViewModel()
             // Still in NameEntry.

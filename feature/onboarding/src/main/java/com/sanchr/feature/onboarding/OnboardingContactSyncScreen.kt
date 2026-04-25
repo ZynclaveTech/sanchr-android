@@ -1,7 +1,6 @@
 package com.sanchr.feature.onboarding
 
 import android.Manifest
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -57,19 +56,22 @@ import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 
 /**
- * Contact-sync / notification-permission step (Phase H7 — pixel-parity rebuild).
+ * Contact-sync step (Phase H7 — pixel-parity rebuild).
  *
  * iOS reference: `OnboardingContactSyncStepView.swift` (delegates to
  * `ContactSyncView`). Layout mirrors `ContactSyncView.swift:76-161`
- * (`permissionRequestView` + `permissionCard`). Sync-progress / results states
- * (`syncProgressView`, `syncResultsView`) are deferred — Android currently
- * fires the OS permission dialog and advances on any result, regardless of
- * grant outcome (iOS UX parity: tapping "Sync All Contacts" requests the
- * permission then advances).
+ * (`permissionRequestView` + `permissionCard`).
  *
- * Permission set:
- *   - `READ_CONTACTS` (always)
- *   - `POST_NOTIFICATIONS` (API 33+; implicit grant on older)
+ * Permission set: `READ_CONTACTS` only — iOS-parity. `POST_NOTIFICATIONS`
+ * is owned by the Welcome screen (Phase H5b), matching iOS where
+ * `ContactSyncView` requests Contacts only and notifications are requested
+ * separately on the post-ContactSync welcome step.
+ *
+ * Sync UI (in-flight progress, "Syncing\u2026" label, sync-result list) is
+ * deferred per spec §1 non-goals; will land with the actual contact-discovery
+ * RPC. The [OnboardingState.ContactSync.isSubmitting] field is retained so
+ * the VM's `back()` no-op-while-submitting guard remains a meaningful
+ * contract for that future flow.
  *
  * iOS-bug-compat: per-card `tint` argument is accepted by `permissionCard`
  * but the icon foreground is hardcoded to `.sanchrPrimary` (see
@@ -125,17 +127,15 @@ fun OnboardingContactSyncScreen(
                     }
                 },
                 actions = {
-                    if (!syncState.isSubmitting) {
-                        TextButton(onClick = viewModel::onContactSyncFinish) {
-                            Text(
-                                text = "Skip",
-                                style =
-                                    MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                    ),
-                                color = SanchrIndigo500,
-                            )
-                        }
+                    TextButton(onClick = viewModel::onContactSyncFinish) {
+                        Text(
+                            text = "Skip",
+                            style =
+                                MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                ),
+                            color = SanchrIndigo500,
+                        )
                     }
                 },
                 colors =
@@ -233,18 +233,11 @@ fun OnboardingContactSyncScreen(
             Spacer(Modifier.height(24.dp))
 
             SanchrGradientButton(
-                text = if (syncState.isSubmitting) "Syncing\u2026" else "Sync All Contacts",
+                text = "Sync All Contacts",
                 onClick = {
-                    val perms =
-                        buildList {
-                            add(Manifest.permission.READ_CONTACTS)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                add(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                        }.toTypedArray()
-                    contactsPermissionLauncher.launch(perms)
+                    contactsPermissionLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS))
                 },
-                isLoading = syncState.isSubmitting,
+                isLoading = false,
                 trailingIcon = null,
             )
 
