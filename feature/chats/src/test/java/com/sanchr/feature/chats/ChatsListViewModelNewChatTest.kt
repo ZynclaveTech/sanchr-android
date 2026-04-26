@@ -15,10 +15,13 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -27,9 +30,12 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.datetime.Instant
 
 /**
- * Unit tests for the new-chat bottom-sheet state machine on
- * [ChatsListViewModel]. The rest of the VM (conversation observation,
- * search, pull-to-refresh) is covered elsewhere.
+ * Unit tests for the new-chat contact-picker state machine on
+ * [ChatsListViewModel]. Mirrors the iOS NewChatContactPickerSheet contract:
+ * a list of synced contacts plus a substring filter; tapping a row triggers
+ * `messageRepository.ensureConversation` and emits an OpenConversation
+ * navigation event. The rest of the VM (conversation observation, search,
+ * pull-to-refresh) is covered elsewhere.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatsListViewModelNewChatTest {
@@ -37,25 +43,35 @@ class ChatsListViewModelNewChatTest {
 
     private val observeConversationsUseCase = mockk<ObserveConversationsUseCase>()
     private val workManager = mockk<WorkManager>(relaxed = true)
-    private val contactRepository = mockk<ContactRepository>()
+    private val contactRepository = mockk<ContactRepository>(relaxed = true)
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
     private val syncState = mockk<SyncState>(relaxed = true)
 
-    private val fakeUser =
+    private val ada =
         User(
-            id = "user-42",
+            id = "user-ada",
             phoneNumber = "+15551234567",
-            displayName = "Ada",
+            displayName = "Ada Lovelace",
+            bio = "Mathematician",
+            createdAt = Instant.fromEpochMilliseconds(0),
+        )
+    private val grace =
+        User(
+            id = "user-grace",
+            phoneNumber = "+15557654321",
+            displayName = "Grace Hopper",
+            bio = null,
             createdAt = Instant.fromEpochMilliseconds(0),
         )
 
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        // VM's upstream flows are wired via combine; we don't need live data for
-        // the new-chat tests — an empty flow is enough.
         coEvery { observeConversationsUseCase() } returns emptyFlow()
-        coEvery { syncState.isSyncing } returns kotlinx.coroutines.flow.MutableStateFlow(false)
+        coEvery { syncState.isSyncing } returns MutableStateFlow(false)
+        // Default contact-load mocks; individual tests override as needed.
+        coEvery { contactRepository.observeRegisteredContacts() } returns flowOf(listOf(ada, grace))
+        coEvery { contactRepository.syncContacts() } returns Unit
     }
 
     @AfterTest
@@ -73,90 +89,133 @@ class ChatsListViewModelNewChatTest {
         )
 
     @Test
-    fun `openNewChat sets isOpen = true`() =
+    fun `openNewChatPicker opens sheet and starts loading contacts`() =
         runTest(testDispatcher) {
             val vm = newViewModel()
-            vm.openNewChat()
-            assertTrue(vm.newChat.value.isOpen)
-            assertEquals("", vm.newChat.value.phone)
+            vm.openNewChatPicker()
+
+            // Synchronous: sheet open + isLoading true before the load coroutine runs.
+            assertTrue(vm.picker.value.isOpen)
+            assertTrue(vm.picker.value.isLoading)
         }
 
     @Test
-    fun `submitNewChat with invalid phone sets INVALID_PHONE error`() =
+    fun `loadContacts on success populates contacts sorted by display name`() =
         runTest(testDispatcher) {
             val vm = newViewModel()
-            vm.openNewChat()
-            vm.onNewChatPhoneChanged("not-a-phone")
-            vm.submitNewChat()
+            vm.openNewChatPicker()
             advanceUntilIdle()
 
-            assertEquals(NewChatError.INVALID_PHONE, vm.newChat.value.error)
-            assertTrue(vm.newChat.value.isOpen)
-            assertEquals(false, vm.newChat.value.isSubmitting)
+            val state = vm.picker.value
+            assertEquals(false, state.isLoading)
+            assertNull(state.error)
+            // "Ada" < "Grace" alphabetically.
+            assertEquals(listOf(ada, grace), state.contacts)
+            assertEquals(listOf(ada, grace), state.filteredContacts)
         }
 
     @Test
-    fun `submitNewChat with NOT_FOUND sets NOT_FOUND error`() =
+    fun `loadContacts when observeRegisteredContacts throws sets error message`() =
         runTest(testDispatcher) {
-            coEvery { contactRepository.lookupByPhone("+15551234567") } returns null
+            coEvery { contactRepository.observeRegisteredContacts() } throws
+                RuntimeException("db unavailable")
+
             val vm = newViewModel()
-            vm.openNewChat()
-            vm.onNewChatPhoneChanged("+15551234567")
-            vm.submitNewChat()
+            vm.openNewChatPicker()
             advanceUntilIdle()
 
-            assertEquals(NewChatError.NOT_FOUND, vm.newChat.value.error)
-            assertEquals(false, vm.newChat.value.isSubmitting)
+            val state = vm.picker.value
+            assertEquals(false, state.isLoading)
+            assertEquals("db unavailable", state.error)
         }
 
     @Test
-    fun `submitNewChat with server error sets SERVER_ERROR`() =
+    fun `onPickerSearchQueryChanged filters by display name case-insensitively`() =
         runTest(testDispatcher) {
-            coEvery { contactRepository.lookupByPhone(any()) } throws RuntimeException("boom")
             val vm = newViewModel()
-            vm.openNewChat()
-            vm.onNewChatPhoneChanged("+15551234567")
-            vm.submitNewChat()
+            vm.openNewChatPicker()
             advanceUntilIdle()
 
-            assertEquals(NewChatError.SERVER_ERROR, vm.newChat.value.error)
-            assertEquals(false, vm.newChat.value.isSubmitting)
+            vm.onPickerSearchQueryChanged("ADA")
+            assertEquals(listOf(ada), vm.picker.value.filteredContacts)
+
+            vm.onPickerSearchQueryChanged("hopper")
+            assertEquals(listOf(grace), vm.picker.value.filteredContacts)
         }
 
     @Test
-    fun `submitNewChat on success emits OpenConversation event and closes sheet`() =
+    fun `onPickerSearchQueryChanged filters by phone number substring`() =
         runTest(testDispatcher) {
-            coEvery { contactRepository.lookupByPhone("+15551234567") } returns fakeUser
-            coEvery { messageRepository.ensureConversation("user-42") } returns "conv-123"
+            val vm = newViewModel()
+            vm.openNewChatPicker()
+            advanceUntilIdle()
+
+            vm.onPickerSearchQueryChanged("7654321")
+            assertEquals(listOf(grace), vm.picker.value.filteredContacts)
+        }
+
+    @Test
+    fun `onPickerSearchQueryChanged filters by bio substring`() =
+        runTest(testDispatcher) {
+            val vm = newViewModel()
+            vm.openNewChatPicker()
+            advanceUntilIdle()
+
+            vm.onPickerSearchQueryChanged("mathematician")
+            assertEquals(listOf(ada), vm.picker.value.filteredContacts)
+        }
+
+    @Test
+    fun `onPickerContactSelected emits OpenConversation event after ensureConversation`() =
+        runTest(testDispatcher) {
+            coEvery { messageRepository.ensureConversation("user-ada") } returns "conv-1"
 
             val vm = newViewModel()
+            vm.openNewChatPicker()
+            advanceUntilIdle()
+
             vm.events.test {
-                vm.openNewChat()
-                vm.onNewChatPhoneChanged("+15551234567")
-                vm.submitNewChat()
+                vm.onPickerContactSelected(ada)
                 advanceUntilIdle()
 
                 val event = awaitItem()
                 assertIs<NewChatEvent.OpenConversation>(event)
-                assertEquals("conv-123", event.conversationId)
+                assertEquals("conv-1", event.conversationId)
                 cancelAndIgnoreRemainingEvents()
             }
-            // Sheet reset on success.
-            assertEquals(NewChatState(), vm.newChat.value)
+            // Sheet resets on success.
+            assertEquals(NewChatPickerState(), vm.picker.value)
+            coVerify(exactly = 1) { messageRepository.ensureConversation("user-ada") }
         }
 
     @Test
-    fun `submitNewChat calls ensureConversation with user id from lookup`() =
+    fun `onPickerContactSelected on ensureConversation failure surfaces error and keeps sheet open`() =
         runTest(testDispatcher) {
-            coEvery { contactRepository.lookupByPhone("+15551234567") } returns fakeUser
-            coEvery { messageRepository.ensureConversation(any()) } returns "conv-1"
+            coEvery { messageRepository.ensureConversation(any()) } throws
+                RuntimeException("server down")
 
             val vm = newViewModel()
-            vm.openNewChat()
-            vm.onNewChatPhoneChanged("+15551234567")
-            vm.submitNewChat()
+            vm.openNewChatPicker()
             advanceUntilIdle()
 
-            coVerify(exactly = 1) { messageRepository.ensureConversation("user-42") }
+            vm.onPickerContactSelected(ada)
+            advanceUntilIdle()
+
+            val state = vm.picker.value
+            assertTrue(state.isOpen)
+            assertEquals("server down", state.error)
+        }
+
+    @Test
+    fun `closeNewChatPicker resets state to closed defaults`() =
+        runTest(testDispatcher) {
+            val vm = newViewModel()
+            vm.openNewChatPicker()
+            advanceUntilIdle()
+            vm.onPickerSearchQueryChanged("ada")
+
+            vm.closeNewChatPicker()
+
+            assertEquals(NewChatPickerState(), vm.picker.value)
         }
 }
