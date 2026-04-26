@@ -59,7 +59,7 @@ fun SanchrCenteredHeader(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .padding(top = 14.dp, bottom = 12.dp),
+                    .padding(bottom = 12.dp),
         ) {
             // Leading slot: caller-provided, else default back chevron, else empty 40dp.
             Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
