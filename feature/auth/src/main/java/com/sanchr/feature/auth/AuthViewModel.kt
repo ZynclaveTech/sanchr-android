@@ -272,7 +272,23 @@ class AuthViewModel
                 signalKeyManager.uploadInitialKeyBundle()
 
                 _state.value = stage(RegistrationStep.FETCHING_SENDER_CERT)
-                senderCertificateManager.refresh()
+                // Best-effort: sealed-sender cert is only consumed at message
+                // send/receive time (SealedSenderCipher), not by registration
+                // itself. iOS treats the equivalent fetch as fire-and-forget
+                // (EncryptedMessageSendingClient.swift discards the result with
+                // `_ =`). A failure here — e.g. the backend's cert bytes don't
+                // round-trip through libsignal's SenderCertificate decoder yet
+                // — must not blank the OTP screen. SyncInitializer's periodic
+                // refresh + the next sealed-encrypt call will retry.
+                try {
+                    senderCertificateManager.refresh()
+                } catch (e: Exception) {
+                    Log.w(
+                        "AuthViewModel",
+                        "Sender certificate fetch failed; continuing registration",
+                        e,
+                    )
+                }
 
                 _state.value = stage(RegistrationStep.REGISTERING_PUSH)
                 // Best-effort: FCM token upload must not block registration. If
