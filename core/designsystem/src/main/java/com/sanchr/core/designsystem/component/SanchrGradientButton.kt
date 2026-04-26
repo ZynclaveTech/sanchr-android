@@ -94,7 +94,7 @@ fun SanchrGradientButton(
             CircularProgressIndicator(
                 color = Color.White,
                 strokeWidth = 2.5.dp,
-                modifier = Modifier.height(24.dp),
+                modifier = Modifier.size(24.dp),
             )
         } else {
             Row(
@@ -111,7 +111,7 @@ fun SanchrGradientButton(
                         imageVector = it,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.height(18.dp),
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
