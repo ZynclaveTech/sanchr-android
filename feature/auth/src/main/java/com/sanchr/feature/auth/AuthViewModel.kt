@@ -272,14 +272,14 @@ class AuthViewModel
                 signalKeyManager.uploadInitialKeyBundle()
 
                 _state.value = stage(RegistrationStep.FETCHING_SENDER_CERT)
-                // Best-effort: sealed-sender cert is only consumed at message
+                // Best-effort: sealed-sender cert is consumed at message
                 // send/receive time (SealedSenderCipher), not by registration
                 // itself. iOS treats the equivalent fetch as fire-and-forget
                 // (EncryptedMessageSendingClient.swift discards the result with
-                // `_ =`). A failure here — e.g. the backend's cert bytes don't
-                // round-trip through libsignal's SenderCertificate decoder yet
-                // — must not blank the OTP screen. SyncInitializer's periodic
-                // refresh + the next sealed-encrypt call will retry.
+                // `_ =`). A transient fetch failure here — RPC timeout, backend
+                // hiccup — must not blank the OTP screen. SenderCertificateManager
+                // re-fetches on demand from SealedSenderCipher.sealedEncrypt, and
+                // SenderCertificateRotationWorker retries on a 24h cadence.
                 try {
                     senderCertificateManager.refresh()
                 } catch (e: Exception) {
