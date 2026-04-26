@@ -7,10 +7,7 @@ import com.sanchr.proto.messaging.EncryptedEnvelope
  * the decrypt path in [ReceiveMessageUseCase].
  *
  * Backend signals sealed-sender via content_type == "sealed"
- * (backend/crates/sanchr-core/src/messaging/service.rs:37). The
- * envelope_kind enum that previously lived in backend-oss/ was an
- * Android-side layering atop the deprecated fork — collapsed in Phase 1
- * of the backend canonicalization.
+ * (backend/crates/sanchr-core/src/messaging/service.rs:37).
  *
  * Shared between [MessageDrainWorker][com.sanchr.sync.MessageDrainWorker],
  * [SyncWorker][com.sanchr.sync.SyncWorker], and

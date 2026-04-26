@@ -198,7 +198,7 @@ Verify: `./gradlew testDebugUnitTest connectedDebugAndroidTest`.
 ## 8. Risks & Open Questions
 
 - **OPEN-Q#1 (blocker-for-Phase-3): Bootstrap password semantics.** iOS sends a constant bootstrap password on the login path (AuthRepository.swift:72 `Self.otpBootstrapPassword()`). Is the backend's Register handler genuinely idempotent for an existing phone, or does it rely on that specific sentinel password? Android currently generates a fresh random password every call (AuthViewModel.kt:85 `generateAccountPassword()`), which would reset the stored password server-side for existing users — potentially breaking future Login RPC usage.
-  - Proposed resolution: read `backend-oss/crates/sanchr-auth-service/src/register.rs` (or equivalent) before Phase 3. If backend short-circuits on `phone already registered`, Android is safe; if it overwrites password, we need to either (a) mirror iOS's sentinel bootstrap password, or (b) add a dedicated RequestLoginOtp RPC. Flag as a likely **backend-oss commit** dependency.
+  - Proposed resolution: read `backend/crates/sanchr-core/src/auth/handlers.rs` (or equivalent) before Phase 3. If backend short-circuits on `phone already registered`, Android is safe; if it overwrites password, we need to either (a) mirror iOS's sentinel bootstrap password, or (b) add a dedicated RequestLoginOtp RPC. Flag as a likely **backend commit** dependency.
 
 - **OPEN-Q#2: Registration lock PIN UX.** iOS surfaces `showRegistrationLockPIN` alert on OTP verify. Android has no such path today.
   - Proposed resolution: add `RegistrationLockRequired` branch in OtpEntry handling in Phase 3. Minimal modal dialog.

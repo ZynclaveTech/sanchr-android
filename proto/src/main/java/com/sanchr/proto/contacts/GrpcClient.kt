@@ -10,9 +10,7 @@ import io.grpc.Channel
  * Block / Unblock, GetBlockedList. Phone-based user discovery is performed
  * via [syncContacts] with a single-element `phoneHashes` list — see
  * `ContactRepositoryImpl.lookupByPhone` and iOS `ContactRepository.searchUser`.
- * There is no separate LookupUser RPC (the backend never exposed one; the
- * deprecated backend-oss/ fork did, but that surface area was retired in the
- * Phase 1 backend canonicalization).
+ * There is no separate LookupUser RPC; the backend never exposed one.
  */
 interface ContactServiceClient {
     suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse

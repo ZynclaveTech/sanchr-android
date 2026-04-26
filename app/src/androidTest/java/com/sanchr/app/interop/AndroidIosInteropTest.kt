@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
  *
  * Tests carrying this annotation are filtered in by the
  * `nightly-interop.yml` workflow (`-Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.interop.InteropTest`),
- * which also boots the `sanchr-backend-oss` docker-compose harness and
+ * which also boots the `sanchr-backend` docker-compose harness and
  * passes the harness URL via `backendUrl` runner argument. Outside that
  * CI path the tests gracefully skip rather than fail — no developer
  * machine should have to boot the whole backend to run `check`.
@@ -45,7 +45,7 @@ annotation class InteropTest
  * ## Why the heavy body is currently guarded
  *
  * The full test requires:
- *   - A running `sanchr-backend-oss` harness reachable from the emulator
+ *   - A running `sanchr-backend` harness reachable from the emulator
  *     (the nightly CI job brings one up via docker-compose).
  *   - Golden iOS sealed-sender envelope bytes in
  *     `app/src/androidTest/assets/ios-fixtures/` — these are regenerated

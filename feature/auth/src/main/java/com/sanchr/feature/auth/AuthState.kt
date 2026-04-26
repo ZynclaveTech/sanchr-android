@@ -11,7 +11,7 @@ package com.sanchr.feature.auth
  * canonical `Splash -> LoginView` transition in `SanchrApp.swift:350-396`.
  * [LoginPhone] is the single phone-only entry for both new and returning
  * users; the backend's existing-phone short-circuit
- * (`backend-oss/.../auth/handlers.rs:267-328`) handles the dispatch
+ * (`backend/crates/sanchr-core/src/auth/handlers.rs:244-293`) handles the dispatch
  * transparently. New-user vs returning-user routing is signalled by
  * [Done.isNewUser], computed from the verify-OTP response's `displayName`.
  *

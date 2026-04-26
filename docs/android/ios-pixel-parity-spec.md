@@ -19,7 +19,7 @@
 - Inter font (used elsewhere in iOS, not in scope here).
 - iOS 26 Liquid Glass effects (not portable to Android idiomatically; deferred indefinitely).
 - Reskinning the post-auth chats/settings screens (separate milestone).
-- Backend changes (none required — `Register` handler at `backend-oss/crates/sanchr-core/src/auth/handlers.rs:297-305` already supports the unified flow).
+- Backend changes (none required — `Register` handler at `backend/crates/sanchr-core/src/auth/handlers.rs:244-293` already supports the unified flow).
 - Dynamic Type / accessibility text scaling beyond what Compose gives by default (separate accessibility pass).
 
 ---
@@ -471,7 +471,7 @@ background SanchrSurface RoundedCornerShape(card=16dp)
 - **Dynamic Type**: iOS uses `relativeTo: .body` so Afacad scales with system text size. Compose's `Font(...)` doesn't auto-scale by default — pages with capped widths (e.g., `padding horiz 40dp`) may overflow at largest user text size. Defer to a separate accessibility pass.
 - **Variable font on API 26**: Compose 1.6+ supports `FontVariation.Settings` on API 26+ but verify on physical Android 8 device before merging H1.
 - **`SanchrSurfaceMuted` / `SanchrSurfaceSoft` light/dark mapping**: chosen hexes are best-effort approximations of iOS's dynamic system colors. May look slightly different in real devices vs Compose preview. If flagged in smoke, swap to closest Material `colorScheme` token.
-- **`backend-oss` `display_name` empty handling**: confirmed by reading `handlers.rs` but never end-to-end tested. If H2 hits a 400/422 from backend, fall back to passing `displayName="Sanchr User"` and document.
+- **`backend` `display_name` empty handling**: confirmed by reading `handlers.rs` but never end-to-end tested. If H2 hits a 400/422 from backend, fall back to passing `displayName="Sanchr User"` and document.
 - **Inter font**: iOS bundles `Inter-Variable.ttf` (876KB) and may use it on chat list / settings screens. Out of scope here. If a future milestone needs it, separate decision.
 - **iOS 26 Liquid Glass**: iOS uses `sanchrGlass` modifier in some places. Android has no equivalent. Accept the deviation permanently.
 
@@ -521,4 +521,4 @@ background SanchrSurface RoundedCornerShape(card=16dp)
 - `ios/Sanchr-iOS/Features/Onboarding/Presentation/OnboardingContactSyncStepView.swift`
 - `ios/Sanchr-iOS/Features/Contacts/Presentation/ContactSyncView.swift`
 - `ios/Sanchr-iOS/SanchrShared/DesignSystem/{Colors,Typography,Spacing,Radius,Gradients,ExportComponents}.swift`
-- `backend-oss/crates/sanchr-core/src/auth/handlers.rs:267-328` (Register handler — confirms architectural assumptions)
+- `backend/crates/sanchr-core/src/auth/handlers.rs:244-293` (Register handler — confirms architectural assumptions)
