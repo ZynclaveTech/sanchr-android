@@ -16,11 +16,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,10 @@ internal fun filterOtpInput(
  * A hidden [BasicTextField] captures input; a [Row] of [Box]es renders the current
  * character for each index with borders indicating filled/empty/active/error state.
  * Tapping the row requests focus on the hidden text field.
+ *
+ * The [focusRequester] parameter lets callers programmatically pop the keyboard on
+ * navigation entry (iOS-parity with `OTPView`'s `@FocusState` + `.onAppear`). If
+ * unset, an internally-remembered requester is used so tap-to-focus still works.
  */
 @Composable
 fun SanchrOtpInput(
@@ -49,10 +55,10 @@ fun SanchrOtpInput(
     modifier: Modifier = Modifier,
     length: Int = 6,
     isError: Boolean = false,
+    focusRequester: FocusRequester = remember { FocusRequester() },
     onComplete: (String) -> Unit = {},
 ) {
-    val focusRequester = remember { FocusRequester() }
-    val interactionSource = remember { MutableInteractionSource() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(value, length) {
         if (value.length == length) {
@@ -60,8 +66,27 @@ fun SanchrOtpInput(
         }
     }
 
+    /**
+     * Safe focus request — `FocusRequester.requestFocus()` throws
+     * `IllegalStateException("FocusRequester is not initialized")` if invoked
+     * before the receiving node has been attached. The OTP cell click handler
+     * is the most likely caller of this race (taps fire before composition
+     * settles), and that NPE/ISE is the crash this guards against.
+     */
+    fun safeRequestFocus() {
+        try {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        } catch (_: IllegalStateException) {
+            // Focus target not yet attached — fall through; the next click will land.
+        }
+    }
+
     Box(modifier = modifier) {
         // Invisible text field that owns focus and keyboard input.
+        // We use alpha(0f) + zero-size layout rather than just zero-size, so the
+        // focus modifier reliably attaches even when the cell row is the visible
+        // hit target.
         BasicTextField(
             value = value,
             onValueChange = { raw ->
@@ -72,6 +97,7 @@ fun SanchrOtpInput(
             },
             modifier =
                 Modifier
+                    .alpha(0f)
                     .focusRequester(focusRequester)
                     // Keep the field laid out as zero-size so it does not affect layout,
                     // but still receives focus/keyboard.
@@ -85,7 +111,6 @@ fun SanchrOtpInput(
                     keyboardType = KeyboardType.NumberPassword,
                 ),
             singleLine = true,
-            interactionSource = interactionSource,
         )
 
         Row(
@@ -94,7 +119,7 @@ fun SanchrOtpInput(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                 ) {
-                    focusRequester.requestFocus()
+                    safeRequestFocus()
                 },
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {

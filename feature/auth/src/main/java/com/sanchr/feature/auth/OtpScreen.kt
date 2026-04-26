@@ -16,9 +16,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,6 +35,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import kotlinx.coroutines.delay
 
 private const val RESEND_COOLDOWN_SECONDS = 30
+private const val OTP_AUTOFOCUS_DELAY_MS = 100L
 
 /**
  * OTP verification step. Consumes [AuthViewModel.state]; renders for
@@ -56,6 +59,12 @@ private const val RESEND_COOLDOWN_SECONDS = 30
  * 6th digit with no visible button; Android keeps the button for
  * accessibility (TalkBack users may not realise auto-submit fired) and
  * for users who paste a code mid-typing.
+ *
+ * iOS-parity: the soft keyboard pops automatically on entry, matching
+ * `OTPView`'s `@FocusState`/`onAppear` autofocus. The [rememberSaveable]
+ * `didAutoFocus` guard prevents config-change re-focus (rotation, dark-mode
+ * toggle) after the user has dismissed the IME — same pattern as
+ * `OnboardingNameScreen`.
  *
  * Unconditionally applies [SecureScreen] — the OTP code is sensitive and must
  * not leak via screenshots or the app-switcher thumbnail (M6 security checklist,
@@ -82,12 +91,28 @@ fun OtpScreen(
     var resendCountdown by remember { mutableIntStateOf(RESEND_COOLDOWN_SECONDS) }
     var canResend by remember { mutableStateOf(false) }
 
+    val otpFocusRequester = remember { FocusRequester() }
+    var didAutoFocus by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(resendCountdown) {
         if (resendCountdown > 0) {
             delay(1_000L)
             resendCountdown--
         } else {
             canResend = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!didAutoFocus) {
+            // Small delay so the IME animation does not fight the navigation transition.
+            delay(OTP_AUTOFOCUS_DELAY_MS)
+            try {
+                otpFocusRequester.requestFocus()
+            } catch (_: IllegalStateException) {
+                // Focus target not yet attached — SanchrOtpInput's tap fallback will recover.
+            }
+            didAutoFocus = true
         }
     }
 
@@ -136,6 +161,7 @@ fun OtpScreen(
                 value = otpEntry.otp,
                 onValueChange = viewModel::onOtpChanged,
                 isError = errorMessage != null,
+                focusRequester = otpFocusRequester,
                 onComplete = {
                     if (!otpEntry.isSubmitting) {
                         if (state is AuthState.Error) viewModel.retry()
