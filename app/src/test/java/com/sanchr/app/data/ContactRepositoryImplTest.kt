@@ -9,64 +9,174 @@ import com.sanchr.proto.contacts.GetBlockedListRequest
 import com.sanchr.proto.contacts.GetBlockedListResponse
 import com.sanchr.proto.contacts.GetContactsRequest
 import com.sanchr.proto.contacts.GetContactsResponse
-import com.sanchr.proto.contacts.LookedUpUser
+import com.sanchr.proto.contacts.MatchedContact
 import com.sanchr.proto.contacts.SyncContactsRequest
 import com.sanchr.proto.contacts.SyncContactsResponse
 import com.sanchr.proto.contacts.UnblockContactRequest
 import com.sanchr.proto.contacts.UnblockContactResponse
+import java.security.MessageDigest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
  * Unit tests for [ContactRepositoryImpl.lookupByPhone].
  *
- * The repo delegates to [ContactServiceClient.lookupUser]. backend/ does
- * not expose a LookupUser RPC (Phase 1 of the backend canonicalization
- * dropped the deprecated backend-oss/ fork), so the proto-layer client
- * returns null unconditionally and every input must surface as null at
- * the repository boundary. Phase 2 will reimplement this via
- * SyncContacts(phoneHashes = [SHA-256(normalized phone)]) — at which
- * point these tests should be replaced with real lookup-result coverage.
+ * The repo hashes the normalized E.164 phone number with SHA-256 (hex
+ * encoding, matching ContactsViewModel.readAndHashDeviceContacts) and calls
+ * SyncContacts with a single-element phone_hashes list, mirroring iOS
+ * ContactRepository.searchUser
+ * (ios/Sanchr-iOS/Shared/Repositories/ContactRepository.swift:170-197).
+ *
+ * Coverage:
+ *  - the request hash matches the SHA-256 hex of the normalized phone
+ *  - a single server match maps into the domain User (preferring caller's
+ *    canonical E.164 over the server-echoed phone, which the lookup RPC may
+ *    omit for privacy)
+ *  - empty matches yield null (NOT_FOUND parity)
+ *  - RPC exceptions propagate (network / INVALID_ARGUMENT etc.)
  */
 class ContactRepositoryImplTest {
     @Test
-    fun `lookupByPhone returns null today (Phase-2 stub contract)`() =
+    fun `lookupByPhone normalizes and hashes the phone before calling SyncContacts`() =
         runTest {
-            val phoneNumbersExercised = mutableListOf<String>()
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
             val repo =
                 ContactRepositoryImpl(
-                    contactClient = StubLookupClient(phoneNumbersExercised),
+                    contactClient = client,
                     contactDao = NoOpContactDao(),
                 )
 
-            assertNull(repo.lookupByPhone("+15550001234"))
-            assertNull(repo.lookupByPhone("+15550009999"))
-            assertNull(repo.lookupByPhone(""))
+            // Note the punctuation: spaces, parens, and dashes must be stripped
+            // by the normalizer; only digits and the leading '+' survive.
+            repo.lookupByPhone("+1 (555) 000-1234")
 
-            // Verify the repo actually delegates — this guards against a
-            // future change that fakes the result locally and drifts from
-            // the proto-layer stub contract.
-            assertEquals(
-                listOf("+15550001234", "+15550009999", ""),
-                phoneNumbersExercised,
-            )
+            val expectedHash =
+                MessageDigest
+                    .getInstance("SHA-256")
+                    .digest("+15550001234".toByteArray(Charsets.UTF_8))
+                    .joinToString("") { "%02x".format(it) }
+
+            val captured = client.capturedRequests.single()
+            assertEquals(listOf(expectedHash), captured.phoneHashes)
+        }
+
+    @Test
+    fun `lookupByPhone with single server match returns mapped User`() =
+        runTest {
+            val client =
+                RecordingSyncContactsClient(
+                    response =
+                        SyncContactsResponse(
+                            matchedContacts =
+                                listOf(
+                                    MatchedContact(
+                                        userId = "user-42",
+                                        displayName = "Ada Lovelace",
+                                        avatarUrl = "https://cdn/avatar.png",
+                                        phoneNumber = "",
+                                    ),
+                                ),
+                        ),
+                )
+            val repo =
+                ContactRepositoryImpl(
+                    contactClient = client,
+                    contactDao = NoOpContactDao(),
+                )
+
+            val user = repo.lookupByPhone("+15550001234")
+            assertNotNull(user)
+            requireNotNull(user)
+            assertEquals("user-42", user.id)
+            assertEquals("Ada Lovelace", user.displayName)
+            assertEquals("https://cdn/avatar.png", user.avatarUrl)
+            // Server omitted phone_number (privacy on the lookup path) — the
+            // repo falls back to the caller's E.164.
+            assertEquals("+15550001234", user.phoneNumber)
+        }
+
+    @Test
+    fun `lookupByPhone adopts non-empty server phone over caller E164`() =
+        runTest {
+            val client =
+                RecordingSyncContactsClient(
+                    response =
+                        SyncContactsResponse(
+                            matchedContacts =
+                                listOf(
+                                    MatchedContact(
+                                        userId = "user-7",
+                                        displayName = "Grace",
+                                        phoneNumber = "+15559999999",
+                                    ),
+                                ),
+                        ),
+                )
+            val repo =
+                ContactRepositoryImpl(
+                    contactClient = client,
+                    contactDao = NoOpContactDao(),
+                )
+
+            val user = repo.lookupByPhone("+15550001234")
+            // When the server does echo a phone, that authoritative copy wins
+            // (e.g. the server may have re-normalized to E.164 differently).
+            assertEquals("+15559999999", user?.phoneNumber)
+        }
+
+    @Test
+    fun `lookupByPhone with no matches returns null`() =
+        runTest {
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
+            val repo =
+                ContactRepositoryImpl(
+                    contactClient = client,
+                    contactDao = NoOpContactDao(),
+                )
+
+            assertNull(repo.lookupByPhone("+15550009999"))
+        }
+
+    @Test
+    fun `lookupByPhone propagates RPC failure to caller`() =
+        runTest {
+            val boom = RuntimeException("network down")
+            val repo =
+                ContactRepositoryImpl(
+                    contactClient = ThrowingClient(boom),
+                    contactDao = NoOpContactDao(),
+                )
+
+            try {
+                repo.lookupByPhone("+15550001234")
+                fail("expected RuntimeException to bubble out of lookupByPhone")
+            } catch (e: RuntimeException) {
+                assertSame(boom, e)
+            }
         }
 
     // ── Test doubles ──────────────────────────────────────────────────────
 
     /**
-     * Mirrors the production proto-layer stub: records the phone number
-     * for delegation assertions and returns null. Other RPCs are unused
-     * by [ContactRepositoryImpl.lookupByPhone] and error loudly if called.
+     * Captures every SyncContacts request and returns a canned response.
+     * Other RPCs throw if the implementation drifts and starts calling them.
      */
-    private class StubLookupClient(
-        private val capturedPhoneNumbers: MutableList<String>,
+    private class RecordingSyncContactsClient(
+        private val response: SyncContactsResponse,
     ) : ContactServiceClient {
-        override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse = error("not used in test")
+        val capturedRequests = mutableListOf<SyncContactsRequest>()
+
+        override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse {
+            capturedRequests += request
+            return response
+        }
 
         override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse = error("not used in test")
 
@@ -75,11 +185,21 @@ class ContactRepositoryImplTest {
         override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse = error("not used in test")
 
         override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse = error("not used in test")
+    }
 
-        override suspend fun lookupUser(phoneNumber: String): LookedUpUser? {
-            capturedPhoneNumbers += phoneNumber
-            return null
-        }
+    /** Fails the SyncContacts RPC with a fixed exception. */
+    private class ThrowingClient(
+        private val error: Throwable,
+    ) : ContactServiceClient {
+        override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse = throw error
+
+        override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse = error("not used in test")
+
+        override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse = error("not used in test")
+
+        override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse = error("not used in test")
+
+        override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse = error("not used in test")
     }
 
     /**

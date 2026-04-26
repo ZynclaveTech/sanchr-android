@@ -6,12 +6,13 @@ import io.grpc.Channel
 /**
  * gRPC client interface for the ContactService.
  *
- * [lookupUser] is currently stubbed: backend/ does not expose a LookupUser
- * RPC (it only ever existed in the deprecated backend-oss/ fork). Phase 2
- * will reimplement phone-based lookup via SyncContacts(phoneHashes =
- * [SHA-256(normalized phone)]) — matching iOS ContactRepository.searchUser
- * — once the SyncContacts wiring lands. Contact sync, block/unblock, and
- * the blocked list land in M6 along with the full address-book sync UX.
+ * Mirrors backend/proto/contacts.proto exactly: SyncContacts, GetContacts,
+ * Block / Unblock, GetBlockedList. Phone-based user discovery is performed
+ * via [syncContacts] with a single-element `phoneHashes` list — see
+ * `ContactRepositoryImpl.lookupByPhone` and iOS `ContactRepository.searchUser`.
+ * There is no separate LookupUser RPC (the backend never exposed one; the
+ * deprecated backend-oss/ fork did, but that surface area was retired in the
+ * Phase 1 backend canonicalization).
  */
 interface ContactServiceClient {
     suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse
@@ -23,15 +24,6 @@ interface ContactServiceClient {
     suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse
 
     suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse
-
-    /**
-     * Looks up a single registered user by E.164 phone number.
-     *
-     * TODO(Phase-2): rewrite via SyncContacts(phoneHashes = [SHA-256(normalized phone)])
-     * matching iOS ContactRepository.searchUser. backend/ does not expose
-     * a LookupUser RPC, so this currently returns `null` unconditionally.
-     */
-    suspend fun lookupUser(phoneNumber: String): LookedUpUser?
 }
 
 /**
@@ -40,8 +32,7 @@ interface ContactServiceClient {
  * The [channel] and [callOptions] are retained for the M6 wiring of
  * [ContactServiceGrpcKt.ContactServiceCoroutineStub][sanchr.contacts.ContactServiceGrpcKt.ContactServiceCoroutineStub]
  * (sync/get/block/unblock/getBlocked); they are intentionally unused
- * today because every M6 endpoint throws and [lookupUser] is stubbed
- * pending the Phase-2 SyncContacts rewrite.
+ * today because every M6 endpoint throws.
  */
 class ContactServiceGrpcClient(
     private val channel: Channel,
@@ -62,10 +53,4 @@ class ContactServiceGrpcClient(
     override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse = unimplementedM6()
 
     override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse = unimplementedM6()
-
-    /**
-     * TODO(Phase-2): rewrite via SyncContacts(phoneHashes = [SHA-256(normalized phone)])
-     * matching iOS ContactRepository.searchUser. backend/ does not expose LookupUser.
-     */
-    override suspend fun lookupUser(phoneNumber: String): LookedUpUser? = null
 }
