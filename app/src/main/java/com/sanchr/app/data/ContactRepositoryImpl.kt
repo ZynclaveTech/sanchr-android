@@ -76,6 +76,13 @@ class ContactRepositoryImpl
             contactDao.setFavorite(userId, favorite)
         }
 
+        /**
+         * TODO(Phase-2): rewrite via SyncContacts(phoneHashes = [SHA-256(normalized phone)])
+         * matching iOS ContactRepository.searchUser. backend/ does not expose a
+         * LookupUser RPC, so this stub delegates to [ContactServiceClient.lookupUser]
+         * (which itself returns null unconditionally) and maps the result.
+         * Behavior: returns null for every input today.
+         */
         override suspend fun lookupByPhone(phoneE164: String): User? = contactClient.lookupUser(phoneE164)?.toDomain()
 
         // ── Mapping helpers ──

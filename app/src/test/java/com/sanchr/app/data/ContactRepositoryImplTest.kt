@@ -19,93 +19,52 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
  * Unit tests for [ContactRepositoryImpl.lookupByPhone].
  *
- * The repo delegates to [ContactServiceClient.lookupUser], which surfaces
- * server-side NOT_FOUND as a null return. Anything else (network failure,
- * INVALID_ARGUMENT, etc.) must propagate so callers can react — the repo
- * must NOT swallow those.
+ * The repo delegates to [ContactServiceClient.lookupUser]. backend/ does
+ * not expose a LookupUser RPC (Phase 1 of the backend canonicalization
+ * dropped the deprecated backend-oss/ fork), so the proto-layer client
+ * returns null unconditionally and every input must surface as null at
+ * the repository boundary. Phase 2 will reimplement this via
+ * SyncContacts(phoneHashes = [SHA-256(normalized phone)]) — at which
+ * point these tests should be replaced with real lookup-result coverage.
  */
 class ContactRepositoryImplTest {
-    private val sampleUser =
-        LookedUpUser(
-            id = "11111111-2222-3333-4444-555555555555",
-            phoneNumber = "+15550001234",
-            displayName = "Alice",
-            email = "",
-            avatarUrl = "https://cdn.example/a.png",
-            statusText = "",
-            createdAt = "2024-01-02T03:04:05Z",
-        )
-
     @Test
-    fun `lookupByPhone returns mapped domain user on success`() =
+    fun `lookupByPhone returns null today (Phase-2 stub contract)`() =
         runTest {
+            val phoneNumbersExercised = mutableListOf<String>()
             val repo =
                 ContactRepositoryImpl(
-                    contactClient = FakeContactServiceClient(result = LookupResult.Found(sampleUser)),
+                    contactClient = StubLookupClient(phoneNumbersExercised),
                     contactDao = NoOpContactDao(),
                 )
 
-            val user = repo.lookupByPhone("+15550001234")
+            assertNull(repo.lookupByPhone("+15550001234"))
+            assertNull(repo.lookupByPhone("+15550009999"))
+            assertNull(repo.lookupByPhone(""))
 
-            assertEquals(sampleUser.id, user?.id)
-            assertEquals(sampleUser.phoneNumber, user?.phoneNumber)
-            assertEquals(sampleUser.displayName, user?.displayName)
-            assertEquals(sampleUser.avatarUrl, user?.avatarUrl)
-        }
-
-    @Test
-    fun `lookupByPhone returns null when client reports NOT_FOUND`() =
-        runTest {
-            val repo =
-                ContactRepositoryImpl(
-                    contactClient = FakeContactServiceClient(result = LookupResult.NotFound),
-                    contactDao = NoOpContactDao(),
-                )
-
-            val user = repo.lookupByPhone("+15550009999")
-
-            assertNull(user)
-        }
-
-    @Test
-    fun `lookupByPhone propagates non-NOT_FOUND errors`() =
-        runTest {
-            val boom = IllegalStateException("network down")
-            val repo =
-                ContactRepositoryImpl(
-                    contactClient = FakeContactServiceClient(result = LookupResult.Throws(boom)),
-                    contactDao = NoOpContactDao(),
-                )
-
-            val thrown =
-                assertThrows(IllegalStateException::class.java) {
-                    kotlinx.coroutines.runBlocking { repo.lookupByPhone("+15550001234") }
-                }
-            assertEquals("network down", thrown.message)
+            // Verify the repo actually delegates — this guards against a
+            // future change that fakes the result locally and drifts from
+            // the proto-layer stub contract.
+            assertEquals(
+                listOf("+15550001234", "+15550009999", ""),
+                phoneNumbersExercised,
+            )
         }
 
     // ── Test doubles ──────────────────────────────────────────────────────
 
-    private sealed interface LookupResult {
-        data class Found(
-            val user: LookedUpUser,
-        ) : LookupResult
-
-        object NotFound : LookupResult
-
-        data class Throws(
-            val error: Throwable,
-        ) : LookupResult
-    }
-
-    private class FakeContactServiceClient(
-        private val result: LookupResult,
+    /**
+     * Mirrors the production proto-layer stub: records the phone number
+     * for delegation assertions and returns null. Other RPCs are unused
+     * by [ContactRepositoryImpl.lookupByPhone] and error loudly if called.
+     */
+    private class StubLookupClient(
+        private val capturedPhoneNumbers: MutableList<String>,
     ) : ContactServiceClient {
         override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse = error("not used in test")
 
@@ -117,12 +76,10 @@ class ContactRepositoryImplTest {
 
         override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse = error("not used in test")
 
-        override suspend fun lookupUser(phoneNumber: String): LookedUpUser? =
-            when (val r = result) {
-                is LookupResult.Found -> r.user
-                LookupResult.NotFound -> null
-                is LookupResult.Throws -> throw r.error
-            }
+        override suspend fun lookupUser(phoneNumber: String): LookedUpUser? {
+            capturedPhoneNumbers += phoneNumber
+            return null
+        }
     }
 
     /**

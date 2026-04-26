@@ -53,20 +53,15 @@ class ContactServiceGrpcClient(
                 "lands in M6 along with the address-book sync UX.",
         )
 
-    override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse =
-        unimplementedM6()
+    override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse = unimplementedM6()
 
-    override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse =
-        unimplementedM6()
+    override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse = unimplementedM6()
 
-    override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse =
-        unimplementedM6()
+    override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse = unimplementedM6()
 
-    override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse =
-        unimplementedM6()
+    override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse = unimplementedM6()
 
-    override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse =
-        unimplementedM6()
+    override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse = unimplementedM6()
 
     /**
      * TODO(Phase-2): rewrite via SyncContacts(phoneHashes = [SHA-256(normalized phone)])
