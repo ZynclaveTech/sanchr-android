@@ -14,10 +14,11 @@ import javax.inject.Singleton
 /**
  * gRPC client interceptor that attaches JWT bearer tokens to outgoing requests.
  *
- * Token and device id are cached in-memory and refreshed lazily from [SessionManager]
- * on the first call after [invalidateToken] is invoked (or on cold start). This
- * avoids a blocking disk read on every RPC while keeping the interceptor fully
- * non-suspending — a hard requirement of the gRPC interceptor API.
+ * Reads the current access token + device id directly from [SessionManager] on
+ * every RPC. EncryptedSharedPreferences resolves to a parsed Map after first
+ * load, so the read is an O(1) dictionary lookup — no caching layer needed,
+ * and no risk of serving a stale token after a session change (sign-in,
+ * sign-out, refresh).
  *
  * Methods listed in [UNAUTHENTICATED_METHODS] are skipped — no bearer token is
  * injected, since those endpoints are invoked precisely to obtain one.
@@ -37,50 +38,31 @@ class AuthInterceptor
 
             /**
              * Fully-qualified gRPC method names that must NOT carry an auth token.
+             * RequestOtp added in Phase 4b — phone-only OTP issuance is by
+             * definition pre-auth.
              */
             private val UNAUTHENTICATED_METHODS: Set<String> =
                 setOf(
                     "sanchr.auth.AuthService/Register",
+                    "sanchr.auth.AuthService/RequestOtp",
                     "sanchr.auth.AuthService/VerifyOTP",
                     "sanchr.auth.AuthService/Login",
                     "sanchr.auth.AuthService/RefreshToken",
                 )
         }
 
-        @Volatile
-        private var cachedToken: String? = null
-
-        @Volatile
-        private var cachedDeviceId: String? = null
-
         /**
-         * Clears the cached access token. The next outbound RPC will re-read
-         * from [SessionManager]. Called by [UnauthenticatedRefreshInterceptor]
-         * when the server rejects a request with [io.grpc.Status.UNAUTHENTICATED].
+         * No-op kept for source-compat with existing callers (e.g.
+         * [UnauthenticatedRefreshInterceptor]). With caching removed there is
+         * nothing to invalidate — the next RPC reads fresh from SessionManager.
          */
         fun invalidateToken() {
-            cachedToken = null
+            // Intentionally empty.
         }
 
-        private fun currentToken(): String? {
-            val cached = cachedToken
-            if (cached != null) return cached
-            val loaded = sessionManager.getAccessToken()
-            if (loaded != null) {
-                cachedToken = loaded
-            }
-            return loaded
-        }
+        private fun currentToken(): String? = sessionManager.getAccessToken()
 
-        private fun currentDeviceId(): String? {
-            val cached = cachedDeviceId
-            if (cached != null) return cached
-            val loaded = sessionManager.getDeviceId()
-            if (loaded != null) {
-                cachedDeviceId = loaded
-            }
-            return loaded
-        }
+        private fun currentDeviceId(): String? = sessionManager.getDeviceId()
 
         override fun <ReqT, RespT> interceptCall(
             method: MethodDescriptor<ReqT, RespT>,
