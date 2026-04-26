@@ -12,7 +12,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.DeviceInfo
-import com.sanchr.proto.auth.RegisterRequest
+import com.sanchr.proto.auth.RequestOtpRequest
 import com.sanchr.proto.auth.VerifyOTPRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -24,20 +24,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Shared sentinel password sent on every Register call from the phone-only
- * entry path.
- *
- * Backend ignores this on the existing-phone path — see
- * `backend-oss/crates/sanchr-core/src/auth/handlers.rs:267-328`, where the
- * Register handler short-circuits to "re-issue OTP" for a verified phone and
- * never compares the submitted password against the stored one. For the
- * brand-new-phone path the same sentinel is persisted server-side; the
- * subsequent fast-login flow uses it transparently. Matches the iOS sentinel
- * pattern (AuthRepository.swift:61-86) so both clients hit the same code path.
- */
-internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
-
-/**
  * Drives the onboarding state machine defined in [AuthState]:
  *
  * ```
@@ -46,9 +32,9 @@ internal const val BOOTSTRAP_PASSWORD = "sanchr-login-otp-bootstrap-v1"
  *
  * iOS-parity: `Splash -> LoginView` is the canonical path (SanchrApp.swift
  * 350-396). Android lands directly on [AuthState.LoginPhone] after the splash.
- * There is no separate Sign-up entry point — the backend's existing-phone
- * short-circuit (handlers.rs:267-328) handles new vs. returning phones
- * transparently, exactly as iOS does.
+ * There is no separate Sign-up entry point — backend's
+ * `handle_request_otp` (handlers.rs, commit `bdfb5a7`) handles new vs.
+ * returning phones transparently, exactly as iOS does.
  *
  * [attemptFastLogin] only short-circuits when a still-valid access token is
  * already on disk; otherwise the user is routed through the normal phone +
@@ -101,13 +87,12 @@ class AuthViewModel
         }
 
         /**
-         * Phone-only entry path. Dispatches `Register` with an empty display
-         * name + bootstrap sentinel password, mirroring iOS
-         * `AuthRepository.requestOTP` (AuthRepository.swift:61-86). Backend
-         * handles both branches transparently (handlers.rs:267-328): a verified
-         * phone short-circuits to OTP re-issue without touching the stored
-         * password; a brand-new phone creates the pending registration with
-         * the sentinel.
+         * Phone-only entry path. Dispatches `AuthService.RequestOtp(phone, device)`
+         * — backend handler `handle_request_otp` (handlers.rs, commit `bdfb5a7`)
+         * handles both branches transparently: a verified phone short-circuits
+         * to OTP re-issue for login; a brand-new phone creates/refreshes a
+         * pending registration. Display name is collected post-OTP via
+         * `OnboardingNameStepView`.
          */
         fun submitLoginPhone() {
             val current = _state.value as? AuthState.LoginPhone ?: return
@@ -122,11 +107,9 @@ class AuthViewModel
                     // Persist the phone so resend + future fast-login have it.
                     sessionManager.saveStoredPhoneE164(phoneE164)
                     withContext(dispatchers.io) {
-                        authServiceClient.register(
-                            RegisterRequest(
+                        authServiceClient.requestOtp(
+                            RequestOtpRequest(
                                 phoneNumber = phoneE164,
-                                displayName = "",
-                                password = BOOTSTRAP_PASSWORD,
                                 device = buildDeviceInfo(),
                             ),
                         )
@@ -156,7 +139,7 @@ class AuthViewModel
         }
 
         /**
-         * Re-request OTP from the backend using the cached session data. Register
+         * Re-request OTP from the backend using the cached phone. RequestOtp
          * is idempotent on `pending_registrations` so calling it again simply
          * refreshes the code.
          */
@@ -166,11 +149,9 @@ class AuthViewModel
             viewModelScope.launch {
                 try {
                     withContext(dispatchers.io) {
-                        authServiceClient.register(
-                            RegisterRequest(
+                        authServiceClient.requestOtp(
+                            RequestOtpRequest(
                                 phoneNumber = current.phoneE164,
-                                displayName = current.displayName,
-                                password = BOOTSTRAP_PASSWORD,
                                 device = buildDeviceInfo(),
                             ),
                         )

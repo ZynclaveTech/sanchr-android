@@ -8,7 +8,8 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthResponse
 import com.sanchr.proto.auth.AuthServiceClient
-import com.sanchr.proto.auth.RegisterRequest
+import com.sanchr.proto.auth.RequestOtpRequest
+import com.sanchr.proto.auth.RequestOtpResponse
 import com.sanchr.proto.auth.User
 import com.sanchr.proto.auth.VerifyOTPRequest
 import io.mockk.coEvery
@@ -130,10 +131,11 @@ class AuthViewModelStateTest {
         }
 
     @Test
-    fun submitLoginPhone_validPhone_callsRegisterWithBootstrapPassword_andTransitionsToOtpEntry() =
+    fun submitLoginPhone_validPhone_callsRequestOtp_andTransitionsToOtpEntry() =
         runTest {
-            val request = slot<RegisterRequest>()
-            coEvery { authServiceClient.register(capture(request)) } returns AuthResponse()
+            val request = slot<RequestOtpRequest>()
+            coEvery { authServiceClient.requestOtp(capture(request)) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = false)
 
             val vm = newViewModel()
             vm.onSplashComplete()
@@ -147,8 +149,6 @@ class AuthViewModelStateTest {
             )
             val captured = request.captured
             assertEquals("+14155551234", captured.phoneNumber)
-            assertEquals("", captured.displayName)
-            assertEquals(BOOTSTRAP_PASSWORD, captured.password)
             assertEquals("install-1", captured.device?.installationId)
             verify { sessionManager.saveStoredPhoneE164("+14155551234") }
         }
@@ -158,7 +158,8 @@ class AuthViewModelStateTest {
         runTest {
             val vm = newViewModel()
             // Force state to OtpEntry via the login path.
-            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = false)
             vm.onSplashComplete()
             vm.onLoginPhoneChanged("+1", "4155551234")
             vm.submitLoginPhone()
@@ -171,15 +172,17 @@ class AuthViewModelStateTest {
         }
 
     /**
-     * Returning user: backend's existing-phone short-circuit (handlers.rs:267-328)
-     * yields a populated `displayName` on the verify-OTP response. Surface
-     * `Done(isNewUser = false)` so downstream onboarding routing skips the
-     * profile-setup detour for someone who already has a profile.
+     * Returning user: backend's existing-phone short-circuit
+     * (handle_request_otp + handle_verify_otp) yields a populated `displayName`
+     * on the verify-OTP response. Surface `Done(isNewUser = false)` so
+     * downstream onboarding routing skips the profile-setup detour for
+     * someone who already has a profile.
      */
     @Test
     fun submitOtp_returningUser_emitsDoneIsNewUserFalse() =
         runTest {
-            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = true)
             coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
                 AuthResponse(
                     accessToken = "at",
@@ -222,7 +225,8 @@ class AuthViewModelStateTest {
     @Test
     fun submitOtp_newUser_emitsDoneIsNewUserTrue() =
         runTest {
-            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = false)
             coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
                 AuthResponse(
                     accessToken = "at",
@@ -262,7 +266,8 @@ class AuthViewModelStateTest {
     @Test
     fun submitOtp_persistsDisplayName_beforeFlippingSession() =
         runTest {
-            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = true)
             coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
                 AuthResponse(
                     accessToken = "at",
