@@ -1,5 +1,6 @@
 package com.sanchr.app
 
+import android.util.Log
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -217,6 +218,10 @@ private fun ResolvedNavHost(
                     // onboarding once (design decision — per-device semantics;
                     // plan Phase 5).
                     val target = if (hasCompletedOnboarding) "main" else ONBOARDING_GRAPH_ROUTE
+                    Log.d(
+                        "AuthFlow",
+                        "SanchrNavHost.onAuthSuccess: hasCompletedOnboarding=$hasCompletedOnboarding -> $target",
+                    )
                     navController.navigate(target) {
                         popUpTo("auth") { inclusive = true }
                         launchSingleTop = true

@@ -1,5 +1,6 @@
 package com.sanchr.feature.auth.navigation
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,8 @@ const val AUTH_GRAPH_ROUTE = "auth"
 const val SPLASH_ROUTE = "auth/splash"
 const val LOGIN_PHONE_ROUTE = "auth/login"
 const val OTP_ROUTE = "auth/otp"
+
+private const val TAG = "AuthFlow"
 
 /**
  * Authentication graph, driven by [AuthState]. All screens share a single
@@ -139,14 +142,17 @@ private fun AuthFlowHost(
     val state by vm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(state) {
+        Log.d(TAG, "AuthFlowHost: state=${state::class.simpleName}")
         val target = state.toRouteTarget()
         if (target.terminal) {
+            Log.d(TAG, "AuthFlowHost: terminal Done -> firing onAuthSuccess")
             onAuthSuccess()
             return@LaunchedEffect
         }
         val desiredRoute = target.route ?: return@LaunchedEffect
         val currentRoute = navController.currentBackStackEntry?.destination?.route
         if (currentRoute == desiredRoute) return@LaunchedEffect
+        Log.d(TAG, "AuthFlowHost: navigating $currentRoute -> $desiredRoute")
         navController.navigate(desiredRoute) { applyPopOptions(target) }
     }
 

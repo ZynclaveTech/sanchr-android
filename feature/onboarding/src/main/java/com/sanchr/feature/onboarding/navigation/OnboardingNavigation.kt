@@ -1,5 +1,6 @@
 package com.sanchr.feature.onboarding.navigation
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +24,8 @@ const val ONBOARDING_NAME = "onboarding/name"
 const val ONBOARDING_AVATAR = "onboarding/avatar"
 const val ONBOARDING_CONTACT_SYNC = "onboarding/contactsync"
 const val ONBOARDING_WELCOME_CONFIRM = "onboarding/welcome-confirm"
+
+private const val TAG = "AuthFlow"
 
 /**
  * Onboarding navigation graph.
@@ -122,14 +125,17 @@ private fun OnboardingFlowHost(
     val state by vm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(state) {
+        Log.d(TAG, "OnboardingFlowHost: state=${state::class.simpleName}")
         val target = state.toRouteTarget()
         if (target.terminal) {
+            Log.d(TAG, "OnboardingFlowHost: terminal Completed -> firing onComplete")
             onComplete()
             return@LaunchedEffect
         }
         val desired = target.route ?: return@LaunchedEffect
         val current = navController.currentBackStackEntry?.destination?.route
         if (current == desired) return@LaunchedEffect
+        Log.d(TAG, "OnboardingFlowHost: navigating $current -> $desired")
         navController.navigate(desired) { applyPopOptions(target) }
     }
 
