@@ -21,10 +21,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 
@@ -83,10 +81,12 @@ fun SanchrOtpInput(
     }
 
     Box(modifier = modifier) {
-        // Invisible text field that owns focus and keyboard input.
-        // We use alpha(0f) + zero-size layout rather than just zero-size, so the
-        // focus modifier reliably attaches even when the cell row is the visible
-        // hit target.
+        // BasicTextField FIRST in z-order so the Row below renders on top and
+        // absorbs all pointer events. The field is laid out at the parent's
+        // bounds (matchParentSize) so the focus node always has measurable
+        // area — earlier versions used a zero-size layout modifier which
+        // caused focus to attach inconsistently and raised IllegalStateException
+        // on tap. alpha(0f) hides it visually.
         BasicTextField(
             value = value,
             onValueChange = { raw ->
@@ -97,14 +97,9 @@ fun SanchrOtpInput(
             },
             modifier =
                 Modifier
+                    .matchParentSize()
                     .alpha(0f)
-                    .focusRequester(focusRequester)
-                    // Keep the field laid out as zero-size so it does not affect layout,
-                    // but still receives focus/keyboard.
-                    .layout { measurable, _ ->
-                        val placeable = measurable.measure(Constraints.fixed(0, 0))
-                        layout(0, 0) { placeable.place(0, 0) }
-                    },
+                    .focusRequester(focusRequester),
             cursorBrush = SolidColor(Color.Transparent),
             keyboardOptions =
                 KeyboardOptions(
@@ -113,6 +108,7 @@ fun SanchrOtpInput(
             singleLine = true,
         )
 
+        // Visible cell row on top — owns the tap target.
         Row(
             modifier =
                 Modifier.clickable(

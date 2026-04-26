@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,9 +24,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
+import com.sanchr.core.designsystem.component.SanchrCenteredHeader
 import com.sanchr.core.designsystem.component.SanchrOtpInput
 import com.sanchr.core.designsystem.component.SanchrTextButton
-import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.component.SecureScreen
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -116,20 +115,21 @@ fun OtpScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            // iOS-deviation: Material top bar requires a title; iOS shows none.
-            SanchrTopBar(title = "Verification", onNavigateBack = onNavigateBack)
-        },
-        modifier = modifier,
-    ) { innerPadding ->
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // iOS-parity centered header — handles status-bar padding internally.
+        SanchrCenteredHeader(
+            title = "Verification",
+            onNavigateBack = onNavigateBack,
+        )
+
         Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = SanchrTheme.spacing.xl)
-                    .imePadding(),
+            modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
