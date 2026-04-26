@@ -79,10 +79,25 @@ fun OtpScreen(
 
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // OtpScreen also renders for Error(previousState=Registering) — when the
+    // post-OTP key-bootstrap pipeline fails, we want to surface the error and
+    // a Retry button on this screen instead of going blank. Synthesize an
+    // OtpEntry from whatever the previous state carried.
     val otpEntry: AuthState.OtpEntry =
         when (val s = state) {
             is AuthState.OtpEntry -> s
-            is AuthState.Error -> s.previousState as? AuthState.OtpEntry ?: return
+            is AuthState.Error ->
+                when (val prev = s.previousState) {
+                    is AuthState.OtpEntry -> prev
+                    is AuthState.Registering ->
+                        AuthState.OtpEntry(
+                            phoneE164 = prev.phoneE164,
+                            displayName = prev.displayName,
+                            otp = "",
+                            isSubmitting = false,
+                        )
+                    else -> return
+                }
             else -> return
         }
     val errorMessage = (state as? AuthState.Error)?.message

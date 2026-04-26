@@ -299,6 +299,11 @@ class AuthViewModel
 
                 _state.value = AuthState.Done(isNewUser = isNewUser)
             } catch (e: Exception) {
+                Log.e(
+                    "AuthViewModel",
+                    "Registration pipeline failed at step ${(_state.value as? AuthState.Registering)?.step}",
+                    e,
+                )
                 _state.value =
                     AuthState.Error(
                         previousState = stage(RegistrationStep.GENERATING_KEYS),
