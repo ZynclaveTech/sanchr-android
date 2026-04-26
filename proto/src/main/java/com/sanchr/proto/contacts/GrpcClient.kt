@@ -2,18 +2,16 @@ package com.sanchr.proto.contacts
 
 import io.grpc.CallOptions
 import io.grpc.Channel
-import io.grpc.Status
-import io.grpc.StatusException
-import sanchr.auth.Auth
-import sanchr.contacts.ContactServiceGrpcKt
-import sanchr.contacts.Contacts
 
 /**
  * gRPC client interface for the ContactService.
  *
- * Only [lookupUser] is wired in M5 — it's the sole RPC the chats UI needs
- * (phone-based user lookup for "Start chat"). Contact sync, block/unblock,
- * and the blocked list land in M6 along with the full address-book sync UX.
+ * [lookupUser] is currently stubbed: backend/ does not expose a LookupUser
+ * RPC (it only ever existed in the deprecated backend-oss/ fork). Phase 2
+ * will reimplement phone-based lookup via SyncContacts(phoneHashes =
+ * [SHA-256(normalized phone)]) — matching iOS ContactRepository.searchUser
+ * — once the SyncContacts wiring lands. Contact sync, block/unblock, and
+ * the blocked list land in M6 along with the full address-book sync UX.
  */
 interface ContactServiceClient {
     suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse
@@ -29,61 +27,50 @@ interface ContactServiceClient {
     /**
      * Looks up a single registered user by E.164 phone number.
      *
-     * Returns the matched [LookedUpUser] when found, or `null` if the server
-     * responded with `NOT_FOUND`. Any other error (network, INVALID_ARGUMENT,
-     * etc.) propagates as an exception.
+     * TODO(Phase-2): rewrite via SyncContacts(phoneHashes = [SHA-256(normalized phone)])
+     * matching iOS ContactRepository.searchUser. backend/ does not expose
+     * a LookupUser RPC, so this currently returns `null` unconditionally.
      */
     suspend fun lookupUser(phoneNumber: String): LookedUpUser?
 }
 
+/**
+ * Production [ContactServiceClient] implementation.
+ *
+ * The [channel] and [callOptions] are retained for the M6 wiring of
+ * [ContactServiceGrpcKt.ContactServiceCoroutineStub][sanchr.contacts.ContactServiceGrpcKt.ContactServiceCoroutineStub]
+ * (sync/get/block/unblock/getBlocked); they are intentionally unused
+ * today because every M6 endpoint throws and [lookupUser] is stubbed
+ * pending the Phase-2 SyncContacts rewrite.
+ */
 class ContactServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : ContactServiceClient {
-    private val stub by lazy { ContactServiceGrpcKt.ContactServiceCoroutineStub(channel, callOptions) }
+    private fun unimplementedM6(): Nothing =
+        throw NotImplementedError(
+            "ContactService not wired yet (channel=$channel, callOptions=$callOptions); " +
+                "lands in M6 along with the address-book sync UX.",
+        )
 
-    // TODO(M6): wire to ContactServiceGrpcKt.ContactServiceCoroutineStub when contact sync lands
     override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse =
-        throw NotImplementedError("Awaiting contact sync feature in M6+")
+        unimplementedM6()
 
-    // TODO(M6): wire to ContactServiceGrpcKt.ContactServiceCoroutineStub when contact sync lands
     override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse =
-        throw NotImplementedError("Awaiting contact sync feature in M6+")
+        unimplementedM6()
 
-    // TODO(M6): wire to ContactServiceGrpcKt.ContactServiceCoroutineStub when contact sync lands
     override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse =
-        throw NotImplementedError("Awaiting contact sync feature in M6+")
+        unimplementedM6()
 
-    // TODO(M6): wire to ContactServiceGrpcKt.ContactServiceCoroutineStub when contact sync lands
     override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse =
-        throw NotImplementedError("Awaiting contact sync feature in M6+")
+        unimplementedM6()
 
-    // TODO(M6): wire to ContactServiceGrpcKt.ContactServiceCoroutineStub when contact sync lands
     override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse =
-        throw NotImplementedError("Awaiting contact sync feature in M6+")
+        unimplementedM6()
 
-    override suspend fun lookupUser(phoneNumber: String): LookedUpUser? {
-        val request =
-            Contacts.LookupUserRequest
-                .newBuilder()
-                .setPhoneNumber(phoneNumber)
-                .build()
-        return try {
-            val response = stub.lookupUser(request)
-            if (response.hasUser()) response.user.toManual() else null
-        } catch (e: StatusException) {
-            if (e.status.code == Status.Code.NOT_FOUND) null else throw e
-        }
-    }
+    /**
+     * TODO(Phase-2): rewrite via SyncContacts(phoneHashes = [SHA-256(normalized phone)])
+     * matching iOS ContactRepository.searchUser. backend/ does not expose LookupUser.
+     */
+    override suspend fun lookupUser(phoneNumber: String): LookedUpUser? = null
 }
-
-private fun Auth.User.toManual(): LookedUpUser =
-    LookedUpUser(
-        id = id,
-        phoneNumber = phoneNumber,
-        displayName = displayName,
-        email = email,
-        avatarUrl = avatarUrl,
-        statusText = statusText,
-        createdAt = createdAt,
-    )
