@@ -14,6 +14,7 @@ import com.sanchr.proto.messaging.SendSealedMessageResponse
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -175,6 +176,15 @@ class SendMessageUseCaseTest {
                     serverTimestamp = 5_000L,
                 )
             }
+            // Pins the sequence, not just the call counts above — a
+            // regression that moved replenishIfNeeded() before acquire()
+            // (spending it on a stale token count) would still pass a
+            // call-count-only check but fails this.
+            coVerifyOrder {
+                deliveryTokenStore.acquire()
+                messagingClient.sendSealedMessage(any())
+                deliveryTokenStore.replenishIfNeeded()
+            }
 
             val request = requestSlot.captured
             assertTrue(request.deliveryToken.contentEquals(deliveryToken))
@@ -240,5 +250,43 @@ class SendMessageUseCaseTest {
             coVerify(exactly = 0) { messagingClient.sendSealedMessage(any()) }
             coVerify(exactly = 0) { messagingClient.sendMessage(any()) }
             coVerify(exactly = 0) { messageRepository.requeueAfterFailure(any()) }
+        }
+
+    @Test
+    fun `attemptSend still reports SENT when adoptServerId throws after a successful sealed send`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { deliveryTokenStore.acquire() } returns byteArrayOf(9, 8, 7)
+            coEvery {
+                signalSessionManager.encryptForAllDevices(any(), "peer-uuid")
+            } returns
+                listOf(
+                    DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1, 2, 3), messageType = 3, registrationId = 42),
+                )
+            coEvery {
+                messagingClient.sendSealedMessage(any())
+            } returns SendSealedMessageResponse(serverTimestamp = 5_000L)
+            // The RPC has already succeeded by the time this local write is
+            // attempted — a full disk, a disk I/O error, or cancellation on
+            // process death are all plausible causes on a device already
+            // flagged as disk-constrained.
+            coEvery {
+                messageRepository.adoptServerId(any(), any(), any())
+            } throws RuntimeException("disk full")
+
+            val result = useCase.attemptSend(entity)
+
+            // The send genuinely succeeded server-side; a local bookkeeping
+            // failure on adoptServerId must not turn that into a reported
+            // failure, and must not requeue or FAILED a message the server
+            // already has.
+            assertTrue(result is Result.Success)
+            assertEquals(MessageStatus.SENT, (result as Result.Success).data.status)
+            assertEquals("msg-1", result.data.id)
+            coVerify(exactly = 0) { messageRepository.requeueAfterFailure(any()) }
+            coVerify(exactly = 0) { messageRepository.markSendFailed(any(), any(), any()) }
+            // The token top-up is independent bookkeeping too, and must
+            // still run even though adoptServerId failed.
+            coVerify(exactly = 1) { deliveryTokenStore.replenishIfNeeded() }
         }
 }

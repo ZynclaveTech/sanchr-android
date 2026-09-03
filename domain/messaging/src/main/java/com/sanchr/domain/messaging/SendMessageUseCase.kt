@@ -114,54 +114,81 @@ class SendMessageUseCase
             guardZeroRecipients(entity, recipients, deviceMessages)
             guardFanOutSize(entity, deviceMessages)
 
-            try {
-                val token = deliveryTokenStore.acquire()
-                val response =
+            // Everything up to and including this RPC is the send itself: a
+            // failure here means the server never accepted the message, so
+            // it is safe (and correct) to requeue or terminally fail below.
+            val response =
+                try {
+                    val token = deliveryTokenStore.acquire()
                     messagingClient.sendSealedMessage(
                         SendSealedMessageRequest(
                             deliveryToken = token,
                             deviceMessages = deviceMessages,
                         ),
                     )
+                } catch (error: Exception) {
+                    if (attempts >= MAX_ATTEMPTS) {
+                        messageRepository.markSendFailed(
+                            messageId = entity.id,
+                            failureReason = error.message ?: error::class.java.simpleName,
+                            failureClass = FailureClass.CRYPTO_OTHER,
+                        )
+                    } else {
+                        messageRepository.requeueAfterFailure(entity.id)
+                    }
+                    throw error
+                }
+
+            // The RPC above succeeded: the server has accepted and delivered
+            // the message. Everything from here on is post-send bookkeeping,
+            // and its failure must never be attributed back to the send —
+            // neither requeueAfterFailure nor markSendFailed may run past
+            // this point, or a delivered message would be reported FAILED,
+            // or (worse) resurface as still-sending to the user.
+            //
+            // No server-assigned id exists on a sealed send — the sender
+            // assigns it (see InnerPayload.messageId) and the recipient
+            // reads it back out of the envelope — so the local id is already
+            // permanent; adoptServerId is called with newMessageId ==
+            // oldMessageId purely to flip the row to SENT and stamp the
+            // server timestamp in one UPDATE. If this write itself throws
+            // (disk I/O, a full disk, cancellation on process death), the
+            // row may be left QUEUED and get picked up and resent by
+            // SendRetryWorker. That is safe, not silently lossy: the id
+            // handed to the server inside InnerPayload.messageId is this
+            // same, stable local id on every retry, and the receive path's
+            // insertMessage is REPLACE-on-conflict keyed on that id, so a
+            // resend lands as an idempotent replace of the same row rather
+            // than a duplicate message. The one thing that must not happen
+            // is this successful send being reported as failed, so we log
+            // and swallow rather than let it fall into a retry/fail branch.
+            runCatching {
                 messageRepository.adoptServerId(
                     oldMessageId = entity.id,
-                    // No server-assigned id exists on a sealed send — the
-                    // sender assigns it (see InnerPayload.messageId) and the
-                    // recipient reads it back out of the envelope. The local
-                    // id is therefore already permanent; re-adopting it here
-                    // (rather than skipping the call) still flips the row to
-                    // SENT and stamps the server timestamp in one UPDATE.
                     newMessageId = entity.id,
                     serverTimestamp = response.serverTimestamp,
                 )
-                // Best-effort top-up: a failure here must not undo a send
-                // that has already succeeded and been adopted above, so it
-                // is not allowed to fall into the catch below and requeue
-                // (or fail) an already-SENT row.
-                runCatching { deliveryTokenStore.replenishIfNeeded() }
-                    .onFailure { Log.w(TAG, "replenishIfNeeded failed after a successful send", it) }
-                return Message(
-                    id = entity.id,
-                    conversationId = entity.conversationId,
-                    senderId = entity.senderId,
-                    content =
-                        com.sanchr.core.model.MessageContent
-                            .Text(entity.contentBody),
-                    status = MessageStatus.SENT,
-                    timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
-                )
-            } catch (error: Exception) {
-                if (attempts >= MAX_ATTEMPTS) {
-                    messageRepository.markSendFailed(
-                        messageId = entity.id,
-                        failureReason = error.message ?: error::class.java.simpleName,
-                        failureClass = FailureClass.CRYPTO_OTHER,
-                    )
-                } else {
-                    messageRepository.requeueAfterFailure(entity.id)
-                }
-                throw error
+            }.onFailure {
+                Log.e(TAG, "adoptServerId failed after a successful sealed send for message ${entity.id}", it)
             }
+
+            // Best-effort top-up: a failure here must not undo a send that
+            // has already succeeded, so — same reasoning as adoptServerId
+            // above — it is not allowed to requeue or fail an already-SENT
+            // row either.
+            runCatching { deliveryTokenStore.replenishIfNeeded() }
+                .onFailure { Log.w(TAG, "replenishIfNeeded failed after a successful send", it) }
+
+            return Message(
+                id = entity.id,
+                conversationId = entity.conversationId,
+                senderId = entity.senderId,
+                content =
+                    com.sanchr.core.model.MessageContent
+                        .Text(entity.contentBody),
+                status = MessageStatus.SENT,
+                timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
+            )
         }
 
         /**
@@ -178,6 +205,15 @@ class SendMessageUseCase
             selfUserId: String,
         ): List<SealedDeviceMessage> =
             try {
+                val rawDeviceId = sessionManager.getDeviceId()
+                val senderDeviceId = rawDeviceId?.toIntOrNull()
+                if (senderDeviceId == null) {
+                    // Should be unreachable post-sign-in — a registered device
+                    // always has an id. Logged rather than made fatal so an
+                    // unexpected null still degrades to InnerPayload.senderDeviceId
+                    // = 0 instead of blocking the send outright.
+                    Log.w(TAG, "sessionManager.getDeviceId() was '$rawDeviceId'; InnerPayload.senderDeviceId falling back to 0")
+                }
                 val payload =
                     InnerPayload(
                         conversationId = entity.conversationId,
@@ -185,7 +221,7 @@ class SendMessageUseCase
                         contentType = entity.contentType,
                         content = entity.contentBody.toByteArray(Charsets.UTF_8),
                         senderUserId = selfUserId,
-                        senderDeviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: 0,
+                        senderDeviceId = senderDeviceId ?: 0,
                     )
                 val plaintext = payload.encode()
                 recipients.flatMap { recipientId ->
