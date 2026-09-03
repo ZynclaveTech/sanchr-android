@@ -32,6 +32,7 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.datastore)
     implementation(projects.core.crypto)
+    implementation(projects.core.designsystem)
     implementation(projects.proto)
 
     implementation(libs.hilt.android)

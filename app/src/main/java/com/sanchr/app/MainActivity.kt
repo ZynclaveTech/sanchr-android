@@ -24,6 +24,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkManager
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
+import com.sanchr.app.navigation.PendingDestination
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
@@ -34,6 +35,7 @@ import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -56,6 +58,9 @@ class MainActivity : ComponentActivity() {
     lateinit var userPreferences: UserPreferences
 
     private val bootstrapViewModel: AppBootstrapViewModel by viewModels()
+
+    /** The destination a tapped notification wants to open, held until the session is active. */
+    private val pendingDestination = MutableStateFlow<PendingDestination?>(null)
 
     /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
@@ -87,7 +92,10 @@ class MainActivity : ComponentActivity() {
             val themeMode by userPreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
             SanchrTheme(darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme())) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    SanchrNavHost()
+                    SanchrNavHost(
+                        pendingDestination = pendingDestination,
+                        onPendingConsumed = { pendingDestination.value = null },
+                    )
                 }
             }
         }
@@ -174,9 +182,13 @@ class MainActivity : ComponentActivity() {
     /**
      * Called when the activity receives a new intent while already running
      * (e.g., user taps a notification while the app is in the foreground).
+     * Requires `android:launchMode="singleTop"` on this activity in the
+     * manifest -- without it, a notification tap while running would create
+     * a new activity instance instead of reaching this callback.
      */
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleNotificationIntent(intent)
     }
 
@@ -204,28 +216,21 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Inspects the intent extras set by [NotificationHandler] when the user
-     * taps a notification. Navigates to the appropriate screen.
+     * taps a notification and records the destination as pending. The nav
+     * host delivers it once the session is confirmed active (see
+     * [SanchrNavHost]) so a tap arriving before sign-in, or while the app is
+     * still resolving its start destination, never lands behind the auth flow.
      *
      * Extras handled:
      * - `conversationId` -- opens the chat detail screen
      * - `call_id` + `call_action` -- opens the call screen
      */
     private fun handleNotificationIntent(intent: android.content.Intent?) {
-        if (intent == null) return
-
-        val conversationId = intent.getStringExtra("conversationId")
-        if (conversationId != null) {
+        val destination = PendingDestination.fromIntent(intent) ?: return
+        if (destination is PendingDestination.Conversation) {
             // Clear notifications for this conversation since the user is navigating to it
-            notificationHandler.cancelNotificationsForConversation(conversationId)
-            // TODO: Navigate to conversation via NavController deep link
-            // navController.navigate("chat_detail/$conversationId")
+            notificationHandler.cancelNotificationsForConversation(destination.id)
         }
-
-        val callId = intent.getStringExtra("call_id")
-        val callAction = intent.getStringExtra("call_action")
-        if (callId != null) {
-            // TODO: Navigate to call screen
-            // navController.navigate("call/$callId?action=$callAction")
-        }
+        pendingDestination.value = destination
     }
 }
