@@ -84,4 +84,15 @@ enum class FailureClass {
      * will fail the same way.
      */
     UNTRUSTED_IDENTITY,
+
+    /**
+     * Outbound-only: [SendMessageUseCase] observed an encryption fan-out
+     * of more than 100 device messages for one sealed send — the server
+     * rejects a `SendSealedMessage` call over that limit with
+     * `INVALID_ARGUMENT`, and consumes the delivery token before it
+     * validates, so retrying the same oversized fan-out would burn a
+     * fresh token every attempt. The row is marked terminally FAILED
+     * before a token is ever acquired.
+     */
+    TOO_MANY_RECIPIENTS,
 }
