@@ -87,6 +87,10 @@ class ProtoSurfaceTest {
                 .setSilent(true)
                 .build()
         assertTrue(silent.silent)
+        // proto3 encodes field 5 (silent) as tag byte 0x28 = (5 << 3) | 0 (varint wire type),
+        // followed by the value 0x01. A mismatch here means the field number drifted from 5 —
+        // exactly the cross-platform corruption this test exists to catch.
+        assertEquals(listOf(0x28, 0x01), silent.toByteArray().toList().map { it.toInt() })
 
         val notSilent =
             Messaging.SealedDeviceMessage
@@ -94,6 +98,8 @@ class ProtoSurfaceTest {
                 .setSilent(false)
                 .build()
         assertFalse(notSilent.silent)
+        // proto3 omits default-valued fields from the wire entirely.
+        assertEquals(emptyList<Int>(), notSilent.toByteArray().toList().map { it.toInt() })
     }
 
     private fun hasMethod(
