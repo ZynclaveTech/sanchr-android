@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,9 +45,8 @@ import kotlinx.coroutines.delay
  *
  * Structurally mirrors the iOS animation sequence (ambient glow, logo spring,
  * wordmark + tagline fade-up, spinner). The logo uses the raster `sanchr_logo`
- * asset (96dp) to match `SplashView.swift:45-49`. The scene is always dark,
- * matching the iOS `preferredColorScheme(.dark)` directive, so the splash
- * looks identical in light and dark modes.
+ * asset (96dp) to match `SplashView.swift:45-49`. The ground follows the
+ * theme, like the iOS splash since 2026-09-03.
  *
  * Flow control: on first composition we race two paths:
  *
@@ -110,7 +110,7 @@ fun SplashScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SplashBackground),
+                .background(MaterialTheme.colorScheme.background),
     ) {
         Column(
             modifier =
@@ -159,7 +159,7 @@ fun SplashScreen(
 
             Text(
                 text = "Sanchr",
-                color = SplashTextPrimary,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.alpha(wordmarkAlpha),
@@ -167,7 +167,7 @@ fun SplashScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Encrypted. Synced. Secure.",
-                color = SplashTextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp,
                 modifier = Modifier.alpha(taglineAlpha),
             )
@@ -186,17 +186,12 @@ fun SplashScreen(
                 Text(
                     // iOS parity: literal three-dot ASCII ellipsis, not U+2026.
                     text = "Initializing secure connection...",
-                    color = SplashTextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                 )
             }
         }
     }
 }
-
-// Dark splash background matches iOS `Color(hex: 0x08080E)`.
-private val SplashBackground = Color(0xFF08080E)
-private val SplashTextPrimary = Color(0xFFF5F5F7)
-private val SplashTextSecondary = Color(0xFF9CA3AF)
 
 private const val SPLASH_DURATION_MS = 500L

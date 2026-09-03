@@ -17,6 +17,8 @@ import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.network.RefreshResult
+import com.sanchr.core.network.SessionRefresher
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
@@ -25,8 +27,6 @@ import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
-import com.sanchr.proto.auth.AuthServiceClient
-import com.sanchr.proto.auth.RefreshTokenRequest
 import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SyncRequest
@@ -65,7 +65,7 @@ class SyncWorker
         @Assisted appContext: Context,
         @Assisted params: WorkerParameters,
         private val messagingClient: MessagingServiceClient,
-        private val authClient: AuthServiceClient,
+        private val sessionRefresher: SessionRefresher,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val sessionManager: SessionManager,
         private val notificationHandler: NotificationHandler,
@@ -235,29 +235,8 @@ class SyncWorker
          */
         private suspend fun refreshTokenIfNeeded(): Boolean {
             val expiry = sessionManager.getTokenExpiry()
-            val now = System.currentTimeMillis()
-
-            // Token is still valid and not close to expiry
-            if (expiry > 0 && (expiry - now) > TOKEN_REFRESH_BUFFER_MS) {
-                return true
-            }
-
-            val refreshToken = sessionManager.getRefreshToken() ?: return false
-
-            return try {
-                val response =
-                    authClient.refreshToken(
-                        RefreshTokenRequest(refreshToken = refreshToken),
-                    )
-
-                val newExpiry = now + (response.expiresIn * 1000L)
-                sessionManager.updateAccessToken(response.accessToken, newExpiry)
-                Log.d(TAG, "Token refreshed, expires in ${response.expiresIn}s")
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Token refresh failed", e)
-                false
-            }
+            if (expiry > 0 && (expiry - System.currentTimeMillis()) > TOKEN_REFRESH_BUFFER_MS) return true
+            return sessionRefresher.refresh() == RefreshResult.Refreshed
         }
 
         // ------------------------------------------------------------------

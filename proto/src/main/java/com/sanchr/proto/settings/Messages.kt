@@ -44,13 +44,48 @@ data class UpdateProfileRequest(
     @SerialName("display_name") val displayName: String = "",
     val bio: String = "",
     @SerialName("avatar_url") val avatarUrl: String = "",
-)
+    /** Opaque short hash the server echoes so a peer can detect stale profile ciphertext. */
+    @SerialName("profile_key_version") val profileKeyVersion: ByteArray = ByteArray(0),
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is UpdateProfileRequest) return false
+        return displayName == other.displayName &&
+            bio == other.bio &&
+            avatarUrl == other.avatarUrl &&
+            profileKeyVersion.contentEquals(other.profileKeyVersion)
+    }
+
+    override fun hashCode(): Int {
+        var result = displayName.hashCode()
+        result = 31 * result + bio.hashCode()
+        result = 31 * result + avatarUrl.hashCode()
+        result = 31 * result + profileKeyVersion.contentHashCode()
+        return result
+    }
+}
 
 @Serializable
 data class ProfileResponse(
     val success: Boolean = false,
     @SerialName("avatar_url") val avatarUrl: String = "",
-)
+    @SerialName("profile_key_version") val profileKeyVersion: ByteArray = ByteArray(0),
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ProfileResponse) return false
+        return success == other.success &&
+            avatarUrl == other.avatarUrl &&
+            profileKeyVersion.contentEquals(other.profileKeyVersion)
+    }
+
+    override fun hashCode(): Int {
+        var result = success.hashCode()
+        result = 31 * result + avatarUrl.hashCode()
+        result = 31 * result + profileKeyVersion.contentHashCode()
+        return result
+    }
+}
 
 @Serializable
 data class ToggleSanchrModeRequest(

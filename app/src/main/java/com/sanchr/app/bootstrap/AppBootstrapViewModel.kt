@@ -3,6 +3,7 @@ package com.sanchr.app.bootstrap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.app.navigation.PendingDestination
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.datastore.SessionManager
@@ -54,6 +55,26 @@ class AppBootstrapViewModel
     ) : ViewModel() {
         private val _startDestination = MutableStateFlow<StartDestination>(StartDestination.Loading)
         val startDestination: StateFlow<StartDestination> = _startDestination.asStateFlow()
+
+        /**
+         * The destination a tapped notification wants to open, held until the
+         * session is confirmed active (see `com.sanchr.app.SanchrNavHost`).
+         *
+         * Lives here rather than as a field on `MainActivity` because a plain
+         * Activity field does not survive configuration changes: the manifest
+         * declares no `configChanges`, so rotation, a locale change, or the
+         * system dark/light setting flipping while the theme preference is
+         * System all destroy and recreate the Activity. A `ViewModel` obtained
+         * via `by viewModels()` survives that recreation, so a pending tap that
+         * arrived just before the flip is not silently forgotten.
+         */
+        private val _pendingDestination = MutableStateFlow<PendingDestination?>(null)
+        val pendingDestination: StateFlow<PendingDestination?> = _pendingDestination.asStateFlow()
+
+        /** Records (or clears, via `null`) the pending notification destination. */
+        fun setPendingDestination(destination: PendingDestination?) {
+            _pendingDestination.value = destination
+        }
 
         /**
          * Live authentication state. `SanchrNavHost` collects this to react to

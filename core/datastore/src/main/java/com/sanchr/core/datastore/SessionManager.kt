@@ -44,6 +44,7 @@ class SessionManager
             const val KEY_ACCOUNT_PASSWORD = "account_password"
             const val KEY_ACCOUNT_PHONE_E164 = "account_phone_e164"
             const val KEY_DISPLAY_NAME = "display_name"
+            const val KEY_FCM_TOKEN = "fcm_token"
         }
 
         private val masterKey: MasterKey by lazy {
@@ -280,6 +281,24 @@ class SessionManager
         }
 
         /**
+         * Stores a rotated token pair. The server rotates refresh tokens in
+         * families; keeping the old one would re-present a superseded token
+         * and, once its successor is used, revoke every device session.
+         */
+        fun updateTokens(
+            accessToken: String,
+            refreshToken: String,
+            expiresAtMillis: Long,
+        ) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_ACCESS_TOKEN, accessToken)
+                .putString(KEY_REFRESH_TOKEN, refreshToken)
+                .putLong(KEY_TOKEN_EXPIRY, expiresAtMillis)
+                .apply()
+        }
+
+        /**
          * Saves the device ID for push notification registration.
          */
         fun saveDeviceId(deviceId: String) {
@@ -287,6 +306,13 @@ class SessionManager
                 .edit()
                 .putString(KEY_DEVICE_ID, deviceId)
                 .apply()
+        }
+
+        /** Last FCM registration token the backend accepted; compared before re-uploading. */
+        fun getFcmToken(): String? = encryptedPrefs.getString(KEY_FCM_TOKEN, null)
+
+        fun saveFcmToken(token: String) {
+            encryptedPrefs.edit().putString(KEY_FCM_TOKEN, token).apply()
         }
 
         /**
@@ -322,6 +348,7 @@ class SessionManager
                 .remove(KEY_BACKUP_CONFIRMED_AT)
                 .remove(KEY_BACKUP_LAST_AT)
                 .remove(KEY_BACKUP_LAST_CONTENT_HASH)
+                .remove(KEY_FCM_TOKEN)
                 .commit()
             _isAuthenticated.value = false
         }

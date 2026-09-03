@@ -43,6 +43,7 @@ class SessionManagerClearSessionTest {
             "sender_certificate_b64",
             "account_password",
             "display_name",
+            "fcm_token",
         )
 
     private fun newSessionManagerWith(prefs: SharedPreferences): SessionManager {
@@ -78,6 +79,7 @@ class SessionManagerClearSessionTest {
         editor.putString("sender_certificate_b64", "sc")
         editor.putString("account_password", "p")
         editor.putString("display_name", "n")
+        editor.putString("fcm_token", "t")
         editor.apply()
 
         // Sanity: everything was written.

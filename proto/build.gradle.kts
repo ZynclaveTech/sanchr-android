@@ -67,6 +67,8 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
 }
 
 val syncProtos by tasks.registering(Exec::class) {

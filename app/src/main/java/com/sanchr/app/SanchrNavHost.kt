@@ -38,6 +38,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
+import com.sanchr.app.navigation.PendingDestination
 import com.sanchr.feature.auth.navigation.authGraph
 import com.sanchr.feature.calls.navigation.callsGraph
 import com.sanchr.feature.chats.navigation.chatsGraph
@@ -47,6 +48,7 @@ import com.sanchr.feature.onboarding.navigation.onboardingGraph
 import com.sanchr.feature.profile.navigation.profileGraph
 import com.sanchr.feature.settings.navigation.settingsGraph
 import com.sanchr.feature.vault.navigation.vaultGraph
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Top-level navigation destinations for the bottom bar.
@@ -85,6 +87,8 @@ enum class TopLevelDestination(
 
 @Composable
 fun SanchrNavHost(
+    pendingDestination: StateFlow<PendingDestination?>,
+    onPendingConsumed: () -> Unit,
     modifier: Modifier = Modifier,
     bootstrapViewModel: AppBootstrapViewModel = hiltViewModel(),
 ) {
@@ -119,6 +123,8 @@ fun SanchrNavHost(
             ResolvedNavHost(
                 startRoute = startRoute,
                 bootstrapViewModel = bootstrapViewModel,
+                pendingDestination = pendingDestination,
+                onPendingConsumed = onPendingConsumed,
                 modifier = modifier,
             )
         }
@@ -129,6 +135,8 @@ fun SanchrNavHost(
 private fun ResolvedNavHost(
     startRoute: String,
     bootstrapViewModel: AppBootstrapViewModel,
+    pendingDestination: StateFlow<PendingDestination?>,
+    onPendingConsumed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -158,6 +166,21 @@ private fun ResolvedNavHost(
                 }
             }
         }
+    }
+
+    // Deliver a notification-tap destination once the session is confirmed
+    // active AND onboarding is complete. A tap that arrives while signed out,
+    // before startup has resolved, or while the user is still mid-onboarding
+    // must not push a chat/call screen ahead of profile setup and contact
+    // sync -- so the pending value is held (not dropped) and this effect
+    // re-fires on every sessionActive/hasCompletedOnboarding change until it
+    // can be delivered.
+    val pending by pendingDestination.collectAsState()
+    LaunchedEffect(pending, sessionActive, hasCompletedOnboarding) {
+        val destination = pending ?: return@LaunchedEffect
+        if (!sessionActive || !hasCompletedOnboarding) return@LaunchedEffect
+        navController.navigate(destination.route) { launchSingleTop = true }
+        onPendingConsumed()
     }
 
     val topLevelDestinations = remember { TopLevelDestination.entries }
