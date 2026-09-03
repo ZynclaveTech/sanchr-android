@@ -13,7 +13,7 @@ commit that adds a release entry below.
 
 ### Changed
 - Protos resynced to backend `1305d39`: `GetUserProfiles`, `profile_key_version`, `current_pin`, `silent`; `profile_key` fields are reserved server-side.
-- The stored theme mode (System / Light / Dark) is applied at the activity root; the launch window and splash follow it.
+- The stored theme mode (System / Light / Dark) is applied at the activity root and re-themes the app live. The splash follows it. The launch window still follows the system setting, because Android draws that frame before any app code runs.
 - Launcher icon is the navy composition shared with iOS; the in-app mark is transparent.
 
 ### Fixed

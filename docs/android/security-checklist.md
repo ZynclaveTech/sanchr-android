@@ -102,6 +102,8 @@ release manager.
   `core/designsystem/src/main/java/com/sanchr/core/designsystem/component/SecureScreen.kt:22`
   applies the flag unconditionally. OTP screen unconditionally invokes
   `SecureScreen()` at `feature/auth/src/main/java/com/sanchr/feature/auth/OtpScreen.kt:78`.
+  Recovery-key reveal in ChatSettings also applies `SecureScreen()` at
+  `feature/settings/src/main/java/com/sanchr/feature/settings/ChatSettingsScreen.kt:242`.
 
 - [x] **8. ProGuard enabled + verified.**
   `app/build.gradle.kts:90-103` sets `isMinifyEnabled = true` and
@@ -168,6 +170,6 @@ release manager.
 
 ## Summary
 
-- **Checked:** 9 / 14 items (3, 5, 7, 8, 9, 10, 11, 12, 13, 14).
-- **Unchecked:** 5 items (1, 2, 4, 6). One is a BLOCKER (4 — passphrase not zeroed). The remaining four are release-gate follow-ups.
-- **BLOCKERS:** 1 (see top of document).
+- **Checked:** 11 / 14 items (3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14).
+- **Unchecked:** 3 items (1, 2, 6). These are release-gate follow-ups.
+- **Originally declared blockers:** Both (FLAG_SECURE on OTP + recovery-key screens; SQLCipher passphrase zeroed) are marked resolved.
