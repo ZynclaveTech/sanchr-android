@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
@@ -23,9 +24,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,13 +43,13 @@ class RealtimeManager
         private val sessionManager: SessionManager,
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
+        @ApplicationScope private val appScope: CoroutineScope,
     ) : DefaultLifecycleObserver {
         companion object {
             private const val TAG = "RealtimeManager"
             private const val BACKGROUND_DRAIN_DELAY_MS = 200L
         }
 
-        private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val outboundEvents = Channel<ClientEvent>(capacity = Channel.BUFFERED)
         private val _typingCache = MutableStateFlow<Map<String, TypingIndicator>>(emptyMap())
 
