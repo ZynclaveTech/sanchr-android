@@ -35,6 +35,13 @@ dependencies {
     implementation(projects.core.crypto)
     implementation(projects.core.datastore)
     implementation(projects.proto)
+    // SendReadReceiptUseCase builds a Messaging.ReceiptUpdate (the generated
+    // proto type) directly rather than a Kotlin DTO — see its class doc.
+    // The proto module's own protobuf-lite runtime dep is `implementation`,
+    // so it does not leak here transitively; core/network needs the same
+    // two lines for the same reason (see its build.gradle.kts).
+    implementation(libs.grpc.protobuf.lite)
+    implementation(libs.protobuf.kotlin.lite)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

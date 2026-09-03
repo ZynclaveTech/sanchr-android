@@ -140,6 +140,16 @@ class MessageRepositoryImpl
             conversationDao.markAsRead(conversationId)
         }
 
+        override suspend fun oneToOneRecipient(
+            conversationId: String,
+            selfUserId: String,
+        ): String? {
+            val conversation = conversationDao.getConversationById(conversationId) ?: return null
+            if (!conversation.type.equals("DIRECT", ignoreCase = true)) return null
+            val others = parseParticipantIds(conversation.participantIds).filter { it != selfUserId }
+            return others.singleOrNull()
+        }
+
         override suspend fun deleteMessage(
             messageId: String,
             forEveryone: Boolean,

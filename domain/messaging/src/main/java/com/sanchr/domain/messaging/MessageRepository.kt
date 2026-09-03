@@ -94,6 +94,23 @@ interface MessageRepository {
     /** Marks all messages in a conversation as read. */
     suspend fun markAsRead(conversationId: String)
 
+    /**
+     * Resolves the single other participant of a DIRECT conversation, for
+     * [SendReadReceiptUseCase] — a read receipt is 1:1 only. Returns null
+     * when [conversationId] does not exist, is a GROUP, or (anything else
+     * unexpected) does not have exactly one other participant. Mirrors
+     * iOS's `oneToOneReceiptPeerId`.
+     *
+     * Deliberately narrower than [getOutboundRecipients], which throws on
+     * zero remote participants and does not expose the conversation's
+     * type — neither behaviour suits a receipt, which must silently do
+     * nothing for a group or a conversation it can no longer resolve.
+     */
+    suspend fun oneToOneRecipient(
+        conversationId: String,
+        selfUserId: String,
+    ): String?
+
     /** Deletes a message locally (and requests remote deletion if own message). */
     suspend fun deleteMessage(
         messageId: String,
