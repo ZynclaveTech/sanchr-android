@@ -9,6 +9,7 @@ import dagger.Lazy
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -168,6 +169,14 @@ class ReceiveMessageUseCase
                 } catch (e: ProtocolUntrustedIdentityException) {
                     // Same treatment on the sealed-sender path.
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.UNTRUSTED_IDENTITY, e)
+                } catch (e: CancellationException) {
+                    // Must never be absorbed by the catch-all below — this
+                    // exact class of bug (a broad catch swallowing
+                    // CancellationException instead of rethrowing it) has
+                    // been fixed three times already on this project. It's
+                    // live here now that routeAndPersist's receipt handling
+                    // suspends on a repository call inside this same try.
+                    throw e
                 } catch (e: Exception) {
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.CRYPTO_OTHER, e)
                 }
@@ -280,7 +289,8 @@ class ReceiveMessageUseCase
          * deliberately left empty for a receipt by the sender (see
          * `SendReadReceiptUseCase`), so [ctx] must never be consulted here.
          *
-         * Never throws. Silently does nothing — and writes nothing — for a
+         * Never throws, except [CancellationException], which propagates
+         * unchanged. Silently does nothing — and writes nothing — for a
          * payload whose `content` fails to decode as a [Messaging.ReceiptUpdate],
          * carries a blank message id, or carries a status that does not
          * match a known [MessageStatus] name case-insensitively (`"read"`
@@ -291,10 +301,16 @@ class ReceiveMessageUseCase
          * write it to the message row — via [MessageRepository.applyReceiptStatus]
          * rather than a second, independent case-conversion.
          *
+         * [MessageRepository.applyReceiptStatus] itself is not guaranteed
+         * never to throw (e.g. a Room/SQLite failure) — that write is
+         * guarded here, logged, and swallowed, so a database hiccup can
+         * never be mistaken for a crypto failure and quarantine the
+         * envelope that decrypted and routed correctly.
+         *
          * The caller (`routeAndPersist`) acks the envelope unconditionally
          * after this returns, regardless of what happened here — an
-         * unrecognised or malformed receipt must never leave its envelope
-         * unacked, or the server redelivers it forever.
+         * unrecognised, malformed, or unwritable receipt must never leave
+         * its envelope unacked, or the server redelivers it forever.
          */
         private suspend fun applyReceiptUpdate(content: ByteArray) {
             val receipt =
@@ -312,7 +328,18 @@ class ReceiveMessageUseCase
                 Log.d(TAG, "receipt/v1 payload carried an unrecognised status '${receipt.status}'; ignoring")
                 return
             }
-            messageRepository.get().applyReceiptStatus(receipt.messageId, status)
+            try {
+                messageRepository.get().applyReceiptStatus(receipt.messageId, status)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A DB failure here must not stop the envelope from being
+                // acked (see routeAndPersist) — an unacked envelope is
+                // redelivered forever, and this write failing is not a
+                // reason to quarantine ciphertext that decrypted and
+                // routed correctly.
+                Log.w(TAG, "failed to apply receipt status for message ${receipt.messageId}", e)
+            }
         }
 
         /** Prefers [payloadValue] when non-blank; falls back to [envelopeValue] and logs at debug otherwise. */

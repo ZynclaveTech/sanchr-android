@@ -11,7 +11,9 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -478,6 +480,58 @@ class ReceiveMessageUseCaseTest {
                     messageId = "env-msg",
                     flushAckImmediately = true,
                 )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_a_status_write_failure_still_acks_and_returns_success() =
+        runTest {
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = receiptPlaintext(messageId = "inner-msg", status = "read"),
+                )
+            coEvery {
+                messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ)
+            } throws RuntimeException("SQLiteException: disk I/O error")
+
+            val result = useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            // An unacked envelope is redelivered forever — a status-write
+            // failure must never prevent the ack, and must never be
+            // mislabelled as a crypto failure (Quarantined).
+            assertTrue(result is EnvelopeDecryptResult.Success)
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
+                )
+            }
+        }
+
+    @Test
+    fun cancellation_from_apply_receipt_status_escapes_receive_rather_than_being_swallowed() =
+        runTest {
+            // This exact class of bug — a broad catch absorbing
+            // CancellationException instead of rethrowing it — has been
+            // fixed multiple times on this project already. Pinned
+            // directly rather than trusted by convention, so the guard
+            // added for the write-failure test above can never be widened
+            // into swallowing cancellation without this test going red.
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = receiptPlaintext(messageId = "inner-msg", status = "read"),
+                )
+            coEvery {
+                messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ)
+            } throws CancellationException("scope cancelled")
+
+            assertFailsWith<CancellationException> {
+                useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
             }
         }
 }

@@ -127,7 +127,13 @@ interface MessageRepository {
      *
      * A no-op if [messageId] does not name a row this device has (e.g. the
      * receipt named a message this device never persisted, or one deleted
-     * by a race). Never throws.
+     * by a race) — guaranteed by plain `UPDATE ... WHERE id = :messageId`
+     * semantics. The write itself is **not** guaranteed never to throw
+     * (e.g. a Room/SQLite failure): this method does not swallow that.
+     * [ReceiveMessageUseCase], the only caller today, guards its own call
+     * so a write failure here can never leave an envelope unacked; a future
+     * caller that needs the same "ack/complete regardless" property must
+     * guard its own call the same way.
      */
     suspend fun applyReceiptStatus(
         messageId: String,
