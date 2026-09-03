@@ -35,7 +35,6 @@ import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -58,9 +57,6 @@ class MainActivity : ComponentActivity() {
     lateinit var userPreferences: UserPreferences
 
     private val bootstrapViewModel: AppBootstrapViewModel by viewModels()
-
-    /** The destination a tapped notification wants to open, held until the session is active. */
-    private val pendingDestination = MutableStateFlow<PendingDestination?>(null)
 
     /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
@@ -93,8 +89,8 @@ class MainActivity : ComponentActivity() {
             SanchrTheme(darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme())) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     SanchrNavHost(
-                        pendingDestination = pendingDestination,
-                        onPendingConsumed = { pendingDestination.value = null },
+                        pendingDestination = bootstrapViewModel.pendingDestination,
+                        onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
                     )
                 }
             }
@@ -231,6 +227,6 @@ class MainActivity : ComponentActivity() {
             // Clear notifications for this conversation since the user is navigating to it
             notificationHandler.cancelNotificationsForConversation(destination.id)
         }
-        pendingDestination.value = destination
+        bootstrapViewModel.setPendingDestination(destination)
     }
 }
