@@ -19,6 +19,8 @@ import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.Conversation
 import com.sanchr.proto.messaging.DeleteMessageRequest
 import com.sanchr.proto.messaging.DeleteMessageResponse
+import com.sanchr.proto.messaging.DeliveryTokenRequest
+import com.sanchr.proto.messaging.DeliveryTokenResponse
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.GetConversationsResponse
@@ -27,6 +29,8 @@ import com.sanchr.proto.messaging.ReceiptRequest
 import com.sanchr.proto.messaging.ReceiptResponse
 import com.sanchr.proto.messaging.SendMessageRequest
 import com.sanchr.proto.messaging.SendMessageResponse
+import com.sanchr.proto.messaging.SendSealedMessageRequest
+import com.sanchr.proto.messaging.SendSealedMessageResponse
 import com.sanchr.proto.messaging.SenderCertificateRequest
 import com.sanchr.proto.messaging.SenderCertificateResponse
 import com.sanchr.proto.messaging.ServerEvent
@@ -416,5 +420,9 @@ class SealedSenderCipherTest {
         override suspend fun sendReceipt(request: ReceiptRequest): ReceiptResponse = error("not used")
 
         override suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse = error("not used")
+
+        override suspend fun getDeliveryTokens(request: DeliveryTokenRequest): DeliveryTokenResponse = error("not used")
+
+        override suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse = error("not used")
     }
 }
