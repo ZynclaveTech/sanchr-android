@@ -281,6 +281,24 @@ class SessionManager
         }
 
         /**
+         * Stores a rotated token pair. The server rotates refresh tokens in
+         * families; keeping the old one would re-present a superseded token
+         * and, once its successor is used, revoke every device session.
+         */
+        fun updateTokens(
+            accessToken: String,
+            refreshToken: String,
+            expiresAtMillis: Long,
+        ) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_ACCESS_TOKEN, accessToken)
+                .putString(KEY_REFRESH_TOKEN, refreshToken)
+                .putLong(KEY_TOKEN_EXPIRY, expiresAtMillis)
+                .apply()
+        }
+
+        /**
          * Saves the device ID for push notification registration.
          */
         fun saveDeviceId(deviceId: String) {
