@@ -22,6 +22,9 @@ import javax.inject.Singleton
  *
  * Methods listed in [UNAUTHENTICATED_METHODS] are skipped — no bearer token is
  * injected, since those endpoints are invoked precisely to obtain one.
+ *
+ * Methods listed in [AnonymousMethods] skip both headers — see that file for
+ * why a bearer token is not enough to withhold there.
  */
 @Singleton
 class AuthInterceptor
@@ -70,6 +73,7 @@ class AuthInterceptor
             next: Channel,
         ): ClientCall<ReqT, RespT> {
             val skipAuth = method.fullMethodName in UNAUTHENTICATED_METHODS
+            val anonymous = AnonymousMethods.isAnonymous(method.fullMethodName)
 
             return object : ForwardingClientCall.SimpleForwardingClientCall<ReqT, RespT>(
                 next.newCall(method, callOptions),
@@ -78,16 +82,18 @@ class AuthInterceptor
                     responseListener: Listener<RespT>,
                     headers: Metadata,
                 ) {
-                    if (!skipAuth) {
+                    if (!skipAuth && !anonymous) {
                         val token = currentToken()
                         if (token != null) {
                             headers.put(AUTH_METADATA_KEY, "Bearer $token")
                         }
                     }
 
-                    val deviceId = currentDeviceId()
-                    if (deviceId != null) {
-                        headers.put(DEVICE_ID_KEY, deviceId)
+                    if (!anonymous) {
+                        val deviceId = currentDeviceId()
+                        if (deviceId != null) {
+                            headers.put(DEVICE_ID_KEY, deviceId)
+                        }
                     }
 
                     super.start(responseListener, headers)
