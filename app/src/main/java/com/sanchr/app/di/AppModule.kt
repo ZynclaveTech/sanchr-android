@@ -1,36 +1,32 @@
 package com.sanchr.app.di
 
-import android.content.Context
 import com.sanchr.core.common.DispatcherProvider
-import com.sanchr.core.common.StandardDispatcherProvider
+import com.sanchr.core.common.di.ApplicationScope
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import javax.inject.Qualifier
-import javax.inject.Singleton
-
-@Qualifier
-@Retention(AnnotationRetention.BINARY)
-annotation class ApplicationScope
 
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
-    @Provides
-    @Singleton
-    fun provideDispatcherProvider(): DispatcherProvider = StandardDispatcherProvider()
-
+    /**
+     * Long-lived app-wide coroutine scope used by singleton observers that
+     * outlive any Activity (for example `NewMessageNotifier`). Backed by a
+     * [SupervisorJob] so one child failure does not cancel siblings; runs
+     * on the default dispatcher — callers should switch to IO themselves
+     * for blocking work.
+     *
+     * The `@ApplicationScope` qualifier lives in `:core:common` so
+     * downstream modules can inject this scope without depending on
+     * `:app`.
+     */
     @Provides
     @Singleton
     @ApplicationScope
-    fun provideApplicationScope(
-        dispatcherProvider: DispatcherProvider,
-    ): CoroutineScope = CoroutineScope(SupervisorJob() + dispatcherProvider.default)
-
-    // TODO: Provide app-level configuration (base URL, feature flags, etc.)
+    fun provideApplicationScope(dispatcherProvider: DispatcherProvider): CoroutineScope =
+        CoroutineScope(SupervisorJob() + dispatcherProvider.default)
 }

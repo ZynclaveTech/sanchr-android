@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.Flow
  * Generated stub equivalent for sanchr.calling.CallSignalingService.
  */
 interface CallSignalingServiceClient {
-
     suspend fun initiateCall(request: CallOffer): CallResponse
 
     /**
@@ -26,30 +25,26 @@ interface CallSignalingServiceClient {
 
 /**
  * Implementation shell that will delegate to the actual gRPC-generated stubs
- * once protobuf-gradle-plugin codegen runs.
+ * once the calling feature lands.
  */
 class CallSignalingServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : CallSignalingServiceClient {
+    // TODO(M6+): wire to CallSignalingServiceGrpcKt.CallSignalingServiceCoroutineStub when calling lands
+    override suspend fun initiateCall(request: CallOffer): CallResponse = throw NotImplementedError("Awaiting calling feature in M6+")
 
-    override suspend fun initiateCall(request: CallOffer): CallResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to CallSignalingServiceGrpcKt.CallSignalingServiceCoroutineStub when calling lands
+    override fun callStream(requests: Flow<CallSignal>): Flow<CallSignal> = throw NotImplementedError("Awaiting calling feature in M6+")
 
-    override fun callStream(requests: Flow<CallSignal>): Flow<CallSignal> {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to CallSignalingServiceGrpcKt.CallSignalingServiceCoroutineStub when calling lands
+    override suspend fun endCall(request: EndCallRequest): EndCallResponse = throw NotImplementedError("Awaiting calling feature in M6+")
 
-    override suspend fun endCall(request: EndCallRequest): EndCallResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to CallSignalingServiceGrpcKt.CallSignalingServiceCoroutineStub when calling lands
+    override suspend fun getCallHistory(request: GetCallHistoryRequest): GetCallHistoryResponse =
+        throw NotImplementedError("Awaiting calling feature in M6+")
 
-    override suspend fun getCallHistory(request: GetCallHistoryRequest): GetCallHistoryResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
-
-    override suspend fun getTurnCredentials(request: GetTurnCredentialsRequest): TurnCredentials {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to CallSignalingServiceGrpcKt.CallSignalingServiceCoroutineStub when calling lands
+    override suspend fun getTurnCredentials(request: GetTurnCredentialsRequest): TurnCredentials =
+        throw NotImplementedError("Awaiting calling feature in M6+")
 }

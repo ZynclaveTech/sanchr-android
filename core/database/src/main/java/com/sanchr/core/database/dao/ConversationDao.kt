@@ -10,13 +10,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ConversationDao {
-
     @Query(
         """
         SELECT * FROM conversations
         WHERE is_archived = 0
         ORDER BY is_pinned DESC, updated_at DESC
-        """
+        """,
     )
     fun observeConversations(): Flow<List<ConversationEntity>>
 
@@ -25,7 +24,7 @@ interface ConversationDao {
         SELECT * FROM conversations
         WHERE is_archived = 1
         ORDER BY updated_at DESC
-        """
+        """,
     )
     fun observeArchivedConversations(): Flow<List<ConversationEntity>>
 
@@ -51,13 +50,22 @@ interface ConversationDao {
     suspend fun markAsRead(conversationId: String)
 
     @Query("UPDATE conversations SET is_pinned = :isPinned WHERE id = :conversationId")
-    suspend fun setPinned(conversationId: String, isPinned: Boolean)
+    suspend fun setPinned(
+        conversationId: String,
+        isPinned: Boolean,
+    )
 
     @Query("UPDATE conversations SET is_muted = :isMuted WHERE id = :conversationId")
-    suspend fun setMuted(conversationId: String, isMuted: Boolean)
+    suspend fun setMuted(
+        conversationId: String,
+        isMuted: Boolean,
+    )
 
     @Query("UPDATE conversations SET is_archived = :isArchived WHERE id = :conversationId")
-    suspend fun setArchived(conversationId: String, isArchived: Boolean)
+    suspend fun setArchived(
+        conversationId: String,
+        isArchived: Boolean,
+    )
 
     @Query("DELETE FROM conversations WHERE id = :conversationId")
     suspend fun deleteConversation(conversationId: String)

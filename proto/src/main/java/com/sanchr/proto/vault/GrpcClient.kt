@@ -8,7 +8,6 @@ import io.grpc.Channel
  * Generated stub equivalent for sanchr.vault.VaultService.
  */
 interface VaultServiceClient {
-
     suspend fun getVaultItems(request: GetVaultItemsRequest): GetVaultItemsResponse
 
     suspend fun createVaultItem(request: CreateVaultItemRequest): VaultItem
@@ -20,26 +19,25 @@ interface VaultServiceClient {
 
 /**
  * Implementation shell that will delegate to the actual gRPC-generated stubs
- * once protobuf-gradle-plugin codegen runs.
+ * once the vault feature lands.
  */
 class VaultServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : VaultServiceClient {
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
+    override suspend fun getVaultItems(request: GetVaultItemsRequest): GetVaultItemsResponse =
+        throw NotImplementedError("Awaiting vault feature in M6+")
 
-    override suspend fun getVaultItems(request: GetVaultItemsRequest): GetVaultItemsResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
+    override suspend fun createVaultItem(request: CreateVaultItemRequest): VaultItem =
+        throw NotImplementedError("Awaiting vault feature in M6+")
 
-    override suspend fun createVaultItem(request: CreateVaultItemRequest): VaultItem {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
+    override suspend fun deleteVaultItem(request: DeleteVaultItemRequest): DeleteVaultItemResponse =
+        throw NotImplementedError("Awaiting vault feature in M6+")
 
-    override suspend fun deleteVaultItem(request: DeleteVaultItemRequest): DeleteVaultItemResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
-
-    override suspend fun shareVaultItem(request: ShareVaultItemRequest): ShareVaultItemResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to VaultServiceGrpcKt.VaultServiceCoroutineStub when vault lands
+    override suspend fun shareVaultItem(request: ShareVaultItemRequest): ShareVaultItemResponse =
+        throw NotImplementedError("Awaiting vault feature in M6+")
 }

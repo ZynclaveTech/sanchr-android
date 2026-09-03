@@ -22,7 +22,6 @@ import javax.crypto.spec.SecretKeySpec
  * take explicit key material as parameters.
  */
 object MediaEncryptor {
-
     private const val ALGORITHM = "AES/GCM/NoPadding"
     private const val AES_KEY_SIZE = 256
     private const val GCM_NONCE_LENGTH = 12
@@ -45,7 +44,10 @@ object MediaEncryptor {
      * @param key The 32-byte AES key.
      * @return [EncryptedMediaResult] containing ciphertext, nonce, and GCM tag.
      */
-    fun encrypt(data: ByteArray, key: ByteArray): EncryptedMediaResult {
+    fun encrypt(
+        data: ByteArray,
+        key: ByteArray,
+    ): EncryptedMediaResult {
         require(key.size == 32) { "AES key must be 32 bytes, got ${key.size}" }
 
         val nonce = ByteArray(GCM_NONCE_LENGTH).also { SecureRandom().nextBytes(it) }
@@ -75,7 +77,11 @@ object MediaEncryptor {
      * @param nonce The 12-byte GCM nonce used during encryption.
      * @return The decrypted plaintext.
      */
-    fun decrypt(ciphertext: ByteArray, key: ByteArray, nonce: ByteArray): ByteArray {
+    fun decrypt(
+        ciphertext: ByteArray,
+        key: ByteArray,
+        nonce: ByteArray,
+    ): ByteArray {
         require(key.size == 32) { "AES key must be 32 bytes, got ${key.size}" }
         require(nonce.size == GCM_NONCE_LENGTH) { "Nonce must be $GCM_NONCE_LENGTH bytes" }
 

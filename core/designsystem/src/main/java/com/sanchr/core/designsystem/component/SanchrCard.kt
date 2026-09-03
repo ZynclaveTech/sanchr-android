@@ -25,24 +25,28 @@ fun SanchrCard(
             onClick = onClick,
             modifier = modifier.fillMaxWidth(),
             shape = SanchrShapeTokens.CornerLarge,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 1.dp,
-            ),
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            elevation =
+                CardDefaults.cardElevation(
+                    defaultElevation = 1.dp,
+                ),
             content = content,
         )
     } else {
         Card(
             modifier = modifier.fillMaxWidth(),
             shape = SanchrShapeTokens.CornerLarge,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 1.dp,
-            ),
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            elevation =
+                CardDefaults.cardElevation(
+                    defaultElevation = 1.dp,
+                ),
             content = content,
         )
     }
@@ -57,33 +61,38 @@ fun SanchrElevatedCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val cardModifier = modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp)
+    val cardModifier =
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
 
     if (onClick != null) {
         Card(
             onClick = onClick,
             modifier = cardModifier,
             shape = SanchrShapeTokens.CornerLarge,
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
-            elevation = CardDefaults.elevatedCardElevation(
-                defaultElevation = 4.dp,
-            ),
+            colors =
+                CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            elevation =
+                CardDefaults.elevatedCardElevation(
+                    defaultElevation = 4.dp,
+                ),
             content = content,
         )
     } else {
         Card(
             modifier = cardModifier,
             shape = SanchrShapeTokens.CornerLarge,
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            ),
-            elevation = CardDefaults.elevatedCardElevation(
-                defaultElevation = 4.dp,
-            ),
+            colors =
+                CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            elevation =
+                CardDefaults.elevatedCardElevation(
+                    defaultElevation = 4.dp,
+                ),
             content = content,
         )
     }

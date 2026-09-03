@@ -8,10 +8,11 @@ object BackupArchive {
     const val FORMAT_VERSION: Int = 1
     const val AUTOMATIC_BACKUP_INTERVAL_MS: Long = 6 * 60 * 60 * 1000L
 
-    val json: Json = Json {
-        encodeDefaults = true
-        ignoreUnknownKeys = true
-    }
+    val json: Json =
+        Json {
+            encodeDefaults = true
+            ignoreUnknownKeys = true
+        }
 }
 
 enum class BackupFrameType {
@@ -47,12 +48,13 @@ data class BackupArchiveSnapshot(
     val vaultItems: List<BackupArchiveVaultItemFrame>,
 ) {
     val counts: BackupArchiveRecordCounts
-        get() = BackupArchiveRecordCounts(
-            contacts = contacts.size,
-            conversations = conversations.size,
-            messages = messages.size,
-            vaultItems = vaultItems.size,
-        )
+        get() =
+            BackupArchiveRecordCounts(
+                contacts = contacts.size,
+                conversations = conversations.size,
+                messages = messages.size,
+                vaultItems = vaultItems.size,
+            )
 }
 
 @Serializable
@@ -180,29 +182,32 @@ data class BackupArchiveVaultItemFrame(
 
 object BackupArchiveSerializer {
     fun serialize(snapshot: BackupArchiveSnapshot): ByteArray {
-        val lines = buildList {
-            add(BackupArchive.json.encodeToString(BackupArchiveInfoFrame.serializer(), snapshot.info))
-            snapshot.contacts.forEach {
-                add(BackupArchive.json.encodeToString(BackupArchiveContactFrame.serializer(), it))
+        val lines =
+            buildList {
+                add(BackupArchive.json.encodeToString(BackupArchiveInfoFrame.serializer(), snapshot.info))
+                snapshot.contacts.forEach {
+                    add(BackupArchive.json.encodeToString(BackupArchiveContactFrame.serializer(), it))
+                }
+                snapshot.conversations.forEach {
+                    add(BackupArchive.json.encodeToString(BackupArchiveConversationFrame.serializer(), it))
+                }
+                snapshot.messages.forEach {
+                    add(BackupArchive.json.encodeToString(BackupArchiveMessageFrame.serializer(), it))
+                }
+                snapshot.vaultItems.forEach {
+                    add(BackupArchive.json.encodeToString(BackupArchiveVaultItemFrame.serializer(), it))
+                }
             }
-            snapshot.conversations.forEach {
-                add(BackupArchive.json.encodeToString(BackupArchiveConversationFrame.serializer(), it))
-            }
-            snapshot.messages.forEach {
-                add(BackupArchive.json.encodeToString(BackupArchiveMessageFrame.serializer(), it))
-            }
-            snapshot.vaultItems.forEach {
-                add(BackupArchive.json.encodeToString(BackupArchiveVaultItemFrame.serializer(), it))
-            }
-        }
         return (lines.joinToString("\n", postfix = "\n")).encodeToByteArray()
     }
 
     fun deserialize(data: ByteArray): BackupArchiveSnapshot {
-        val lines = data.decodeToString()
-            .lineSequence()
-            .filter { it.isNotBlank() }
-            .toList()
+        val lines =
+            data
+                .decodeToString()
+                .lineSequence()
+                .filter { it.isNotBlank() }
+                .toList()
 
         var info: BackupArchiveInfoFrame? = null
         val contacts = mutableListOf<BackupArchiveContactFrame>()
@@ -214,22 +219,30 @@ object BackupArchiveSerializer {
             val probe = BackupArchive.json.decodeFromString(BackupFrameProbe.serializer(), line)
             when (probe.type) {
                 "info" -> info = BackupArchive.json.decodeFromString(BackupArchiveInfoFrame.serializer(), line)
-                "contact" -> contacts += BackupArchive.json.decodeFromString(
-                    BackupArchiveContactFrame.serializer(),
-                    line,
-                )
-                "conversation" -> conversations += BackupArchive.json.decodeFromString(
-                    BackupArchiveConversationFrame.serializer(),
-                    line,
-                )
-                "message" -> messages += BackupArchive.json.decodeFromString(
-                    BackupArchiveMessageFrame.serializer(),
-                    line,
-                )
-                "vault_item" -> vaultItems += BackupArchive.json.decodeFromString(
-                    BackupArchiveVaultItemFrame.serializer(),
-                    line,
-                )
+                "contact" ->
+                    contacts +=
+                        BackupArchive.json.decodeFromString(
+                            BackupArchiveContactFrame.serializer(),
+                            line,
+                        )
+                "conversation" ->
+                    conversations +=
+                        BackupArchive.json.decodeFromString(
+                            BackupArchiveConversationFrame.serializer(),
+                            line,
+                        )
+                "message" ->
+                    messages +=
+                        BackupArchive.json.decodeFromString(
+                            BackupArchiveMessageFrame.serializer(),
+                            line,
+                        )
+                "vault_item" ->
+                    vaultItems +=
+                        BackupArchive.json.decodeFromString(
+                            BackupArchiveVaultItemFrame.serializer(),
+                            line,
+                        )
             }
         }
 

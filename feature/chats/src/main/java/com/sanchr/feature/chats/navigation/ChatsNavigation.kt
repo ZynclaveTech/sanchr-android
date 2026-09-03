@@ -26,19 +26,20 @@ fun NavGraphBuilder.chatsGraph(navController: NavController) {
                 onConversationClick = { conversationId ->
                     navController.navigate("chats/detail/$conversationId")
                 },
-                onNewChat = {
-                    // TODO: Navigate to contact picker for new conversation
+                onOpenConversation = { conversationId ->
+                    navController.navigate("chats/detail/$conversationId")
                 },
             )
         }
 
         composable(
             route = CHAT_DETAIL_ROUTE,
-            arguments = listOf(
-                navArgument("conversationId") {
-                    type = NavType.StringType
-                },
-            ),
+            arguments =
+                listOf(
+                    navArgument("conversationId") {
+                        type = NavType.StringType
+                    },
+                ),
         ) { backStackEntry ->
             val conversationId = backStackEntry.arguments?.getString("conversationId") ?: ""
             ChatDetailScreen(

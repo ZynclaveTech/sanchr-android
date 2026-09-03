@@ -1,61 +1,33 @@
 package com.sanchr.core.notifications
 
-import com.google.firebase.messaging.RemoteMessage
-
 /**
- * Typed representation of an incoming FCM push payload.
+ * Wake-only FCM push payload.
  *
- * The backend sends all fields as string key-value pairs in the data payload
- * (not the notification payload) so the app retains full control over display.
+ * Phase C enforces the M3 metadata-privacy rule that FCM data payloads must
+ * carry **no** message content, sender identity, conversation id, or badge
+ * count — every inbound push is a bare "wake up and drain your Subscribe
+ * stream" signal. Notifications are rendered later by [NewMessageNotifier]
+ * from the decrypted local DB row, never from FCM data.
+ *
+ * Only [type] and an optional [hint] (opaque, server-chosen; e.g. "message"
+ * vs "call" — used purely for drain prioritisation, never displayed) are
+ * consumed by the app. Any other field on the FCM payload is ignored.
  */
 data class PushPayload(
     val type: String,
-    val conversationId: String?,
-    val senderId: String?,
-    val senderName: String?,
-    val messagePreview: String?,
-    val callId: String?,
-    val callType: String?,
-    val badge: Int?,
-    val title: String?,
-    val body: String?,
+    val hint: String? = null,
 ) {
     companion object {
-        const val TYPE_MESSAGE = "message"
-        const val TYPE_CALL = "call"
-        const val TYPE_SYSTEM = "system"
+        const val TYPE_WAKE = "wake"
 
         private const val KEY_TYPE = "type"
-        private const val KEY_CONVERSATION_ID = "conversation_id"
-        private const val KEY_SENDER_ID = "sender_id"
-        private const val KEY_SENDER_NAME = "sender_name"
-        private const val KEY_MESSAGE_PREVIEW = "message_preview"
-        private const val KEY_CALL_ID = "call_id"
-        private const val KEY_CALL_TYPE = "call_type"
-        private const val KEY_BADGE = "badge"
-        private const val KEY_TITLE = "title"
-        private const val KEY_BODY = "body"
+        private const val KEY_HINT = "hint"
 
         /**
-         * Parses a [RemoteMessage] data map into a [PushPayload].
-         *
-         * If the message contains a notification body (sent from Firebase console, for example)
-         * it is merged into the payload title/body fields as a fallback.
+         * Builds a [PushPayload] from an FCM data map, or returns `null` if
+         * the payload lacks a `type` field (malformed / legacy).
          */
-        fun fromRemoteMessage(message: RemoteMessage): PushPayload {
-            val data = message.data
-            return PushPayload(
-                type = data[KEY_TYPE] ?: TYPE_SYSTEM,
-                conversationId = data[KEY_CONVERSATION_ID],
-                senderId = data[KEY_SENDER_ID],
-                senderName = data[KEY_SENDER_NAME],
-                messagePreview = data[KEY_MESSAGE_PREVIEW],
-                callId = data[KEY_CALL_ID],
-                callType = data[KEY_CALL_TYPE],
-                badge = data[KEY_BADGE]?.toIntOrNull(),
-                title = data[KEY_TITLE] ?: message.notification?.title,
-                body = data[KEY_BODY] ?: message.notification?.body,
-            )
-        }
+        fun fromData(data: Map<String, String>): PushPayload? =
+            data[KEY_TYPE]?.let { type -> PushPayload(type = type, hint = data[KEY_HINT]) }
     }
 }

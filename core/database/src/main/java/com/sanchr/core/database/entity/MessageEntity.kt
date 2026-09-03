@@ -20,39 +20,45 @@ import androidx.room.PrimaryKey
         Index(value = ["conversation_id", "timestamp"]),
         Index(value = ["sender_id"]),
         Index(value = ["status"]),
+        Index(value = ["status", "last_attempt_at"]),
     ],
 )
 data class MessageEntity(
     @PrimaryKey
     val id: String,
-
     @ColumnInfo(name = "conversation_id")
     val conversationId: String,
-
     @ColumnInfo(name = "sender_id")
     val senderId: String,
-
     @ColumnInfo(name = "content_type")
     val contentType: String, // "text", "image", "voice", "file", "location"
-
     @ColumnInfo(name = "content_body")
     val contentBody: String, // Encrypted content or JSON payload
-
     @ColumnInfo(name = "status")
     val status: String, // MessageStatus enum name
-
     @ColumnInfo(name = "timestamp")
     val timestamp: Long, // Epoch millis
-
     @ColumnInfo(name = "edited_at")
     val editedAt: Long? = null,
-
     @ColumnInfo(name = "reply_to_id")
     val replyToId: String? = null,
-
     @ColumnInfo(name = "expires_at")
     val expiresAt: Long? = null,
-
     @ColumnInfo(name = "is_deleted")
     val isDeleted: Boolean = false,
+    @ColumnInfo(name = "attempts", defaultValue = "0")
+    val attempts: Int = 0,
+    @ColumnInfo(name = "last_attempt_at")
+    val lastAttemptAt: Long? = null,
+    @ColumnInfo(name = "failure_reason")
+    val failureReason: String? = null,
+    /**
+     * Canonical failure taxonomy name (see
+     * `com.sanchr.domain.messaging.FailureClass`). Stored as a string to keep
+     * the DB schema independent of enum ordering. Null while the row is in a
+     * non-terminal state. Drives the distinct UI icon per failure class
+     * (e.g. `UNTRUSTED_IDENTITY` → safety-number warning vs generic error).
+     */
+    @ColumnInfo(name = "failure_class")
+    val failureClass: String? = null,
 )

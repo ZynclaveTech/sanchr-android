@@ -17,92 +17,118 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sanchr.core.designsystem.component.CountryCodePicker
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextButton
-import com.sanchr.core.designsystem.theme.SanchrGradients
+import com.sanchr.core.designsystem.component.findCountryByDialCode
+import com.sanchr.core.designsystem.component.resolveDefaultCountry
+import com.sanchr.core.designsystem.theme.SanchrGray400
+import com.sanchr.core.designsystem.theme.SanchrGray500
+import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo100
 import com.sanchr.core.designsystem.theme.SanchrIndigo400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
-import com.sanchr.core.designsystem.theme.SanchrGray400
-import com.sanchr.core.designsystem.theme.SanchrGray500
-import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWhite
 
+/**
+ * Phone-entry step of the onboarding flow. Observes [AuthViewModel.state] and
+ * renders UI keyed off [AuthState.PhoneEntry]; any other state means the host
+ * navigation observer has already moved the flow forward, so the screen shows
+ * nothing (the NavHost will swap it out immediately).
+ */
 @Composable
 fun LoginScreen(
-    onNavigateToOtp: (String) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: LoginViewModel = hiltViewModel(),
+    viewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // One-shot device-locale resolution. Memoized by Context so config
+    // changes (theme etc.) don't thrash the TelephonyManager lookup.
+    val deviceDefault = remember(context) { resolveDefaultCountry(context) }
 
-    val phoneNumber = when (uiState) {
-        is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).phoneNumber
-        is LoginUiState.Error -> (uiState as LoginUiState.Error).phoneNumber
-        else -> ""
+    // Resolve the PhoneEntry snapshot we need to render. If the current state is an
+    // Error whose previousState is PhoneEntry, we render that PhoneEntry + inline
+    // error so the user can fix and retry.
+    val phoneEntry: AuthState.PhoneEntry =
+        when (val s = state) {
+            is AuthState.PhoneEntry -> s
+            is AuthState.Error -> s.previousState as? AuthState.PhoneEntry ?: return
+            else -> return // NavHost will navigate away; render nothing to avoid flicker.
+        }
+
+    // Seed the VM's country code from the device SIM/network on first
+    // composition, but only if the user hasn't typed yet AND the current
+    // country is still the PhoneEntry default "+1" (US). This avoids
+    // stomping a user-selected country on screen rotation.
+    LaunchedEffect(deviceDefault.dialCode) {
+        if (phoneEntry.phone.isEmpty() &&
+            phoneEntry.countryCode == "+1" &&
+            deviceDefault.dialCode != "+1"
+        ) {
+            viewModel.onPhoneChanged(deviceDefault.dialCode, "")
+        }
     }
-    val countryCode = when (uiState) {
-        is LoginUiState.PhoneInput -> (uiState as LoginUiState.PhoneInput).countryCode
-        is LoginUiState.Error -> (uiState as LoginUiState.Error).countryCode
-        else -> "+1"
-    }
-    val errorMessage = (uiState as? LoginUiState.Error)?.message
-    val isLoading = uiState is LoginUiState.Loading
-    val isValid = (uiState as? LoginUiState.PhoneInput)?.isValid ?: false
+
+    // Resolve the Country to display in the picker pill. Prefer an exact
+    // single match on dial code; fall back to the device default when the
+    // dial code is shared (e.g. "+1" covers US and CA).
+    val selectedCountry =
+        findCountryByDialCode(phoneEntry.countryCode)
+            ?: deviceDefault.takeIf { it.dialCode == phoneEntry.countryCode }
+            ?: deviceDefault
+
+    val errorMessage = (state as? AuthState.Error)?.message
 
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SanchrTheme.spacing.xl)
-                .imePadding(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SanchrTheme.spacing.xl)
+                    .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.massive))
 
-            // --- Sanchr logo: purple chat bubble + shield icon ---
             Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(SanchrShapeTokens.CornerExtraLarge)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(SanchrIndigo500, SanchrIndigo400),
+                modifier =
+                    Modifier
+                        .size(80.dp)
+                        .clip(SanchrShapeTokens.CornerExtraLarge)
+                        .background(
+                            Brush.linearGradient(colors = listOf(SanchrIndigo500, SanchrIndigo400)),
                         ),
-                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -115,16 +141,16 @@ fun LoginScreen(
                     imageVector = Icons.Filled.Shield,
                     contentDescription = "Sanchr logo",
                     tint = SanchrWhite.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .size(20.dp)
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 4.dp, end = 4.dp),
+                    modifier =
+                        Modifier
+                            .size(20.dp)
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 4.dp, end = 4.dp),
                 )
             }
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // --- Title ---
             Text(
                 text = "Welcome to Sanchr",
                 style = MaterialTheme.typography.headlineMedium,
@@ -134,7 +160,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
-            // --- Subtitle ---
             Text(
                 text = "Encrypted. Synced. Secure.",
                 style = MaterialTheme.typography.bodyLarge,
@@ -143,66 +168,59 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // --- Phone number input with country code ---
             OutlinedTextField(
-                value = phoneNumber,
-                onValueChange = viewModel::onPhoneNumberChanged,
+                value = phoneEntry.phone,
+                onValueChange = { viewModel.onPhoneChanged(phoneEntry.countryCode, it) },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Phone number") },
                 placeholder = { Text("Enter your phone number") },
                 leadingIcon = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 12.dp),
+                        modifier = Modifier.padding(start = 8.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Public,
-                            contentDescription = "Country",
-                            tint = SanchrGray500,
-                            modifier = Modifier.size(20.dp),
+                        CountryCodePicker(
+                            selected = selectedCountry,
+                            onSelected = { country ->
+                                viewModel.onPhoneChanged(country.dialCode, phoneEntry.phone)
+                            },
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = countryCode,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                        )
                     }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true,
                 isError = errorMessage != null,
-                supportingText = if (errorMessage != null) {
-                    {
-                        Text(
-                            text = errorMessage,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                } else {
-                    {
-                        Text(
-                            text = "We'll send you a verification code",
-                            color = SanchrGray400,
-                        )
-                    }
-                },
+                supportingText =
+                    if (errorMessage != null) {
+                        {
+                            Text(
+                                text = errorMessage,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } else {
+                        {
+                            Text(
+                                text = "We'll send you a verification code",
+                                color = SanchrGray400,
+                            )
+                        }
+                    },
                 shape = SanchrShapeTokens.CornerMedium,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SanchrIndigo500,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                ),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SanchrIndigo500,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.lg))
 
-            // --- E2EE info card ---
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = SanchrShapeTokens.CornerMedium,
-                colors = CardDefaults.cardColors(
-                    containerColor = SanchrIndigo100,
-                ),
+                colors = CardDefaults.cardColors(containerColor = SanchrIndigo100),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Row(
@@ -235,105 +253,27 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // --- Gradient "Continue" button ---
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .clip(SanchrShapeTokens.CornerFull)
-                    .background(
-                        brush = if (!isLoading && (isValid || phoneNumber.length >= 7)) {
-                            SanchrGradients.Primary
-                        } else {
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    SanchrGray400.copy(alpha = 0.5f),
-                                    SanchrGray400.copy(alpha = 0.5f),
-                                ),
-                            )
-                        },
-                    ),
-            ) {
-                SanchrButton(
-                    onClick = { viewModel.requestOtp(onNavigateToOtp) },
-                    enabled = !isLoading && (isValid || phoneNumber.length >= 7),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = SanchrWhite,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = if (isLoading) "Sending..." else "Continue  \u2192",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = SanchrWhite,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
-
-            // --- "Or connect with" divider ---
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-                Text(
-                    text = "  Or connect with  ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = SanchrGray400,
-                )
-                HorizontalDivider(
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
-
-            // --- Google + Apple sign-in buttons ---
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
-            ) {
-                OutlinedButton(
-                    onClick = { /* TODO: Google sign-in */ },
-                    modifier = Modifier.weight(1f),
-                    shape = SanchrShapeTokens.CornerFull,
-                ) {
-                    Text(
-                        text = "Google",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = { /* TODO: Apple sign-in */ },
-                    modifier = Modifier.weight(1f),
-                    shape = SanchrShapeTokens.CornerFull,
-                ) {
-                    Text(
-                        text = "Apple",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-            }
+            SanchrButton(
+                text = "Continue",
+                onClick = {
+                    if (state is AuthState.Error) viewModel.retry()
+                    viewModel.submitPhone()
+                },
+                enabled = phoneEntry.phone.length >= 7,
+                isLoading = false,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+            )
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // --- Privacy Policy / Terms links ---
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = SanchrTheme.spacing.xl),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = SanchrTheme.spacing.xl),
                 horizontalArrangement = Arrangement.Center,
             ) {
                 SanchrTextButton(onClick = { /* TODO: Open Privacy Policy */ }) {

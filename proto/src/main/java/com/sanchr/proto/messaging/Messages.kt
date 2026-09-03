@@ -43,17 +43,6 @@ sealed interface ClientEvent {
         val userId: String = "",
         val isTyping: Boolean = false,
     ) : ClientEvent
-
-    data class Receipt(
-        val conversationId: String = "",
-        val messageId: String = "",
-        val status: String = "delivered",
-    ) : ClientEvent
-
-    data class Heartbeat(
-        val deviceState: DevicePresenceState = DevicePresenceState.DEVICE_STATE_UNSPECIFIED,
-        val sentAtMs: Long = 0L,
-    ) : ClientEvent
 }
 
 sealed interface ServerEvent {
@@ -69,10 +58,6 @@ sealed interface ServerEvent {
         val update: ReceiptUpdate? = null,
     ) : ServerEvent
 
-    data class Presence(
-        val update: PresenceUpdate? = null,
-    ) : ServerEvent
-
     data class PreKeyCountLow(
         val info: com.sanchr.proto.messaging.PreKeyCountLow? = null,
     ) : ServerEvent
@@ -86,6 +71,19 @@ sealed interface ServerEvent {
     ) : ServerEvent
 }
 
+/**
+ * Wire-level discriminator for inbound envelopes on the `SyncMessages`
+ * stream. Prior to this field, the client disambiguated sealed-sender
+ * envelopes from the legacy sentinel (`contentType == "sealed"` and/or
+ * nil sender). That sentinel is still honored in the drain worker as a
+ * rollout safety net when `UNSPECIFIED` is seen.
+ */
+enum class EnvelopeKind {
+    UNSPECIFIED,
+    NORMAL,
+    SEALED,
+}
+
 data class EncryptedEnvelope(
     val conversationId: String = "",
     val messageId: String = "",
@@ -94,6 +92,7 @@ data class EncryptedEnvelope(
     val cipherText: ByteArray = ByteArray(0),
     val contentType: String = "",
     val serverTimestamp: Long = 0L,
+    val envelopeKind: EnvelopeKind = EnvelopeKind.UNSPECIFIED,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -209,14 +208,6 @@ data class GetConversationsResponse(
     val conversations: List<Conversation> = emptyList(),
 )
 
-data class GetPresenceSnapshotRequest(
-    val userIds: List<String> = emptyList(),
-)
-
-data class GetPresenceSnapshotResponse(
-    val users: List<PresenceUpdate> = emptyList(),
-)
-
 data class Conversation(
     val id: String = "",
     val type: String = "direct",
@@ -238,3 +229,20 @@ data class Participant(
     val displayName: String = "",
     val avatarUrl: String = "",
 )
+
+data class SenderCertificateRequest(
+    val placeholder: Unit = Unit,
+)
+
+data class SenderCertificateResponse(
+    val certificate: ByteArray = ByteArray(0),
+    val expiration: Long = 0L,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SenderCertificateResponse) return false
+        return certificate.contentEquals(other.certificate) && expiration == other.expiration
+    }
+
+    override fun hashCode(): Int = certificate.contentHashCode() * 31 + expiration.hashCode()
+}

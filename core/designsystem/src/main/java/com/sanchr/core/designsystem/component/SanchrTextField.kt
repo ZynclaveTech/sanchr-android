@@ -39,39 +39,42 @@ fun SanchrTextField(
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         label = label?.let { { Text(text = it) } },
-        placeholder = placeholder?.let {
-            {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
+        placeholder =
+            placeholder?.let {
+                {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
         leadingIcon = leadingIcon,
         trailingIcon = trailingIcon,
         isError = isError,
-        supportingText = if (isError && errorMessage != null) {
-            {
-                Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        } else {
-            null
-        },
+        supportingText =
+            if (isError && errorMessage != null) {
+                {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            } else {
+                null
+            },
         singleLine = singleLine,
         maxLines = maxLines,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         visualTransformation = visualTransformation,
         shape = SanchrShapeTokens.CornerMedium,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-            errorBorderColor = MaterialTheme.colorScheme.error,
-        ),
+        colors =
+            OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                errorBorderColor = MaterialTheme.colorScheme.error,
+            ),
     )
 }

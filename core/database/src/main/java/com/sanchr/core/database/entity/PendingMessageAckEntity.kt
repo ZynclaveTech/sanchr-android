@@ -12,10 +12,8 @@ import androidx.room.Index
 data class PendingMessageAckEntity(
     @ColumnInfo(name = "conversation_id")
     val conversationId: String,
-
     @ColumnInfo(name = "message_id")
     val messageId: String,
-
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
 )

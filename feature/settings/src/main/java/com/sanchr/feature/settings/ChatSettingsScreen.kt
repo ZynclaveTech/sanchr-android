@@ -15,16 +15,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChatBubbleOutline
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.component.SecureScreen
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -74,11 +75,12 @@ fun ChatSettingsScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // Bubble Style selector
             Text(
@@ -94,25 +96,28 @@ fun ChatSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
             ) {
-                val styles = listOf(
-                    "default" to "Default",
-                    "rounded" to "Rounded",
-                    "flat" to "Flat",
-                )
+                val styles =
+                    listOf(
+                        "default" to "Default",
+                        "rounded" to "Rounded",
+                        "flat" to "Flat",
+                    )
                 styles.forEach { (value, label) ->
                     val isSelected = uiState.bubbleStyle == value
-                    val borderColor = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outline
-                    }
+                    val borderColor =
+                        if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        }
                     Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-                            .clickable { viewModel.setBubbleStyle(value) }
-                            .padding(SanchrTheme.spacing.md),
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+                                .clickable { viewModel.setBubbleStyle(value) }
+                                .padding(SanchrTheme.spacing.md),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Icon(
@@ -177,9 +182,14 @@ fun ChatSettingsScreen(
             if (uiState.backupEnabled) {
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 Text(
-                    text = "Last backup: " + (uiState.lastBackupAtMillis?.let {
-                        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it))
-                    } ?: "Never"),
+                    text =
+                        "Last backup: " + (
+                            uiState.lastBackupAtMillis?.let {
+                                java.text.DateFormat
+                                    .getDateTimeInstance()
+                                    .format(java.util.Date(it))
+                            } ?: "Never"
+                        ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -219,13 +229,28 @@ fun ChatSettingsScreen(
         }
     }
 
+    val pendingRecoveryKey = viewModel.pendingRecoveryKey()
+
+    // Any time a recovery key is being displayed (reveal / just-generated) or
+    // entered (restore), clamp FLAG_SECURE on the hosting window. A conditional
+    // SecureScreen() call is fine: Compose tracks the DisposableEffect and
+    // cleans up when the branch leaves composition. iOS parity.
+    if (revealedRecoveryKey.value != null ||
+        pendingRecoveryKey != null ||
+        showRestoreDialog.value
+    ) {
+        SecureScreen()
+    }
+
     if (showRestoreDialog.value) {
         AlertDialog(
             onDismissRequest = { showRestoreDialog.value = false },
             title = { Text("Restore Backup") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
-                    Text("Restore your encrypted chat history after sign-in using your recovery key. Leave the field blank if this device already stores it.")
+                    Text(
+                        "Restore your encrypted chat history after sign-in using your recovery key. Leave the field blank if this device already stores it.",
+                    )
                     OutlinedTextField(
                         value = restoreRecoveryKey.value,
                         onValueChange = { restoreRecoveryKey.value = it },
@@ -254,7 +279,7 @@ fun ChatSettingsScreen(
         )
     }
 
-    viewModel.pendingRecoveryKey()?.let { recoveryKey ->
+    pendingRecoveryKey?.let { recoveryKey ->
         AlertDialog(
             onDismissRequest = viewModel::cancelPendingBackup,
             title = { Text("Recovery Key") },

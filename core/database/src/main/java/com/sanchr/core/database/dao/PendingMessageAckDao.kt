@@ -8,7 +8,6 @@ import com.sanchr.core.database.entity.PendingMessageAckEntity
 
 @Dao
 interface PendingMessageAckDao {
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAck(ack: PendingMessageAckEntity)
 
@@ -20,7 +19,7 @@ interface PendingMessageAckDao {
         SELECT * FROM pending_message_acks
         ORDER BY created_at ASC
         LIMIT :limit
-        """
+        """,
     )
     suspend fun getPendingAcks(limit: Int): List<PendingMessageAckEntity>
 
@@ -28,9 +27,12 @@ interface PendingMessageAckDao {
         """
         DELETE FROM pending_message_acks
         WHERE conversation_id = :conversationId AND message_id = :messageId
-        """
+        """,
     )
-    suspend fun deleteAck(conversationId: String, messageId: String)
+    suspend fun deleteAck(
+        conversationId: String,
+        messageId: String,
+    )
 
     @Query("DELETE FROM pending_message_acks")
     suspend fun deleteAll()

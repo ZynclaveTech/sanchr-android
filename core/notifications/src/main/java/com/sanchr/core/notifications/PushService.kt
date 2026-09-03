@@ -3,43 +3,40 @@ package com.sanchr.core.notifications
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
- * FCM push notification service.
+ * FCM push entry point.
  *
- * Handles two callbacks from Firebase Cloud Messaging:
- * 1. **onNewToken** -- called when the FCM registration token is created or rotated.
- *    The token is forwarded to the backend via [PushTokenManager].
- * 2. **onMessageReceived** -- called when a data-only push arrives (the backend never
- *    sends display notifications, only data payloads, so the app has full control).
+ * As of Phase C.2 the FCM transport carries only a content-free wake
+ * signal; [onMessageReceived] never reads sender / conversation / body
+ * strings and never posts a notification directly. Its sole job is to
+ * enqueue [MessageDrainScheduler.enqueueDrain], which pulls pending
+ * envelopes from the server, decrypts them via
+ * [com.sanchr.domain.messaging.ReceiveMessageUseCase], persists the
+ * decrypted rows, and acks the batch. Any user-visible notification is
+ * then rendered by `NewMessageNotifier` (Phase C.4) from the local DB —
+ * never from FCM data.
  *
- * Notification types handled:
- * - `message` -- new encrypted chat message
- * - `call`    -- incoming voice/video call
- * - `system`  -- security alerts, app updates, contact-joined, key-change, etc.
+ * [onNewToken] stays as-is: it uploads the rotated registration token via
+ * [PushTokenManager].
  */
 @AndroidEntryPoint
 class SanchrPushService : FirebaseMessagingService() {
-
-    @Inject lateinit var notificationHandler: NotificationHandler
     @Inject lateinit var tokenManager: PushTokenManager
 
+    @Inject lateinit var drainScheduler: MessageDrainScheduler
+
     /**
-     * Service-scoped coroutine scope. We use [SupervisorJob] so a single failure
-     * does not cancel the entire scope, and [Dispatchers.IO] because token upload
-     * performs network I/O.
+     * Service-scoped coroutine scope. [SupervisorJob] isolates failures and
+     * [Dispatchers.IO] is appropriate for the token upload network call.
      */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    // ------------------------------------------------------------------
-    // Token management
-    // ------------------------------------------------------------------
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
@@ -48,52 +45,26 @@ class SanchrPushService : FirebaseMessagingService() {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Message handling
-    // ------------------------------------------------------------------
-
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
 
-        val payload = PushPayload.fromRemoteMessage(message)
-
-        when (payload.type) {
-            PushPayload.TYPE_MESSAGE -> handleMessagePayload(payload)
-            PushPayload.TYPE_CALL -> handleCallPayload(payload)
-            PushPayload.TYPE_SYSTEM -> handleSystemPayload(payload)
-            else -> handleSystemPayload(payload)
+        val payload = PushPayload.fromData(message.data)
+        if (payload == null || payload.type != PushPayload.TYPE_WAKE) {
+            android.util.Log.w(
+                TAG,
+                "ignoring FCM push with unexpected type=${payload?.type ?: "<none>"}",
+            )
+            return
         }
+        drainScheduler.enqueueDrain()
     }
-
-    // ------------------------------------------------------------------
-    // Payload handlers
-    // ------------------------------------------------------------------
-
-    private fun handleMessagePayload(payload: PushPayload) {
-        notificationHandler.showMessageNotification(payload)
-
-        // Update the summary/badge for grouped notifications
-        payload.badge?.let { count ->
-            notificationHandler.updateSummaryNotification(count)
-        }
-    }
-
-    private fun handleCallPayload(payload: PushPayload) {
-        notificationHandler.showCallNotification(payload)
-    }
-
-    private fun handleSystemPayload(payload: PushPayload) {
-        val title = payload.title ?: "Sanchr"
-        val body = payload.body ?: return
-        notificationHandler.showSystemNotification(title, body)
-    }
-
-    // ------------------------------------------------------------------
-    // Lifecycle
-    // ------------------------------------------------------------------
 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+    }
+
+    private companion object {
+        const val TAG = "SanchrPushService"
     }
 }

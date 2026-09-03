@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -27,7 +26,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
@@ -64,8 +62,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
-import com.sanchr.core.designsystem.theme.SanchrCyan500
-import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
@@ -84,7 +80,10 @@ fun VaultScreen(
     // Pagination: load more when near end
     val shouldLoadMore by remember {
         derivedStateOf {
-            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val lastVisibleIndex =
+                listState.layoutInfo.visibleItemsInfo
+                    .lastOrNull()
+                    ?.index ?: 0
             val totalItems = listState.layoutInfo.totalItemsCount
             lastVisibleIndex >= totalItems - 5 && uiState.hasMore && !uiState.isLoading
         }
@@ -135,9 +134,10 @@ fun VaultScreen(
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
             onRefresh = { viewModel.refresh() },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
         ) {
             when {
                 uiState.isLoading -> {
@@ -162,10 +162,11 @@ fun VaultScreen(
                         // Info card
                         item(key = "info_card") {
                             SecureStorageInfoCard(
-                                modifier = Modifier.padding(
-                                    horizontal = SanchrTheme.spacing.default,
-                                    vertical = SanchrTheme.spacing.sm,
-                                ),
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = SanchrTheme.spacing.default,
+                                        vertical = SanchrTheme.spacing.sm,
+                                    ),
                             )
                         }
 
@@ -173,10 +174,11 @@ fun VaultScreen(
                         item(key = "stats_row") {
                             StatsRow(
                                 stats = uiState.stats,
-                                modifier = Modifier.padding(
-                                    horizontal = SanchrTheme.spacing.default,
-                                    vertical = SanchrTheme.spacing.sm,
-                                ),
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = SanchrTheme.spacing.default,
+                                        vertical = SanchrTheme.spacing.sm,
+                                    ),
                             )
                         }
 
@@ -185,10 +187,11 @@ fun VaultScreen(
                             FilterChipsRow(
                                 selectedFilter = uiState.filter,
                                 onFilterSelected = viewModel::setFilter,
-                                modifier = Modifier.padding(
-                                    horizontal = SanchrTheme.spacing.default,
-                                    vertical = SanchrTheme.spacing.sm,
-                                ),
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = SanchrTheme.spacing.default,
+                                        vertical = SanchrTheme.spacing.sm,
+                                    ),
                             )
                         }
 
@@ -197,9 +200,10 @@ fun VaultScreen(
                             item(key = "upload_progress") {
                                 LinearProgressIndicator(
                                     progress = { uiState.uploadProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = SanchrTheme.spacing.default),
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = SanchrTheme.spacing.default),
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
@@ -214,20 +218,22 @@ fun VaultScreen(
                                 item = item,
                                 onSave = { /* save action */ },
                                 onShare = { viewModel.shareItem(item.id, emptyList()) },
-                                modifier = Modifier.padding(
-                                    horizontal = SanchrTheme.spacing.default,
-                                    vertical = SanchrTheme.spacing.sm,
-                                ),
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = SanchrTheme.spacing.default,
+                                        vertical = SanchrTheme.spacing.sm,
+                                    ),
                             )
                         }
 
                         // Encryption notice
                         item(key = "encryption_notice") {
                             EncryptionNotice(
-                                modifier = Modifier.padding(
-                                    horizontal = SanchrTheme.spacing.default,
-                                    vertical = SanchrTheme.spacing.default,
-                                ),
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = SanchrTheme.spacing.default,
+                                        vertical = SanchrTheme.spacing.default,
+                                    ),
                             )
                         }
                     }
@@ -241,9 +247,10 @@ fun VaultScreen(
 private fun SecureStorageInfoCard(modifier: Modifier = Modifier) {
     SanchrCard(modifier = modifier) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(SanchrTheme.spacing.default),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -270,7 +277,10 @@ private fun SecureStorageInfoCard(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StatsRow(stats: VaultStats, modifier: Modifier = Modifier) {
+private fun StatsRow(
+    stats: VaultStats,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -344,10 +354,11 @@ private fun FilterChipsRow(
                         style = MaterialTheme.typography.labelMedium,
                     )
                 },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+                colors =
+                    FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
             )
         }
     }
@@ -364,10 +375,11 @@ private fun VaultItemCard(
         Column(modifier = Modifier.fillMaxWidth()) {
             // Thumbnail area
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
             ) {
                 if (item.thumbnailUrl.isNotEmpty()) {
                     AsyncImage(
@@ -378,16 +390,18 @@ private fun VaultItemCard(
                     )
                 } else {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
                     ) {
-                        val icon = when {
-                            item.category.equals("photo", ignoreCase = true) -> Icons.Filled.Image
-                            item.category.equals("video", ignoreCase = true) -> Icons.Filled.Videocam
-                            else -> Icons.Filled.Description
-                        }
+                        val icon =
+                            when {
+                                item.category.equals("photo", ignoreCase = true) -> Icons.Filled.Image
+                                item.category.equals("video", ignoreCase = true) -> Icons.Filled.Videocam
+                                else -> Icons.Filled.Description
+                            }
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
@@ -398,20 +412,21 @@ private fun VaultItemCard(
                 }
 
                 // Type badge (top-left)
-                val typeBadge = when {
-                    item.category.equals("photo", ignoreCase = true) -> "Photo"
-                    item.category.equals("video", ignoreCase = true) -> "Video"
-                    else -> "File"
-                }
+                val typeBadge =
+                    when {
+                        item.category.equals("photo", ignoreCase = true) -> "Photo"
+                        item.category.equals("video", ignoreCase = true) -> "Video"
+                        else -> "File"
+                    }
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(SanchrTheme.spacing.sm)
-                        .background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                            SanchrShapeTokens.CornerSmall,
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(SanchrTheme.spacing.sm)
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                SanchrShapeTokens.CornerSmall,
+                            ).padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Text(
                         text = typeBadge,
@@ -422,14 +437,14 @@ private fun VaultItemCard(
 
                 // Timer badge (top-right) -- placeholder
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(SanchrTheme.spacing.sm)
-                        .background(
-                            SanchrWarning.copy(alpha = 0.9f),
-                            SanchrShapeTokens.CornerSmall,
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(SanchrTheme.spacing.sm)
+                            .background(
+                                SanchrWarning.copy(alpha = 0.9f),
+                                SanchrShapeTokens.CornerSmall,
+                            ).padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -452,22 +467,23 @@ private fun VaultItemCard(
                     Icon(
                         imageVector = Icons.Filled.PlayCircle,
                         contentDescription = "Play video",
-                        modifier = Modifier
-                            .size(48.dp)
-                            .align(Alignment.Center),
+                        modifier =
+                            Modifier
+                                .size(48.dp)
+                                .align(Alignment.Center),
                         tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
                     )
 
                     // Duration badge (bottom-right)
                     Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(SanchrTheme.spacing.sm)
-                            .background(
-                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f),
-                                SanchrShapeTokens.CornerSmall,
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(SanchrTheme.spacing.sm)
+                                .background(
+                                    MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f),
+                                    SanchrShapeTokens.CornerSmall,
+                                ).padding(horizontal = 6.dp, vertical = 2.dp),
                     ) {
                         Text(
                             text = formatDuration(item.sizeBytes),
@@ -480,21 +496,22 @@ private fun VaultItemCard(
                 // File: type icon + size for non-media
                 if (item.category.equals("file", ignoreCase = true)) {
                     Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(SanchrTheme.spacing.sm),
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(SanchrTheme.spacing.sm),
                         horizontalAlignment = Alignment.End,
                     ) {
                         Text(
                             text = formatFileSize(item.sizeBytes),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                                    SanchrShapeTokens.CornerSmall,
-                                )
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            modifier =
+                                Modifier
+                                    .background(
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                        SanchrShapeTokens.CornerSmall,
+                                    ).padding(horizontal = 6.dp, vertical = 2.dp),
                         )
                     }
                 }
@@ -502,9 +519,10 @@ private fun VaultItemCard(
 
             // Info section
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(SanchrTheme.spacing.md),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(SanchrTheme.spacing.md),
             ) {
                 Text(
                     text = item.title,
@@ -618,14 +636,13 @@ private fun EncryptionNotice(modifier: Modifier = Modifier) {
     }
 }
 
-private fun formatFileSize(bytes: Long): String {
-    return when {
+private fun formatFileSize(bytes: Long): String =
+    when {
         bytes < 1024 -> "$bytes B"
         bytes < 1024 * 1024 -> "${bytes / 1024} KB"
         bytes < 1024 * 1024 * 1024 -> "${bytes / (1024 * 1024)} MB"
         else -> "${bytes / (1024 * 1024 * 1024)} GB"
     }
-}
 
 private fun formatDuration(sizeBytes: Long): String {
     // Placeholder: in a real app, duration would be a separate field

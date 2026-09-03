@@ -20,7 +20,6 @@ import androidx.compose.material.icons.automirrored.filled.HelpCenter
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
@@ -32,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -72,32 +70,36 @@ fun SettingsScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState()),
         ) {
             // Profile header card
             SanchrCard(
                 onClick = onNavigateToProfile,
-                modifier = Modifier.padding(
-                    horizontal = SanchrTheme.spacing.default,
-                    vertical = SanchrTheme.spacing.sm,
-                ),
+                modifier =
+                    Modifier.padding(
+                        horizontal = SanchrTheme.spacing.default,
+                        vertical = SanchrTheme.spacing.sm,
+                    ),
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (uiState.avatarUrl.isNotEmpty()) {
                         AsyncImage(
                             model = uiState.avatarUrl,
                             contentDescription = "Profile avatar",
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape),
+                            modifier =
+                                Modifier
+                                    .size(56.dp)
+                                    .clip(CircleShape),
                             contentScale = ContentScale.Crop,
                         )
                     } else {
@@ -108,7 +110,11 @@ fun SettingsScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = uiState.displayName.take(1).uppercase().ifEmpty { "?" },
+                                    text =
+                                        uiState.displayName
+                                            .take(1)
+                                            .uppercase()
+                                            .ifEmpty { "?" },
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
@@ -226,13 +232,14 @@ fun SettingsScreen(
 
             // Logout button
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = viewModel::logout)
-                    .padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = SanchrTheme.spacing.md,
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = viewModel::logout)
+                        .padding(
+                            horizontal = SanchrTheme.spacing.default,
+                            vertical = SanchrTheme.spacing.md,
+                        ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -264,16 +271,20 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsGroupLabel(text: String, modifier: Modifier = Modifier) {
+private fun SettingsGroupLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(
-            horizontal = SanchrTheme.spacing.default,
-            vertical = SanchrTheme.spacing.sm,
-        ),
+        modifier =
+            modifier.padding(
+                horizontal = SanchrTheme.spacing.default,
+                vertical = SanchrTheme.spacing.sm,
+            ),
     )
 }
 
@@ -286,13 +297,14 @@ internal fun SettingsItem(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(
-                horizontal = SanchrTheme.spacing.default,
-                vertical = SanchrTheme.spacing.md,
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(
+                    horizontal = SanchrTheme.spacing.default,
+                    vertical = SanchrTheme.spacing.md,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(

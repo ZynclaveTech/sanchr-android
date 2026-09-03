@@ -17,8 +17,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,7 +26,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.core.designsystem.theme.SanchrWarning
 
 @Composable
 fun SecurityScreen(
@@ -48,11 +45,12 @@ fun SecurityScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // Screen Lock section
             Text(
@@ -81,19 +79,21 @@ fun SecurityScreen(
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
 
-                val timeouts = listOf(
-                    "immediately" to "Immediately",
-                    "1m" to "After 1 minute",
-                    "5m" to "After 5 minutes",
-                    "30m" to "After 30 minutes",
-                )
+                val timeouts =
+                    listOf(
+                        "immediately" to "Immediately",
+                        "1m" to "After 1 minute",
+                        "5m" to "After 5 minutes",
+                        "30m" to "After 30 minutes",
+                    )
 
                 timeouts.forEach { (value, label) ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { viewModel.setScreenLockTimeout(value) }
-                            .padding(vertical = SanchrTheme.spacing.xxs),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setScreenLockTimeout(value) }
+                                .padding(vertical = SanchrTheme.spacing.xxs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(
@@ -161,9 +161,10 @@ fun SecurityScreen(
 
             SanchrCard {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                 ) {
                     Text(
                         text = "Sanchr Mode hides sensitive conversations and vault items when enabled.",

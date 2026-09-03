@@ -1,0 +1,197 @@
+name: android-ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Unit tests + linting + coverage. Fast path — gates merges.
+  # ──────────────────────────────────────────────────────────────────────────
+  lint-test:
+    name: lint / unit tests / coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: ktlintCheck
+        run: ./gradlew ktlintCheck --no-daemon
+
+      - name: detekt
+        run: ./gradlew detekt --no-daemon
+
+      - name: Assemble + unit tests
+        run: ./gradlew check --no-daemon
+
+      - name: Kover XML report
+        run: ./gradlew koverXmlReport --no-daemon
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-test-reports
+          path: |
+            **/build/reports/**
+            **/build/test-results/**
+          retention-days: 14
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kover-coverage
+          path: '**/build/reports/kover/**'
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Release assembly — proves R8 minification + packaging are healthy on
+  # every change. Signed with the committed dummy keystore so the APK is
+  # NEVER shippable; see ci-assets/README.md.
+  # ──────────────────────────────────────────────────────────────────────────
+  assemble-release:
+    name: assembleRelease (dummy-signed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble release APK
+        env:
+          SANCHR_RELEASE_STORE_FILE: ${{ github.workspace }}/ci-assets/dummy-upload.jks
+          SANCHR_RELEASE_STORE_PASSWORD: ci-dummy-passphrase-not-for-production
+          SANCHR_RELEASE_KEY_ALIAS: ci-dummy
+          SANCHR_RELEASE_KEY_PASSWORD: ci-dummy-passphrase-not-for-production
+        # `--warning-mode fail` turns any R8 / Gradle warning into a build
+        # failure. The only currently-known warnings are the AGP-R8-Kotlin
+        # metadata notices which are `WARNING` at INFO level and don't trip
+        # `--warning-mode fail`; if a rule regression starts stripping
+        # reflection-used classes, it surfaces here first.
+        run: ./gradlew :app:assembleRelease --no-daemon --warning-mode fail
+
+      - name: Verify APK is signed
+        run: |
+          APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
+          test -n "$APK" || { echo "::error::No release APK produced"; exit 1; }
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          test -n "$APKSIGNER" || { echo "::error::apksigner not found under \$ANDROID_HOME/build-tools"; exit 1; }
+          "$APKSIGNER" verify --print-certs "$APK"
+
+      - name: Upload release APK (dummy-signed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-dummy-signed
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
+
+      - name: Upload R8 mapping
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          retention-days: 14
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Instrumented smoke on API 28 + API 34. Catches ProGuard regressions
+  # that unit tests can't — stripped Hilt entries crash only at runtime.
+  # ──────────────────────────────────────────────────────────────────────────
+  instrumented-smoke:
+    name: instrumented smoke (API ${{ matrix.api-level }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [28, 34]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Enable KVM on runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.api-level }}
+
+      - name: Create AVD (cache miss)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: echo "AVD provisioned"
+
+      - name: Run connected smoke tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          # Smoke scope only — the full interop test runs nightly.
+          # `-Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.smoke.SmokeTest`
+          # keeps the emulator job under 25 minutes even when the suite grows.
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.smoke.SmokeTest --no-daemon
+
+      - name: Upload instrumented reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumented-reports-api-${{ matrix.api-level }}
+          path: |
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+          retention-days: 14

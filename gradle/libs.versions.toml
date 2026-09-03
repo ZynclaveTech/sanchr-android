@@ -43,6 +43,7 @@ datetime = "0.6.1"
 # Security
 tink = "1.15.0"
 libsignal = "0.88.1"
+sqlcipher = "4.6.1"
 
 # WebRTC
 webrtc = "1.3.0"
@@ -59,6 +60,12 @@ junit-ext = "1.2.1"
 espresso = "3.6.1"
 turbine = "1.2.0"
 mockk = "1.13.13"
+robolectric = "4.13"
+
+# Code quality
+ktlint = "12.1.1"
+detekt = "1.23.7"
+kover = "0.9.0"
 
 [libraries]
 # AndroidX Core
@@ -98,6 +105,7 @@ firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 
 # DataStore
 datastore-proto = { group = "androidx.datastore", name = "datastore", version.ref = "datastore" }
@@ -115,6 +123,8 @@ grpc-okhttp = { group = "io.grpc", name = "grpc-okhttp", version.ref = "grpcJava
 grpc-stub = { group = "io.grpc", name = "grpc-stub", version.ref = "grpcJava" }
 grpc-protobuf-lite = { group = "io.grpc", name = "grpc-protobuf-lite", version.ref = "grpcJava" }
 grpc-kotlin-stub = { group = "io.grpc", name = "grpc-kotlin-stub", version.ref = "grpcKotlin" }
+grpc-testing = { group = "io.grpc", name = "grpc-testing", version.ref = "grpcJava" }
+grpc-inprocess = { group = "io.grpc", name = "grpc-inprocess", version.ref = "grpcJava" }
 protobuf-kotlin-lite = { group = "com.google.protobuf", name = "protobuf-kotlin-lite", version.ref = "protobuf" }
 protobuf-protoc = { group = "com.google.protobuf", name = "protoc", version.ref = "protobuf" }
 
@@ -131,6 +141,9 @@ kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime",
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 libsignal-android = { group = "org.signal", name = "libsignal-android", version.ref = "libsignal" }
 libsignal-client = { group = "org.signal", name = "libsignal-client", version.ref = "libsignal" }
+sqlcipher-android = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
+androidx-test-core = { group = "androidx.test", name = "core", version = "1.6.1" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version = "1.6.2" }
 
 # WebRTC
 webrtc = { group = "io.getstream", name = "stream-webrtc-android", version.ref = "webrtc" }
@@ -154,11 +167,15 @@ espresso-core = { group = "androidx.test.espresso", name = "espresso-core", vers
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junit-ext" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
@@ -166,3 +183,6 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

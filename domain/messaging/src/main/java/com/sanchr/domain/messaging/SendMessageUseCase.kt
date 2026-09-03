@@ -3,30 +3,259 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.common.Result
 import com.sanchr.core.common.runCatchingResult
+import com.sanchr.core.crypto.EncryptFanOutEmptyException
+import com.sanchr.core.crypto.SignalSessionManager
+import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.Message
-import kotlinx.coroutines.withContext
+import com.sanchr.core.model.MessageStatus
+import com.sanchr.proto.messaging.DeviceMessage
+import com.sanchr.proto.messaging.MessagingServiceClient
+import com.sanchr.proto.messaging.SendMessageRequest
 import javax.inject.Inject
+import kotlinx.coroutines.withContext
+import kotlinx.datetime.Instant
+import org.signal.libsignal.protocol.UntrustedIdentityException
 
 /**
- * Sends an encrypted message to a conversation.
- * Handles encryption, optimistic UI update, and server delivery.
+ * Owns the outbound-message state machine.
+ *
+ * ```
+ *   QUEUED ──(attemptSend)──▶ SENDING ──(RPC ok)──▶ SENT
+ *      ▲                          │
+ *      │                          └(RPC error, attempts < MAX)──▶ QUEUED
+ *      │                          │
+ *      │                          └(RPC error, attempts == MAX)──▶ FAILED
+ *   (SendRetryWorker re-picks from QUEUED after backoff)
+ * ```
+ *
+ * Persistence is driven exclusively via [MessageRepository]; encryption
+ * fan-out and the network RPC are orchestrated here so the repository
+ * stays a thin adapter over Room + the proto client. Callers:
+ *
+ *  - [invoke] — first attempt from the UI. Inserts a QUEUED row, then
+ *    runs one attempt. Returns the resulting [Message] on success, or
+ *    propagates the RPC failure on error (the row is left in QUEUED or
+ *    FAILED depending on attempts — the caller can choose whether to
+ *    surface that to the user).
+ *  - [attemptSend] — used by `SendRetryWorker` to retry an existing
+ *    QUEUED row without re-inserting.
+ *
+ * **Deviation from the plan, noted for the D3/envelope-kind follow-up:**
+ * outbound still uses the legacy `SendMessage` RPC (non-sealed). The
+ * switch to `SendSealedMessage` requires plumbing delivery-token fetch
+ * (`GetDeliveryTokens`), which is a distinct concern outside D5's scope.
+ * The envelope bytes handed to the server today already come from
+ * `SignalSessionManager.encryptForAllDevices` — which prefers sealed
+ * encryption when a sender certificate is cached — so on-wire the
+ * ciphertext is already sealed in steady state.
  */
-class SendMessageUseCase @Inject constructor(
-    private val messageRepository: MessageRepository,
-    private val dispatcherProvider: DispatcherProvider,
-) {
-    /**
-     * @param conversationId Target conversation.
-     * @param content Plaintext message body (will be encrypted by repository).
-     * @return [Result.Success] with the sent message, or [Result.Error] on failure.
-     */
-    suspend operator fun invoke(
-        conversationId: String,
-        content: String,
-    ): Result<Message> = withContext(dispatcherProvider.io) {
-        runCatchingResult {
-            require(content.isNotBlank()) { "Message content must not be blank" }
-            messageRepository.sendMessage(conversationId, content)
+class SendMessageUseCase
+    @Inject
+    constructor(
+        private val messageRepository: MessageRepository,
+        private val sessionManager: SessionManager,
+        private val signalSessionManager: SignalSessionManager,
+        private val messagingClient: MessagingServiceClient,
+        private val dispatcherProvider: DispatcherProvider,
+    ) {
+        /**
+         * First-attempt send from the UI. Inserts a QUEUED row, runs one
+         * attempt, and returns the resulting [Message] (in SENT on success,
+         * QUEUED or FAILED on error — inspect the returned [Result]).
+         */
+        suspend operator fun invoke(
+            conversationId: String,
+            content: String,
+            contentType: String = "text",
+        ): Result<Message> =
+            withContext(dispatcherProvider.io) {
+                runCatchingResult {
+                    require(content.isNotBlank()) { "Message content must not be blank" }
+                    val entity =
+                        messageRepository.enqueueOutboundMessage(
+                            conversationId = conversationId,
+                            content = content,
+                            contentType = contentType,
+                        )
+                    attemptSendOrThrow(entity)
+                }
+            }
+
+        /**
+         * Retries a previously-QUEUED row. Called by `SendRetryWorker` on
+         * the periodic backoff tick. Mirrors [invoke] but skips the
+         * enqueue step.
+         */
+        suspend fun attemptSend(entity: MessageEntity): Result<Message> =
+            withContext(dispatcherProvider.io) {
+                runCatchingResult { attemptSendOrThrow(entity) }
+            }
+
+        private suspend fun attemptSendOrThrow(entity: MessageEntity): Message {
+            val attempts =
+                messageRepository.recordSendAttempt(
+                    messageId = entity.id,
+                    newStatus = MessageStatus.SENDING.name,
+                )
+
+            val selfUserId = sessionManager.getUserId().orEmpty()
+            require(selfUserId.isNotBlank()) { "Missing current user id" }
+            val recipients =
+                messageRepository.getOutboundRecipients(
+                    conversationId = entity.conversationId,
+                    selfUserId = selfUserId,
+                )
+
+            val deviceMessages = encryptFanOut(entity, recipients)
+
+            guardZeroRecipients(entity, recipients, deviceMessages)
+
+            try {
+                val response =
+                    messagingClient.sendMessage(
+                        SendMessageRequest(
+                            conversationId = entity.conversationId,
+                            deviceMessages = deviceMessages,
+                            contentType = entity.contentType,
+                        ),
+                    )
+                messageRepository.adoptServerId(
+                    oldMessageId = entity.id,
+                    newMessageId = response.messageId,
+                    serverTimestamp = response.serverTimestamp,
+                )
+                return Message(
+                    id = response.messageId,
+                    conversationId = entity.conversationId,
+                    senderId = entity.senderId,
+                    content =
+                        com.sanchr.core.model.MessageContent
+                            .Text(entity.contentBody),
+                    status = MessageStatus.SENT,
+                    timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
+                )
+            } catch (error: Exception) {
+                if (attempts >= MAX_ATTEMPTS) {
+                    messageRepository.markSendFailed(
+                        messageId = entity.id,
+                        failureReason = error.message ?: error::class.java.simpleName,
+                        failureClass = FailureClass.CRYPTO_OTHER,
+                    )
+                } else {
+                    messageRepository.requeueAfterFailure(entity.id)
+                }
+                throw error
+            }
+        }
+
+        /**
+         * Fans the plaintext out to every recipient's key-capable devices
+         * and returns the combined `DeviceMessage` list. Extracted from
+         * [attemptSendOrThrow] so two non-retriable branches
+         * ([EncryptFanOutEmptyException], [UntrustedIdentityException]) can
+         * be handled distinctly without exceeding the sibling function's
+         * throws budget.
+         */
+        private suspend fun encryptFanOut(
+            entity: MessageEntity,
+            recipients: List<String>,
+        ): List<DeviceMessage> =
+            try {
+                val plaintext = entity.contentBody.toByteArray(Charsets.UTF_8)
+                recipients.flatMap { recipientId ->
+                    signalSessionManager
+                        .encryptForAllDevices(plaintext, recipientId)
+                        .map { encrypted ->
+                            DeviceMessage(
+                                recipientId = recipientId,
+                                deviceId = encrypted.deviceId,
+                                cipherText = encrypted.ciphertext,
+                            )
+                        }
+                }
+            } catch (error: EncryptFanOutEmptyException) {
+                // Transient: no ciphertext was produced for any recipient
+                // device (typically a sender-certificate fetch failure).
+                // NEVER mark FAILED on this branch — the row must remain
+                // eligible for SendRetryWorker indefinitely, otherwise
+                // the message is lost. We deliberately skip the
+                // MAX_ATTEMPTS gate here because a cert outage is not
+                // the user's fault and is expected to clear on its own.
+                messageRepository.requeueAfterFailure(entity.id)
+                throw error
+            } catch (error: org.signal.libsignal.metadata.ProtocolUntrustedIdentityException) {
+                // Sealed-sender variant of the same condition — libsignal
+                // emits this type from SealedSessionCipher paths rather than
+                // the protocol-level [UntrustedIdentityException] caught below.
+                messageRepository.markSendFailed(
+                    messageId = entity.id,
+                    failureReason = UNTRUSTED_IDENTITY_REASON,
+                    failureClass = FailureClass.UNTRUSTED_IDENTITY,
+                )
+                throw error
+            } catch (error: UntrustedIdentityException) {
+                // Peer's identity key rotated. Retrying will fail the
+                // same way until the user explicitly re-trusts the new
+                // key via a safety-number screen (M6). Mark the row
+                // terminally FAILED with a typed class so the UI renders
+                // a distinct affordance (warning icon + "Peer's safety
+                // number changed" tooltip) instead of the generic
+                // retry-me error icon.
+                messageRepository.markSendFailed(
+                    messageId = entity.id,
+                    failureReason = UNTRUSTED_IDENTITY_REASON,
+                    failureClass = FailureClass.UNTRUSTED_IDENTITY,
+                )
+                throw error
+            }
+
+        /**
+         * Zero-recipient guard. Never ship a `SendMessage` RPC with an
+         * empty device list — the server treats it as a successful no-op
+         * send and the message is silently lost (the "silent SENT" bug
+         * from the M4 review). Marks the row terminally FAILED with
+         * [FailureClass.NO_RECIPIENTS] and throws
+         * [NoRecipientsReachableException]; callers MUST NOT requeue.
+         *
+         * The `recipients.isEmpty()` check is defense-in-depth —
+         * [MessageRepository.getOutboundRecipients] already `require`s
+         * non-empty, but that contract may later be relaxed.
+         */
+        private suspend fun guardZeroRecipients(
+            entity: MessageEntity,
+            recipients: List<String>,
+            deviceMessages: List<DeviceMessage>,
+        ) {
+            if (recipients.isNotEmpty() && deviceMessages.isNotEmpty()) return
+            messageRepository.markSendFailed(
+                messageId = entity.id,
+                failureReason = NO_RECIPIENTS_REASON,
+                failureClass = FailureClass.NO_RECIPIENTS,
+            )
+            throw NoRecipientsReachableException(entity.conversationId)
+        }
+
+        private companion object {
+            /**
+             * Retry cap from spec §3. On the third failed attempt the row
+             * transitions to FAILED and is no longer picked up by
+             * `SendRetryWorker`; the user must manually retry or delete it.
+             */
+            const val MAX_ATTEMPTS = 3
+
+            const val NO_RECIPIENTS_REASON = "No recipients reachable"
+            const val UNTRUSTED_IDENTITY_REASON = "Peer's safety number changed"
         }
     }
-}
+
+/**
+ * Thrown by [SendMessageUseCase.attemptSend] when the fan-out produced no
+ * `DeviceMessage` rows — either the conversation had no remote participants
+ * or every recipient returned an empty key-capable device list. Signals a
+ * *terminal* failure: the outbound row has already been marked FAILED with
+ * [FailureClass.NO_RECIPIENTS] and MUST NOT be requeued.
+ */
+class NoRecipientsReachableException(
+    val conversationId: String,
+) : RuntimeException("No recipients reachable for conversation $conversationId")

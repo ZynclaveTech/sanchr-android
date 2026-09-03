@@ -37,6 +37,7 @@ dependencies {
     implementation(projects.core.notifications)
     implementation(projects.proto)
     implementation(projects.sync)
+    implementation(projects.domain.messaging)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

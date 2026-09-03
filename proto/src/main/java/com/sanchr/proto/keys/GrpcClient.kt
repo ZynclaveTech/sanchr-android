@@ -11,7 +11,6 @@ import sanchr.keys.Keys
  * App-facing adapter over the generated sanchr.keys.KeyService coroutine stub.
  */
 interface KeyServiceClient {
-
     suspend fun uploadKeyBundle(request: KeyBundle): UploadKeyBundleResponse
 
     suspend fun getPreKeyBundle(request: GetPreKeyBundleRequest): PreKeyBundleResponse
@@ -37,27 +36,22 @@ class KeyServiceGrpcClient(
         return UploadKeyBundleResponse()
     }
 
-    override suspend fun getPreKeyBundle(request: GetPreKeyBundleRequest): PreKeyBundleResponse {
-        return stub.getPreKeyBundle(request.toProto()).toManual()
-    }
+    override suspend fun getPreKeyBundle(request: GetPreKeyBundleRequest): PreKeyBundleResponse =
+        stub.getPreKeyBundle(request.toProto()).toManual()
 
-    override suspend fun uploadOneTimePreKeys(
-        request: UploadOneTimePreKeysRequest,
-    ): PreKeyCountResponse {
-        return stub.uploadOneTimePreKeys(request.toProto()).toManual()
-    }
+    override suspend fun uploadOneTimePreKeys(request: UploadOneTimePreKeysRequest): PreKeyCountResponse =
+        stub.uploadOneTimePreKeys(request.toProto()).toManual()
 
-    override suspend fun getPreKeyCount(request: GetPreKeyCountRequest): PreKeyCountResponse {
-        return stub.getPreKeyCount(request.toProto()).toManual()
-    }
+    override suspend fun getPreKeyCount(request: GetPreKeyCountRequest): PreKeyCountResponse =
+        stub.getPreKeyCount(request.toProto()).toManual()
 
-    override suspend fun getUserDevices(request: GetUserDevicesRequest): GetUserDevicesResponse {
-        return stub.getUserDevices(request.toProto()).toManual()
-    }
+    override suspend fun getUserDevices(request: GetUserDevicesRequest): GetUserDevicesResponse =
+        stub.getUserDevices(request.toProto()).toManual()
 }
 
 private fun SignedPreKey.toProto(): Keys.SignedPreKey =
-    Keys.SignedPreKey.newBuilder()
+    Keys.SignedPreKey
+        .newBuilder()
         .setKeyId(keyId)
         .setPublicKey(ByteString.copyFrom(publicKey))
         .setSignature(ByteString.copyFrom(signature))
@@ -65,13 +59,15 @@ private fun SignedPreKey.toProto(): Keys.SignedPreKey =
         .build()
 
 private fun OneTimePreKey.toProto(): Keys.OneTimePreKey =
-    Keys.OneTimePreKey.newBuilder()
+    Keys.OneTimePreKey
+        .newBuilder()
         .setKeyId(keyId)
         .setPublicKey(ByteString.copyFrom(publicKey))
         .build()
 
 private fun KyberPreKey.toProto(): Keys.KyberPreKey =
-    Keys.KyberPreKey.newBuilder()
+    Keys.KyberPreKey
+        .newBuilder()
         .setKeyId(keyId)
         .setPublicKey(ByteString.copyFrom(publicKey))
         .setSignature(ByteString.copyFrom(signature))
@@ -79,7 +75,8 @@ private fun KyberPreKey.toProto(): Keys.KyberPreKey =
         .build()
 
 private fun KeyBundle.toProto(): Keys.KeyBundle =
-    Keys.KeyBundle.newBuilder()
+    Keys.KeyBundle
+        .newBuilder()
         .setIdentityPublicKey(ByteString.copyFrom(identityPublicKey))
         .apply {
             this@toProto.signedPreKey?.let { setSignedPreKey(it.toProto()) }
@@ -91,25 +88,26 @@ private fun KeyBundle.toProto(): Keys.KeyBundle =
                 setDeviceId(this@toProto.deviceId)
             }
             this@toProto.kyberPreKey?.let { setKyberPreKey(it.toProto()) }
-        }
-        .build()
+        }.build()
 
 private fun GetPreKeyBundleRequest.toProto(): Keys.GetPreKeyBundleRequest =
-    Keys.GetPreKeyBundleRequest.newBuilder()
+    Keys.GetPreKeyBundleRequest
+        .newBuilder()
         .setUserId(userId)
         .setDeviceId(deviceId)
         .build()
 
 private fun UploadOneTimePreKeysRequest.toProto(): Keys.UploadOneTimePreKeysRequest =
-    Keys.UploadOneTimePreKeysRequest.newBuilder()
+    Keys.UploadOneTimePreKeysRequest
+        .newBuilder()
         .addAllKeys(keys.map(OneTimePreKey::toProto))
         .build()
 
-private fun GetPreKeyCountRequest.toProto(): Keys.GetPreKeyCountRequest =
-    Keys.GetPreKeyCountRequest.getDefaultInstance()
+private fun GetPreKeyCountRequest.toProto(): Keys.GetPreKeyCountRequest = Keys.GetPreKeyCountRequest.getDefaultInstance()
 
 private fun GetUserDevicesRequest.toProto(): Keys.GetUserDevicesRequest =
-    Keys.GetUserDevicesRequest.newBuilder()
+    Keys.GetUserDevicesRequest
+        .newBuilder()
         .setUserId(userId)
         .build()
 
@@ -145,8 +143,7 @@ private fun Keys.PreKeyBundleResponse.toManual(): PreKeyBundleResponse =
         kyberPreKey = if (hasKyberPreKey()) kyberPreKey.toManual() else null,
     )
 
-private fun Keys.PreKeyCountResponse.toManual(): PreKeyCountResponse =
-    PreKeyCountResponse(count = count)
+private fun Keys.PreKeyCountResponse.toManual(): PreKeyCountResponse = PreKeyCountResponse(count = count)
 
 private fun Keys.DeviceInfo.toManual(): DeviceInfo =
     DeviceInfo(

@@ -1,0 +1,68 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+complexity:
+  active: true
+  TooManyFunctions:
+    active: false  # re-enable when modules have real code
+  LongMethod:
+    active: false  # Compose screen composables are routinely long; revisit after extracting reusable components
+  LongParameterList:
+    active: false  # noisy on data classes / constructors
+  CyclomaticComplexMethod:
+    threshold: 20
+  NestedBlockDepth:
+    threshold: 5  # bumped from 4 for lifecycle/grpc channel-shutdown style code
+
+style:
+  active: true
+  MagicNumber:
+    active: false  # noisy in gradle, dimensions, crypto constants
+  WildcardImport:
+    active: true
+  ReturnCount:
+    active: false
+  MaxLineLength:
+    active: false  # enforced instead by ktlint + .editorconfig max_line_length; detekt flags string literals ktlint excludes
+  UnusedParameter:
+    active: false  # stub Composables accept navigation params not yet wired
+  UnusedPrivateMember:
+    active: false  # noisy while scaffolding
+  UnusedPrivateProperty:
+    active: false  # grpc client stubs hold channel/callOptions for future use
+  ForbiddenComment:
+    active: false  # TODO/FIXME markers are expected during scaffold
+  UseCheckOrError:
+    active: false  # explicit IllegalStateException is clearer in crypto / protocol paths
+
+naming:
+  active: true
+  MatchingDeclarationName:
+    active: false  # some files hold multiple small types
+  FunctionNaming:
+    active: false  # Jetpack Compose @Composable functions use PascalCase by convention
+
+empty-blocks:
+  active: true
+  EmptyFunctionBlock:
+    active: false  # stubs during M0
+
+potential-bugs:
+  active: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false  # common around crypto / lifecycle
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: false
+
+performance:
+  active: true

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -52,11 +51,12 @@ fun StorageScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // Storage Usage visualization
             Text(
@@ -74,9 +74,10 @@ fun StorageScreen(
 
                 SanchrCard {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(SanchrTheme.spacing.default),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(SanchrTheme.spacing.default),
                     ) {
                         Text(
                             text = "Total: ${formatBytes(storage.totalBytes)}",
@@ -235,11 +236,10 @@ private fun StorageBarItem(
     }
 }
 
-private fun formatBytes(bytes: Long): String {
-    return when {
+private fun formatBytes(bytes: Long): String =
+    when {
         bytes < 1024 -> "$bytes B"
         bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
         bytes < 1024L * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
         else -> "%.2f GB".format(bytes / (1024.0 * 1024 * 1024))
     }
-}

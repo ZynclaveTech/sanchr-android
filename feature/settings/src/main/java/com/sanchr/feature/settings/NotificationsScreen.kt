@@ -42,11 +42,12 @@ fun NotificationsScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // -- Master toggle --
             SettingsToggleRow(
@@ -176,10 +177,11 @@ private fun NotificationPreviewOption(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = SanchrTheme.spacing.sm),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = SanchrTheme.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(
@@ -209,9 +211,10 @@ internal fun SettingsToggleRow(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = SanchrTheme.spacing.sm),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(vertical = SanchrTheme.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {

@@ -12,6 +12,7 @@ android {
 
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -40,4 +41,13 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.datetime)
+
+    implementation(libs.sqlcipher.android)
+    implementation(libs.androidx.security.crypto)
+
+    androidTestImplementation(libs.junit.ext)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlin.test)
+    androidTestImplementation(libs.room.testing)
 }

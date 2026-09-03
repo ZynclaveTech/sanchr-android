@@ -1,15 +1,18 @@
 package com.sanchr.proto.messaging
 
+import android.util.Log
 import com.google.protobuf.ByteString
 import io.grpc.CallOptions
 import io.grpc.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import sanchr.messaging.Messaging
 import sanchr.messaging.MessagingServiceGrpcKt
 
-interface MessagingServiceClient {
+private const val TAG = "MessagingGrpcClient"
 
+interface MessagingServiceClient {
     suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse
 
     suspend fun startDirectConversation(request: StartDirectConversationRequest): Conversation
@@ -26,9 +29,7 @@ interface MessagingServiceClient {
 
     suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse
 
-    suspend fun getPresenceSnapshot(
-        request: GetPresenceSnapshotRequest,
-    ): GetPresenceSnapshotResponse
+    suspend fun getSenderCertificate(request: SenderCertificateRequest): SenderCertificateResponse
 }
 
 class MessagingServiceGrpcClient(
@@ -37,23 +38,16 @@ class MessagingServiceGrpcClient(
 ) : MessagingServiceClient {
     private val stub = MessagingServiceGrpcKt.MessagingServiceCoroutineStub(channel, callOptions)
 
-    override suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse {
-        return stub.sendMessage(request.toProto()).toManual()
-    }
+    override suspend fun sendMessage(request: SendMessageRequest): SendMessageResponse = stub.sendMessage(request.toProto()).toManual()
 
-    override suspend fun startDirectConversation(
-        request: StartDirectConversationRequest,
-    ): Conversation {
-        return stub.startDirectConversation(request.toProto()).toManual()
-    }
+    override suspend fun startDirectConversation(request: StartDirectConversationRequest): Conversation =
+        stub.startDirectConversation(request.toProto()).toManual()
 
-    override fun messageStream(requests: Flow<ClientEvent>): Flow<ServerEvent> {
-        return stub.messageStream(requests.map(ClientEvent::toProto)).map(Messaging.ServerEvent::toManual)
-    }
+    override fun messageStream(requests: Flow<ClientEvent>): Flow<ServerEvent> =
+        stub.messageStream(requests.map(ClientEvent::toProto)).mapNotNull(Messaging.ServerEvent::toManual)
 
-    override fun syncMessages(request: SyncRequest): Flow<EncryptedEnvelope> {
-        return stub.syncMessages(request.toProto()).map(Messaging.EncryptedEnvelope::toManual)
-    }
+    override fun syncMessages(request: SyncRequest): Flow<EncryptedEnvelope> =
+        stub.syncMessages(request.toProto()).map(Messaging.EncryptedEnvelope::toManual)
 
     override suspend fun ackMessages(request: AckMessagesRequest): AckMessagesResponse {
         stub.ackMessages(request.toProto())
@@ -70,33 +64,36 @@ class MessagingServiceGrpcClient(
         return ReceiptResponse()
     }
 
-    override suspend fun getConversations(
-        request: GetConversationsRequest,
-    ): GetConversationsResponse {
-        return stub.getConversations(Messaging.GetConversationsRequest.getDefaultInstance()).toManual()
-    }
+    override suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse =
+        stub.getConversations(Messaging.GetConversationsRequest.getDefaultInstance()).toManual()
 
-    override suspend fun getPresenceSnapshot(
-        request: GetPresenceSnapshotRequest,
-    ): GetPresenceSnapshotResponse {
-        return stub.getPresenceSnapshot(request.toProto()).toManual()
+    override suspend fun getSenderCertificate(request: SenderCertificateRequest): SenderCertificateResponse {
+        val response =
+            stub.getSenderCertificate(Messaging.SenderCertificateRequest.getDefaultInstance())
+        return SenderCertificateResponse(
+            certificate = response.certificate.toByteArray(),
+            expiration = response.expiration,
+        )
     }
 }
 
 private fun StartDirectConversationRequest.toProto(): Messaging.StartDirectConversationRequest =
-    Messaging.StartDirectConversationRequest.newBuilder()
+    Messaging.StartDirectConversationRequest
+        .newBuilder()
         .setRecipientId(recipientId)
         .build()
 
 private fun DeviceMessage.toProto(): Messaging.DeviceMessage =
-    Messaging.DeviceMessage.newBuilder()
+    Messaging.DeviceMessage
+        .newBuilder()
         .setRecipientId(recipientId)
         .setDeviceId(deviceId)
         .setCiphertext(ByteString.copyFrom(cipherText))
         .build()
 
 private fun SendMessageRequest.toProto(): Messaging.SendMessageRequest =
-    Messaging.SendMessageRequest.newBuilder()
+    Messaging.SendMessageRequest
+        .newBuilder()
         .setConversationId(conversationId)
         .addAllDeviceMessages(deviceMessages.map(DeviceMessage::toProto))
         .setContentType(contentType)
@@ -106,72 +103,53 @@ private fun SendMessageRequest.toProto(): Messaging.SendMessageRequest =
 private fun ClientEvent.toProto(): Messaging.ClientEvent =
     when (this) {
         is ClientEvent.Typing -> {
-            val typing = Messaging.TypingIndicator.newBuilder()
-                .setConversationId(conversationId)
-                .setUserId(userId)
-                .setIsTyping(isTyping)
+            val typing =
+                Messaging.TypingIndicator
+                    .newBuilder()
+                    .setConversationId(conversationId)
+                    .setUserId(userId)
+                    .setIsTyping(isTyping)
+                    .build()
+            Messaging.ClientEvent
+                .newBuilder()
+                .setTyping(typing)
                 .build()
-            Messaging.ClientEvent.newBuilder().setTyping(typing).build()
-        }
-        is ClientEvent.Receipt -> {
-            val receipt = Messaging.ReceiptRequest.newBuilder()
-                .setConversationId(conversationId)
-                .setMessageId(messageId)
-                .setStatus(status)
-                .build()
-            Messaging.ClientEvent.newBuilder().setReceipt(receipt).build()
-        }
-        is ClientEvent.Heartbeat -> {
-            val heartbeat = Messaging.PresenceHeartbeat.newBuilder()
-                .setDeviceState(deviceState.toProto())
-                .setSentAtMs(sentAtMs)
-                .build()
-            Messaging.ClientEvent.newBuilder().setHeartbeat(heartbeat).build()
         }
     }
 
 private fun SyncRequest.toProto(): Messaging.SyncRequest =
-    Messaging.SyncRequest.newBuilder()
+    Messaging.SyncRequest
+        .newBuilder()
         .setSinceTimestamp(sinceTimestamp)
         .build()
 
 private fun AckedMessageRef.toProto(): Messaging.AckedMessageRef =
-    Messaging.AckedMessageRef.newBuilder()
+    Messaging.AckedMessageRef
+        .newBuilder()
         .setConversationId(conversationId)
         .setMessageId(messageId)
         .build()
 
 private fun AckMessagesRequest.toProto(): Messaging.AckMessagesRequest =
-    Messaging.AckMessagesRequest.newBuilder()
+    Messaging.AckMessagesRequest
+        .newBuilder()
         .addAllMessages(messages.map(AckedMessageRef::toProto))
         .build()
 
 private fun DeleteMessageRequest.toProto(): Messaging.DeleteMessageRequest =
-    Messaging.DeleteMessageRequest.newBuilder()
+    Messaging.DeleteMessageRequest
+        .newBuilder()
         .setConversationId(conversationId)
         .setMessageId(messageId)
         .build()
 
 private fun ReceiptRequest.toProto(): Messaging.ReceiptRequest =
-    Messaging.ReceiptRequest.newBuilder()
+    Messaging.ReceiptRequest
+        .newBuilder()
         .setConversationId(conversationId)
         .setMessageId(messageId)
         .setStatus(status)
         .build()
-
-private fun GetPresenceSnapshotRequest.toProto(): Messaging.GetPresenceSnapshotRequest =
-    Messaging.GetPresenceSnapshotRequest.newBuilder()
-        .addAllUserIds(userIds)
-        .build()
-
-private fun DevicePresenceState.toProto(): Messaging.DevicePresenceState =
-    when (this) {
-        DevicePresenceState.FOREGROUND -> Messaging.DevicePresenceState.FOREGROUND
-        DevicePresenceState.BACKGROUND -> Messaging.DevicePresenceState.BACKGROUND
-        DevicePresenceState.OFFLINE_DEVICE -> Messaging.DevicePresenceState.OFFLINE_DEVICE
-        DevicePresenceState.DEVICE_STATE_UNSPECIFIED ->
-            Messaging.DevicePresenceState.DEVICE_STATE_UNSPECIFIED
-    }
 
 private fun Messaging.SendMessageResponse.toManual(): SendMessageResponse =
     SendMessageResponse(
@@ -211,6 +189,15 @@ private fun Messaging.EncryptedEnvelope.toManual(): EncryptedEnvelope =
         cipherText = ciphertext.toByteArray(),
         contentType = contentType,
         serverTimestamp = serverTimestamp,
+        envelopeKind =
+            when (envelopeKind) {
+                Messaging.EnvelopeKind.ENVELOPE_KIND_NORMAL -> EnvelopeKind.NORMAL
+                Messaging.EnvelopeKind.ENVELOPE_KIND_SEALED -> EnvelopeKind.SEALED
+                // UNRECOGNIZED (proto-lite's open-enum fallback) collapses into
+                // UNSPECIFIED — the drain worker treats that as "server has not
+                // upgraded" and falls back to the content_type/sender sentinel.
+                else -> EnvelopeKind.UNSPECIFIED
+            },
     )
 
 private fun Messaging.TypingIndicator.toManual(): TypingIndicator =
@@ -227,23 +214,6 @@ private fun Messaging.ReceiptUpdate.toManual(): ReceiptUpdate =
         recipientId = recipientId,
         status = status,
         timestamp = timestamp,
-    )
-
-private fun Messaging.PresenceStatus.toManual(): PresenceStatus =
-    when (this) {
-        Messaging.PresenceStatus.ONLINE -> PresenceStatus.ONLINE
-        Messaging.PresenceStatus.OFFLINE -> PresenceStatus.OFFLINE
-        Messaging.PresenceStatus.HIDDEN -> PresenceStatus.HIDDEN
-        Messaging.PresenceStatus.PRESENCE_STATUS_UNSPECIFIED,
-        Messaging.PresenceStatus.UNRECOGNIZED -> PresenceStatus.PRESENCE_STATUS_UNSPECIFIED
-    }
-
-private fun Messaging.PresenceUpdate.toManual(): PresenceUpdate =
-    PresenceUpdate(
-        userId = userId,
-        status = status,
-        lastSeen = lastSeen,
-        statusCode = statusCode.toManual(),
     )
 
 private fun Messaging.PreKeyCountLow.toManual(): PreKeyCountLow =
@@ -269,12 +239,11 @@ private fun Messaging.CallLifecycleEvent.toManual(): CallLifecycleEvent =
         actorId = actorId,
     )
 
-private fun Messaging.ServerEvent.toManual(): ServerEvent =
+private fun Messaging.ServerEvent.toManual(): ServerEvent? =
     when (eventCase) {
         Messaging.ServerEvent.EventCase.MESSAGE -> ServerEvent.Message(message.toManual())
         Messaging.ServerEvent.EventCase.TYPING -> ServerEvent.Typing(typing.toManual())
         Messaging.ServerEvent.EventCase.RECEIPT -> ServerEvent.Receipt(receipt.toManual())
-        Messaging.ServerEvent.EventCase.PRESENCE -> ServerEvent.Presence(presence.toManual())
         Messaging.ServerEvent.EventCase.PRE_KEY_COUNT_LOW ->
             ServerEvent.PreKeyCountLow(preKeyCountLow.toManual())
         Messaging.ServerEvent.EventCase.CALL_OFFER -> ServerEvent.CallOffer(callOffer.toManual())
@@ -282,11 +251,10 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent =
             ServerEvent.CallLifecycle(callLifecycle.toManual())
         Messaging.ServerEvent.EventCase.REACTION,
         Messaging.ServerEvent.EventCase.SEALED_MESSAGE,
-        Messaging.ServerEvent.EventCase.EVENT_NOT_SET ->
-            ServerEvent.Presence(PresenceUpdate())
+        Messaging.ServerEvent.EventCase.MESSAGE_EDITED,
+        Messaging.ServerEvent.EventCase.EVENT_NOT_SET,
+        -> {
+            Log.d(TAG, "Unhandled ServerEvent case: $eventCase (deferred to M3)")
+            null
+        }
     }
-
-private fun Messaging.GetPresenceSnapshotResponse.toManual(): GetPresenceSnapshotResponse =
-    GetPresenceSnapshotResponse(
-        users = usersList.map(Messaging.PresenceUpdate::toManual),
-    )

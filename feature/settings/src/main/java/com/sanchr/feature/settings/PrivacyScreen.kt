@@ -8,15 +8,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,11 +48,12 @@ fun PrivacyScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             Text(
                 text = "Messaging Privacy",
@@ -108,10 +109,11 @@ fun PrivacyScreen(
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { expanded = true }
-                        .padding(vertical = SanchrTheme.spacing.sm),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { expanded = true }
+                            .padding(vertical = SanchrTheme.spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -161,21 +163,23 @@ fun PrivacyScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
-            val durations = listOf(
-                "off" to "Off",
-                "30s" to "30 seconds",
-                "5m" to "5 minutes",
-                "1h" to "1 hour",
-                "24h" to "24 hours",
-                "7d" to "7 days",
-            )
+            val durations =
+                listOf(
+                    "off" to "Off",
+                    "30s" to "30 seconds",
+                    "5m" to "5 minutes",
+                    "1h" to "1 hour",
+                    "24h" to "24 hours",
+                    "7d" to "7 days",
+                )
 
             durations.forEach { (value, label) ->
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.setDisappearingMessagesDefault(value) }
-                        .padding(vertical = SanchrTheme.spacing.xs),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setDisappearingMessagesDefault(value) }
+                            .padding(vertical = SanchrTheme.spacing.xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(

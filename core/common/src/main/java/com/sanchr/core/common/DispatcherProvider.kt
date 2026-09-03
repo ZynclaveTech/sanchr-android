@@ -1,5 +1,6 @@
 package com.sanchr.core.common
 
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
@@ -12,14 +13,18 @@ interface DispatcherProvider {
     val io: CoroutineDispatcher
     val default: CoroutineDispatcher
     val unconfined: CoroutineDispatcher
+    val signalDispatcher: CoroutineDispatcher
 }
 
 /**
  * Production implementation using standard Android dispatchers.
  */
-class StandardDispatcherProvider : DispatcherProvider {
-    override val main: CoroutineDispatcher = Dispatchers.Main
-    override val io: CoroutineDispatcher = Dispatchers.IO
-    override val default: CoroutineDispatcher = Dispatchers.Default
-    override val unconfined: CoroutineDispatcher = Dispatchers.Unconfined
-}
+class StandardDispatcherProvider
+    @Inject
+    constructor() : DispatcherProvider {
+        override val main: CoroutineDispatcher = Dispatchers.Main
+        override val io: CoroutineDispatcher = Dispatchers.IO
+        override val default: CoroutineDispatcher = Dispatchers.Default
+        override val unconfined: CoroutineDispatcher = Dispatchers.Unconfined
+        override val signalDispatcher: CoroutineDispatcher by lazy { SignalDispatcher.create() }
+    }

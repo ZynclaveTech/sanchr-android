@@ -21,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,7 +40,6 @@ import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.core.designsystem.theme.SanchrWarning
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -59,11 +57,12 @@ fun EncryptionKeysScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(SanchrTheme.spacing.default),
         ) {
             // Identity Fingerprint section
             Text(
@@ -77,9 +76,10 @@ fun EncryptionKeysScreen(
 
             SanchrCard {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Icon(
@@ -100,12 +100,21 @@ fun EncryptionKeysScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
                     // 12-block hex grid (4 rows x 3 columns)
-                    val fingerprintBlocks = listOf(
-                        "05ae72", "b31c0f", "d894a2",
-                        "71fe6b", "39c5d8", "a20e47",
-                        "f8b163", "6d2c95", "1e74ba",
-                        "c309f6", "87d41a", "5b0e2c",
-                    )
+                    val fingerprintBlocks =
+                        listOf(
+                            "05ae72",
+                            "b31c0f",
+                            "d894a2",
+                            "71fe6b",
+                            "39c5d8",
+                            "a20e47",
+                            "f8b163",
+                            "6d2c95",
+                            "1e74ba",
+                            "c309f6",
+                            "87d41a",
+                            "5b0e2c",
+                        )
 
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -114,18 +123,20 @@ fun EncryptionKeysScreen(
                     ) {
                         fingerprintBlocks.forEachIndexed { index, block ->
                             Box(
-                                modifier = Modifier
-                                    .padding(horizontal = SanchrTheme.spacing.xs)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                modifier =
+                                    Modifier
+                                        .padding(horizontal = SanchrTheme.spacing.xs)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
                             ) {
                                 Text(
                                     text = block.uppercase(),
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Medium,
-                                    ),
+                                    style =
+                                        MaterialTheme.typography.bodyMedium.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Medium,
+                                        ),
                                     textAlign = TextAlign.Center,
                                 )
                             }
@@ -148,17 +159,19 @@ fun EncryptionKeysScreen(
 
             SanchrCard {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // QR code placeholder
                     Box(
-                        modifier = Modifier
-                            .size(160.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        modifier =
+                            Modifier
+                                .size(160.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -201,9 +214,10 @@ fun EncryptionKeysScreen(
 
             SanchrCard {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -253,9 +267,10 @@ fun EncryptionKeysScreen(
 
             SanchrCard {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(SanchrTheme.spacing.default),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(SanchrTheme.spacing.default),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -289,7 +304,9 @@ fun EncryptionKeysScreen(
 
             // Key Change Notifications
             Text(
-                text = "You'll be notified when a contact's security key changes, which could mean they reinstalled the app or changed devices.",
+                text =
+                    "You'll be notified when a contact's security key changes, " +
+                        "which could mean they reinstalled the app or changed devices.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

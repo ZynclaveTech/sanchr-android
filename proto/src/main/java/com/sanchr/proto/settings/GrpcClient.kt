@@ -8,7 +8,6 @@ import io.grpc.Channel
  * Generated stub equivalent for sanchr.settings.SettingsService.
  */
 interface SettingsServiceClient {
-
     suspend fun getSettings(request: GetSettingsRequest): UserSettings
 
     suspend fun updateSettings(request: UpdateSettingsRequest): UserSettings
@@ -22,30 +21,29 @@ interface SettingsServiceClient {
 
 /**
  * Implementation shell that will delegate to the actual gRPC-generated stubs
- * once protobuf-gradle-plugin codegen runs.
+ * once the settings sync feature lands.
  */
 class SettingsServiceGrpcClient(
     private val channel: Channel,
     private val callOptions: CallOptions = CallOptions.DEFAULT,
 ) : SettingsServiceClient {
+    // TODO(M6+): wire to SettingsServiceGrpcKt.SettingsServiceCoroutineStub when settings sync lands
+    override suspend fun getSettings(request: GetSettingsRequest): UserSettings =
+        throw NotImplementedError("Awaiting settings sync feature in M6+")
 
-    override suspend fun getSettings(request: GetSettingsRequest): UserSettings {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to SettingsServiceGrpcKt.SettingsServiceCoroutineStub when settings sync lands
+    override suspend fun updateSettings(request: UpdateSettingsRequest): UserSettings =
+        throw NotImplementedError("Awaiting settings sync feature in M6+")
 
-    override suspend fun updateSettings(request: UpdateSettingsRequest): UserSettings {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to SettingsServiceGrpcKt.SettingsServiceCoroutineStub when settings sync lands
+    override suspend fun updateProfile(request: UpdateProfileRequest): ProfileResponse =
+        throw NotImplementedError("Awaiting settings sync feature in M6+")
 
-    override suspend fun updateProfile(request: UpdateProfileRequest): ProfileResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to SettingsServiceGrpcKt.SettingsServiceCoroutineStub when settings sync lands
+    override suspend fun toggleSanchrMode(request: ToggleSanchrModeRequest): UserSettings =
+        throw NotImplementedError("Awaiting settings sync feature in M6+")
 
-    override suspend fun toggleSanchrMode(request: ToggleSanchrModeRequest): UserSettings {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
-
-    override suspend fun getStorageUsage(request: GetStorageUsageRequest): StorageUsageResponse {
-        throw NotImplementedError("Awaiting protobuf codegen")
-    }
+    // TODO(M6+): wire to SettingsServiceGrpcKt.SettingsServiceCoroutineStub when settings sync lands
+    override suspend fun getStorageUsage(request: GetStorageUsageRequest): StorageUsageResponse =
+        throw NotImplementedError("Awaiting settings sync feature in M6+")
 }

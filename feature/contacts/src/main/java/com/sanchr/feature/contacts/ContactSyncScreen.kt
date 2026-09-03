@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,7 +23,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -46,7 +44,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
-import com.sanchr.core.designsystem.theme.SanchrGradients
 import com.sanchr.core.designsystem.theme.SanchrIndigo100
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -72,11 +69,12 @@ fun ContactSyncScreen(
         modifier = modifier,
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = SanchrTheme.spacing.xl),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = SanchrTheme.spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
@@ -87,10 +85,11 @@ fun ContactSyncScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(96.dp)
-                        .clip(CircleShape)
-                        .background(SanchrIndigo100),
+                    modifier =
+                        Modifier
+                            .size(96.dp)
+                            .clip(CircleShape)
+                            .background(SanchrIndigo100),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -103,9 +102,10 @@ fun ContactSyncScreen(
                 Icon(
                     imageVector = Icons.Filled.Shield,
                     contentDescription = null,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .align(Alignment.BottomEnd),
+                    modifier =
+                        Modifier
+                            .size(28.dp)
+                            .align(Alignment.BottomEnd),
                     tint = SanchrSuccess,
                 )
             }
@@ -249,16 +249,18 @@ private fun PrivacyRationaleCard(
 ) {
     SanchrCard(modifier = modifier) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(SanchrTheme.spacing.default),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(SanchrTheme.spacing.default),
             verticalAlignment = Alignment.Top,
         ) {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
