@@ -54,6 +54,25 @@ class SessionRefresherTest {
         }
 
     @Test
+    fun `a session change mid-refresh discards the rotated tokens`() =
+        runTest {
+            // Simulates logout clearing the session concurrently with an
+            // in-flight refresh: the stored refresh token is captured as
+            // "r1", but by the time the RPC resolves, storage no longer
+            // holds "r1" (clearSession ran in between). The rotated pair
+            // must never be written back in that case.
+            var storedRefreshToken: String? = "r1"
+            every { session.getRefreshToken() } answers { storedRefreshToken }
+            coEvery { auth.refreshToken(any()) } coAnswers {
+                storedRefreshToken = null
+                AuthResponse(accessToken = "a2", refreshToken = "r2", expiresIn = 900)
+            }
+
+            assertEquals(RefreshResult.SessionChanged, refresher.refresh())
+            verify(exactly = 0) { session.updateTokens(any(), any(), any()) }
+        }
+
+    @Test
     fun `an unauthenticated refresh signs the session out`() =
         runTest {
             every { session.getRefreshToken() } returns "r1"

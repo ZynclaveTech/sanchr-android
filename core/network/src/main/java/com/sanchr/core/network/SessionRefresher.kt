@@ -21,6 +21,15 @@ sealed interface RefreshResult {
     data object Transient : RefreshResult
 
     data object SignedOut : RefreshResult
+
+    /**
+     * The RPC succeeded, but the session this refresh started with is no
+     * longer the one in storage — most likely a concurrent logout cleared it
+     * while the call was in flight. The rotated pair is discarded rather
+     * than written back, so this is honestly "not refreshed": callers must
+     * not treat it as [Refreshed].
+     */
+    data object SessionChanged : RefreshResult
 }
 
 /**
@@ -52,9 +61,19 @@ class SessionRefresher(
             val result =
                 try {
                     val response = authClient.refreshToken(RefreshTokenRequest(refreshToken = refreshToken))
-                    val rotated = response.refreshToken.ifEmpty { refreshToken }
-                    sessionManager.updateTokens(response.accessToken, rotated, clock() + response.expiresIn * 1000L)
-                    RefreshResult.Refreshed
+                    if (sessionManager.getRefreshToken() != refreshToken) {
+                        // Something else (logout, most plausibly) replaced or
+                        // cleared the session while this RPC was in flight.
+                        // Writing the rotated pair back now would resurrect a
+                        // session that was already signed out from under the
+                        // user — discard it instead.
+                        Log.w(TAG, "Session changed during refresh; discarding rotated tokens")
+                        RefreshResult.SessionChanged
+                    } else {
+                        val rotated = response.refreshToken.ifEmpty { refreshToken }
+                        sessionManager.updateTokens(response.accessToken, rotated, clock() + response.expiresIn * 1000L)
+                        RefreshResult.Refreshed
+                    }
                 } catch (e: CancellationException) {
                     // Structured concurrency: a cancelled scope must propagate,
                     // never be absorbed as a refresh outcome.
