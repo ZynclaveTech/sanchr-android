@@ -31,6 +31,7 @@ class LogoutUseCaseTest {
     private val database = mockk<SanchrDatabase>(relaxed = true)
     private val stagedIdentityStore = mockk<StagedIdentityStore>(relaxed = true)
     private val databasePassphraseProvider = mockk<DatabasePassphraseProvider>(relaxed = true)
+    private val deliveryTokenStore = mockk<DeliveryTokenStore>(relaxed = true)
 
     private val dispatchers =
         object : DispatcherProvider {
@@ -49,6 +50,7 @@ class LogoutUseCaseTest {
             database = database,
             stagedIdentityStore = stagedIdentityStore,
             databasePassphraseProvider = databasePassphraseProvider,
+            deliveryTokenStore = deliveryTokenStore,
             dispatchers = dispatchers,
         )
 
@@ -92,11 +94,29 @@ class LogoutUseCaseTest {
 
             useCase()
 
-            // database.close() must still be called despite the earlier failure
+            // database.close() must still be called despite the earlier failure,
+            // and the delivery-token pool must still be dropped last.
             coVerifyOrder {
                 database.close()
                 databasePassphraseProvider.wipe()
+                deliveryTokenStore.clear()
             }
+        }
+
+    /**
+     * Regression: [DeliveryTokenStore] is a `@Singleton` seeded from
+     * [SessionManager] at construction time, so wiping the persisted
+     * `delivery_tokens` key in `clearSession()` alone does not touch the
+     * live in-memory pool. Without this call, a second account signing in
+     * in the same process would spend the first account's leftover
+     * (possibly already-expired) tokens.
+     */
+    @Test
+    fun `deliveryTokenStore clear is called exactly once`() =
+        runTest {
+            useCase()
+
+            coVerify(exactly = 1) { deliveryTokenStore.clear() }
         }
 
     /**
