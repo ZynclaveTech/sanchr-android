@@ -169,14 +169,16 @@ private fun ResolvedNavHost(
     }
 
     // Deliver a notification-tap destination once the session is confirmed
-    // active. A tap that arrives while signed out, or before startup has
-    // resolved, must not push a chat/call screen behind the auth graph -- so
-    // the pending value is held (not dropped) and this effect re-fires on
-    // every sessionActive change until it can be delivered.
+    // active AND onboarding is complete. A tap that arrives while signed out,
+    // before startup has resolved, or while the user is still mid-onboarding
+    // must not push a chat/call screen ahead of profile setup and contact
+    // sync -- so the pending value is held (not dropped) and this effect
+    // re-fires on every sessionActive/hasCompletedOnboarding change until it
+    // can be delivered.
     val pending by pendingDestination.collectAsState()
-    LaunchedEffect(pending, sessionActive) {
+    LaunchedEffect(pending, sessionActive, hasCompletedOnboarding) {
         val destination = pending ?: return@LaunchedEffect
-        if (!sessionActive) return@LaunchedEffect
+        if (!sessionActive || !hasCompletedOnboarding) return@LaunchedEffect
         navController.navigate(destination.route) { launchSingleTop = true }
         onPendingConsumed()
     }
