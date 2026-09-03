@@ -211,6 +211,7 @@ class MessageRepositoryImpl
             contentType: String,
             timestamp: Long,
             flushAckImmediately: Boolean,
+            stageAck: Boolean,
         ) {
             val entity =
                 MessageEntity(
@@ -223,7 +224,7 @@ class MessageRepositoryImpl
                     timestamp = timestamp,
                 )
             messageDao.insertMessage(entity)
-            stageAck(conversationId, messageId, flushAckImmediately)
+            if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
         }
 
         override suspend fun ackEnvelope(
@@ -231,10 +232,10 @@ class MessageRepositoryImpl
             messageId: String,
             flushAckImmediately: Boolean,
         ) {
-            stageAck(conversationId, messageId, flushAckImmediately)
+            stagePendingAck(conversationId, messageId, flushAckImmediately)
         }
 
-        private suspend fun stageAck(
+        private suspend fun stagePendingAck(
             conversationId: String,
             messageId: String,
             flushAckImmediately: Boolean,

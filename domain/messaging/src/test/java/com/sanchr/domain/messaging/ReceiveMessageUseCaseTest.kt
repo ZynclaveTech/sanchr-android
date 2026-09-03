@@ -207,6 +207,9 @@ class ReceiveMessageUseCaseTest {
             val result = useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
 
             assertTrue(result is EnvelopeDecryptResult.Success)
+            // stageAck = false: the row is keyed on the payload's id (a v4
+            // UUID), which the server's delivery queue would not recognize
+            // as an ack target — so this call must not also stage one.
             coVerify {
                 messageRepository.insertDecryptedMessage(
                     conversationId = "payload-conv",
@@ -216,17 +219,21 @@ class ReceiveMessageUseCaseTest {
                     contentType = "text",
                     timestamp = 42L,
                     flushAckImmediately = false,
+                    stageAck = false,
                 )
             }
-            // The envelope itself is still acked under its own (server) ids,
-            // independent of the payload's — see MessageRepository.ackEnvelope.
-            coVerify {
+            // Exactly one ack is staged for the envelope, keyed on its own
+            // (server) ids — never the payload's. This is the property the
+            // stageAck = false above exists to protect: a resend-safe row
+            // id must not also produce a second, server-rejected ack entry.
+            coVerify(exactly = 1) {
                 messageRepository.ackEnvelope(
                     conversationId = "env-conv",
                     messageId = "env-msg",
                     flushAckImmediately = true,
                 )
             }
+            coVerify(exactly = 0) { messageRepository.ackEnvelope("payload-conv", "payload-msg", any()) }
         }
 
     @Test
@@ -251,6 +258,7 @@ class ReceiveMessageUseCaseTest {
                     contentType = "text",
                     timestamp = 1L,
                     flushAckImmediately = false,
+                    stageAck = false,
                 )
             }
         }
@@ -269,7 +277,7 @@ class ReceiveMessageUseCaseTest {
             val result = useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
 
             assertTrue(result is EnvelopeDecryptResult.Success)
-            coVerify(exactly = 0) { messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any()) }
+            coVerify(exactly = 0) { messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
             coVerify {
                 messageRepository.ackEnvelope(
                     conversationId = "env-conv",
@@ -301,6 +309,7 @@ class ReceiveMessageUseCaseTest {
                     contentType = "text",
                     timestamp = 1L,
                     flushAckImmediately = false,
+                    stageAck = false,
                 )
             }
         }
@@ -333,6 +342,7 @@ class ReceiveMessageUseCaseTest {
                     contentType = "sticker/v9",
                     timestamp = 1L,
                     flushAckImmediately = false,
+                    stageAck = false,
                 )
             }
         }

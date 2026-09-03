@@ -213,14 +213,15 @@ class ReceiveMessageUseCase
          * or just acking a [RoutedPayload.Control] without persisting it.
          *
          * The envelope is acked separately from persistence
-         * ([MessageRepository.ackEnvelope], keyed by [ctx]'s own ids) rather
-         * than relying on [MessageRepository.insertDecryptedMessage]'s
-         * built-in ack staging, because that staging is keyed by whatever
-         * conversation/message id the row itself uses — and a
-         * [RoutedPayload.UserMessage] row is keyed by the *payload's* id
-         * when one is present (see below), not the envelope's. The server's
-         * delivery queue only recognizes the envelope's own id, so acking
-         * must always use [ctx], independent of what got persisted.
+         * ([MessageRepository.ackEnvelope], keyed by [ctx]'s own ids)
+         * instead of through [MessageRepository.insertDecryptedMessage]'s
+         * own (suppressed here via `stageAck = false`) ack staging, because
+         * that staging would be keyed by whatever conversation/message id
+         * the row itself uses — and a [RoutedPayload.UserMessage] row is
+         * keyed by the *payload's* id when one is present (see below), not
+         * the envelope's. The server's delivery queue only recognizes the
+         * envelope's own id, so acking must always use [ctx], independent
+         * of what got persisted — and exactly once, not once per id.
          */
         private suspend fun routeAndPersist(
             success: EnvelopeDecryptResult.Success,
@@ -246,8 +247,11 @@ class ReceiveMessageUseCase
                         contentType = routed.contentType,
                         timestamp = success.serverTimestamp,
                         // The real ack is staged below, keyed by the envelope's
-                        // own ids — not by whatever this call just used.
+                        // own ids — not by whatever this call just used, so
+                        // suppress this call's own (possibly payload-keyed,
+                        // server-rejected) ack staging entirely.
                         flushAckImmediately = false,
+                        stageAck = false,
                     )
                     messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
                 }

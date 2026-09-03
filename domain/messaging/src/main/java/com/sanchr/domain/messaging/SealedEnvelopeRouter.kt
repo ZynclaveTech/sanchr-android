@@ -63,6 +63,18 @@ object SealedEnvelopeRouter {
         plaintext: ByteArray,
         fallbackContentType: String,
     ): RoutedPayload {
+        // Gate on the same "a JSON object carrying a v key" check iOS uses
+        // before attempting a full decode. InnerPayload.decode alone is not
+        // enough: it defaults every field, so a legacy plaintext that
+        // happens to be valid JSON with no v key (even "{}") would
+        // otherwise decode into an empty-content payload instead of being
+        // treated as legacy text.
+        if (!InnerPayload.isInnerPayload(plaintext)) {
+            return RoutedPayload.UserMessage(
+                content = String(plaintext, Charsets.UTF_8),
+                contentType = fallbackContentType,
+            )
+        }
         val payload =
             InnerPayload.decode(plaintext) ?: return RoutedPayload.UserMessage(
                 content = String(plaintext, Charsets.UTF_8),

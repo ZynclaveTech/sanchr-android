@@ -76,4 +76,20 @@ class SealedEnvelopeRouterTest {
         assertEquals("", routed.conversationId)
         assertNull(routed.messageId)
     }
+
+    @Test
+    fun `valid JSON with no v key is legacy text, not a payload with defaulted fields`() {
+        // "{}" decodes cleanly via InnerPayload.decode (every field defaults),
+        // so the router must gate on isInnerPayload first or this would be
+        // misrouted as an empty-content payload instead of legacy text.
+        val legacyPlaintext = "{}".toByteArray()
+
+        val routed = SealedEnvelopeRouter.route(legacyPlaintext, fallbackContentType = "text")
+
+        assertTrue(routed is RoutedPayload.UserMessage)
+        assertEquals("{}", routed.content)
+        assertEquals("text", routed.contentType)
+        assertEquals("", routed.conversationId)
+        assertNull(routed.messageId)
+    }
 }
