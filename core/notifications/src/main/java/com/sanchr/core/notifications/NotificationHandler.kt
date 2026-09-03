@@ -9,6 +9,7 @@ import android.media.AudioAttributes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.designsystem.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -144,7 +145,7 @@ class NotificationHandler
             val publicVersion =
                 NotificationCompat
                     .Builder(context, CHANNEL_MESSAGES)
-                    .setSmallIcon(android.R.drawable.ic_dialog_email)
+                    .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle("New message")
                     .setContentText("")
                     .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -161,7 +162,7 @@ class NotificationHandler
             val notification =
                 NotificationCompat
                     .Builder(context, CHANNEL_MESSAGES)
-                    .setSmallIcon(android.R.drawable.ic_dialog_email)
+                    .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle(displayTitle)
                     .setContentText(preview)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
@@ -194,7 +195,7 @@ class NotificationHandler
             val notification =
                 NotificationCompat
                     .Builder(context, CHANNEL_SYSTEM)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info) // TODO: Replace with app icon
+                    .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle(title)
                     .setContentText(body)
                     .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -239,7 +240,7 @@ class NotificationHandler
             val summary =
                 NotificationCompat
                     .Builder(context, CHANNEL_MESSAGES)
-                    .setSmallIcon(android.R.drawable.ic_dialog_email)
+                    .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle("Sanchr")
                     .setContentText("$unreadCount unread messages")
                     .setGroup(NOTIFICATION_GROUP_MESSAGES)

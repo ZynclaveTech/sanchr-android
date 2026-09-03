@@ -80,11 +80,16 @@ android {
     buildFeatures {
         buildConfig = true
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
     implementation(projects.core.common)
     implementation(projects.core.datastore)
+    implementation(projects.proto)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

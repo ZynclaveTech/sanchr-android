@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import com.sanchr.core.designsystem.R
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -101,7 +102,7 @@ class CallNotificationManager
 
             return NotificationCompat
                 .Builder(context, CHANNEL_ID_CALL)
-                .setSmallIcon(android.R.drawable.ic_menu_call)
+                .setSmallIcon(R.drawable.ic_stat_sanchr)
                 .setContentTitle(callerName)
                 .setContentText(statusLabel)
                 .setContentIntent(openPendingIntent)
@@ -166,7 +167,7 @@ class CallNotificationManager
             val notification =
                 NotificationCompat
                     .Builder(context, CHANNEL_ID_INCOMING)
-                    .setSmallIcon(android.R.drawable.ic_menu_call)
+                    .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle(callerName)
                     .setContentText(callTypeLabel)
                     .setCategory(NotificationCompat.CATEGORY_CALL)

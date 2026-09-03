@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme. Used as the android:theme in AndroidManifest.
+         Background matches SanchrDarkColorScheme.background (core/designsystem
+         .../theme/Color.kt SanchrDarkBackground, 0xFF0F0F14) so the launch
+         window doesn't flash a different colour than the first Compose frame. -->
+    <style name="Theme.Sanchr" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF0F0F14</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Splash screen theme, applied to MainActivity before Compose takes over. -->
+    <style name="Theme.Sanchr.Splash" parent="Theme.Sanchr">
+        <item name="android:windowBackground">#FF0F0F14</item>
+    </style>
+</resources>

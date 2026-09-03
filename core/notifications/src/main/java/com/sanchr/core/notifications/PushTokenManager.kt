@@ -24,6 +24,7 @@ class PushTokenManager
     constructor(
         private val notificationClient: NotificationServiceClient,
         private val sessionManager: SessionManager,
+        private val tokenSource: FcmTokenSource,
     ) {
         companion object {
             private const val TAG = "PushTokenManager"
@@ -34,7 +35,7 @@ class PushTokenManager
          */
         suspend fun getCurrentToken(): String? =
             try {
-                FirebaseMessaging.getInstance().token.await()
+                tokenSource.currentToken()
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to retrieve FCM token", e)
                 null
@@ -42,7 +43,8 @@ class PushTokenManager
 
         /**
          * Uploads the current FCM token to the Sanchr backend.
-         * No-ops silently if the token cannot be retrieved or the user is not authenticated.
+         * No-ops silently if the token cannot be retrieved, the user is not authenticated,
+         * or the token has already been uploaded.
          */
         suspend fun uploadToken() {
             val token =
@@ -56,6 +58,8 @@ class PushTokenManager
                 return
             }
 
+            if (sessionManager.getFcmToken() == token) return
+
             try {
                 notificationClient.registerPushToken(
                     RegisterPushTokenRequest(
@@ -63,8 +67,10 @@ class PushTokenManager
                         platform = "android",
                     ),
                 )
-                // Persist the token locally so we can detect changes
-                sessionManager.saveDeviceId(token)
+                // The server device id (SessionManager.getDeviceId) is the numeric id from
+                // AuthResponse and feeds x-device-id and the key bundle. It used to be
+                // overwritten with this token, which uploaded key bundles for device 0.
+                sessionManager.saveFcmToken(token)
                 Log.d(TAG, "FCM token uploaded successfully")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to upload FCM token to backend", e)
