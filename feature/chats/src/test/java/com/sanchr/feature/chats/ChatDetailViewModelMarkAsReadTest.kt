@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -148,6 +149,64 @@ class ChatDetailViewModelMarkAsReadTest {
             newViewModel()
             advanceUntilIdle()
 
+            coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
+        }
+
+    /**
+     * Regression: the unread-count write is an unsupervised coroutine too,
+     * so a DB failure in it crashes the process rather than just leaving a
+     * stale badge. The receipt is unaffected — the two run in separate
+     * coroutines.
+     */
+    @Test
+    fun `a failing markAsRead does not crash and leaves the receipt unaffected`() =
+        runTest(testDispatcher) {
+            every { messageRepository.observeMessages(conversationId) } returns
+                flowOf(listOf(message(id = "msg-in", senderId = "user-peer", timestampMillis = 1_000L)))
+            coEvery { messageRepository.markAsRead(any()) } throws IllegalStateException("DB closed during logout")
+
+            newViewModel()
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { sendReadReceiptUseCase(conversationId, "msg-in") }
+        }
+
+    /**
+     * Regression: resolving the newest inbound message runs in an
+     * unsupervised [androidx.lifecycle.viewModelScope] coroutine, so an
+     * exception escaping it reaches the scope's handler and takes down the
+     * process. `runTest` surfaces exactly that — it captures uncaught
+     * coroutine exceptions and fails the test — so these two cases fail
+     * without the guard in `sendReadReceiptForNewestInboundMessage`.
+     */
+    @Test
+    fun `a failing message flow loses the receipt without crashing`() =
+        runTest(testDispatcher) {
+            every { messageRepository.observeMessages(conversationId) } returns
+                flow { throw IllegalStateException("DB closed during logout") }
+
+            newViewModel()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { sendReadReceiptUseCase(any(), any()) }
+            coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
+        }
+
+    /**
+     * A flow that completes without ever emitting is distinct from one
+     * emitting an empty list: `first()` throws NoSuchElementException rather
+     * than returning `emptyList()`, so a `catch` operator upstream of it
+     * would not help.
+     */
+    @Test
+    fun `a message flow that completes without emitting loses the receipt without crashing`() =
+        runTest(testDispatcher) {
+            every { messageRepository.observeMessages(conversationId) } returns emptyFlow()
+
+            newViewModel()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { sendReadReceiptUseCase(any(), any()) }
             coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
         }
 }
