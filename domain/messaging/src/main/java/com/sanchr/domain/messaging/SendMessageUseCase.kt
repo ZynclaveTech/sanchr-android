@@ -257,19 +257,12 @@ class SendMessageUseCase
                         senderDeviceId = senderDeviceId ?: 0,
                     )
                 val plaintext = payload.encode()
-                recipients.flatMap { recipientId ->
-                    signalSessionManager
-                        .encryptForAllDevices(plaintext, recipientId)
-                        .map { encrypted ->
-                            SealedDeviceMessage(
-                                recipientId = recipientId,
-                                deviceId = encrypted.deviceId,
-                                sealedEnvelope = encrypted.ciphertext,
-                                conversationId = entity.conversationId,
-                                silent = false,
-                            )
-                        }
-                }
+                encryptAndWrapDeviceMessages(
+                    plaintext = plaintext,
+                    recipients = recipients,
+                    conversationId = entity.conversationId,
+                    kind = SealedSendKind.Message,
+                )
             } catch (error: EncryptFanOutEmptyException) {
                 // Transient: no ciphertext was produced for any recipient
                 // device (typically a sender-certificate fetch failure).
@@ -304,6 +297,42 @@ class SendMessageUseCase
                     failureClass = FailureClass.UNTRUSTED_IDENTITY,
                 )
                 throw error
+            }
+
+        /**
+         * Encrypts [plaintext] for every device of every recipient and wraps
+         * each ciphertext into a [SealedDeviceMessage] carrying [kind]'s
+         * [SealedSendKind.isSilent] flag. This is the "encrypt-and-wrap"
+         * half of [encryptFanOut] above, with the InnerPayload construction
+         * and message-specific failure handling (requeue vs. mark-failed)
+         * left behind in that function.
+         *
+         * `internal`, not `private`: a read receipt is a different sealed
+         * send (a [SealedSendKind.Control] payload the caller builds itself,
+         * with its own failure handling — it is not a message and must not
+         * be requeued or marked FAILED the way one is), but it is still just
+         * bytes encrypted per-recipient-device and wrapped the same way, so
+         * it reuses this function directly rather than re-implementing the
+         * loop over [SignalSessionManager.encryptForAllDevices].
+         */
+        internal suspend fun encryptAndWrapDeviceMessages(
+            plaintext: ByteArray,
+            recipients: List<String>,
+            conversationId: String,
+            kind: SealedSendKind,
+        ): List<SealedDeviceMessage> =
+            recipients.flatMap { recipientId ->
+                signalSessionManager
+                    .encryptForAllDevices(plaintext, recipientId)
+                    .map { encrypted ->
+                        SealedDeviceMessage(
+                            recipientId = recipientId,
+                            deviceId = encrypted.deviceId,
+                            sealedEnvelope = encrypted.ciphertext,
+                            conversationId = conversationId,
+                            silent = kind.isSilent,
+                        )
+                    }
             }
 
         /**

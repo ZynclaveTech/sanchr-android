@@ -10,6 +10,7 @@ import com.sanchr.core.model.MessageContent
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.SendMessageUseCase
+import com.sanchr.domain.messaging.SendReadReceiptUseCase
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -27,6 +29,7 @@ class ChatDetailViewModel
         savedStateHandle: SavedStateHandle,
         private val messageRepository: MessageRepository,
         private val sendMessageUseCase: SendMessageUseCase,
+        private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
         private val notificationHandler: NotificationHandler,
@@ -88,9 +91,79 @@ class ChatDetailViewModel
             }
         }
 
+        /**
+         * Zeroes the conversation's unread count and sends a read receipt
+         * naming the newest inbound message. Both are best-effort and
+         * separately guarded, and each runs in its own coroutine so the
+         * receipt's jitter never holds up the unread-count write. Fires once, from
+         * `init` — a conversation left open while new inbound messages
+         * arrive will not re-fire this and so will not send a further
+         * receipt for them. Widening the trigger (e.g. re-firing per new
+         * message) is a behaviour change beyond this task's scope.
+         */
         private fun markAsRead() {
             viewModelScope.launch {
-                messageRepository.markAsRead(conversationId)
+                try {
+                    messageRepository.markAsRead(conversationId)
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Same reasoning as the receipt below: an unsupervised
+                    // coroutine, so a DB failure here would take down the
+                    // process. The count is recomputed from the message rows
+                    // on the next open, so dropping this write only leaves a
+                    // stale badge.
+                }
+            }
+            viewModelScope.launch {
+                sendReadReceiptForNewestInboundMessage()
+            }
+        }
+
+        /**
+         * Resolves the newest inbound message — the [Message] with the
+         * greatest [Message.timestamp] whose [Message.senderId] is not the
+         * current user — and asks [SendReadReceiptUseCase] to send a receipt
+         * naming it. Android's `markAsRead` is conversation-wide, but a
+         * receipt is per-message; the newest inbound message is the one the
+         * peer most wants confirmation of, mirroring iOS's explicit
+         * `upToMessageId`.
+         *
+         * Reads directly from [MessageRepository.observeMessages] rather
+         * than [uiState]'s already-mapped list: that list is populated by
+         * [observeMessages]'s own collector, launched separately in `init`,
+         * and may still be empty by the time this runs. A conversation with
+         * no messages, or whose messages are all outbound (e.g. the peer
+         * has not sent anything yet), resolves no inbound message and sends
+         * nothing. Sending is best-effort: [SendReadReceiptUseCase] never
+         * throws (other than [kotlinx.coroutines.CancellationException]),
+         * honours the read-receipts preference and the 1:1-only rule
+         * itself, and jitters up to 3 s before it sends — running here in
+         * its own coroutine so that delay never blocks screen rendering.
+         * Resolving that message is guarded to the same standard, because it
+         * runs in an unsupervised [viewModelScope] coroutine: an escaping
+         * exception would reach the scope's handler and take down the
+         * process rather than merely lose a receipt.
+         */
+        private suspend fun sendReadReceiptForNewestInboundMessage() {
+            try {
+                val currentUserId = sessionManager.getUserId() ?: return
+                val newestInboundMessage =
+                    messageRepository
+                        .observeMessages(conversationId)
+                        .first()
+                        .filter { it.senderId != currentUserId }
+                        .maxByOrNull { it.timestamp }
+                        ?: return
+                sendReadReceiptUseCase(conversationId, newestInboundMessage.id)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                // Resolving the message is best-effort, like the send itself:
+                // a DB failure propagates out of first(), and a flow that
+                // completes without emitting makes first() throw
+                // NoSuchElementException. Neither should crash the screen over
+                // an unsent receipt.
             }
         }
 

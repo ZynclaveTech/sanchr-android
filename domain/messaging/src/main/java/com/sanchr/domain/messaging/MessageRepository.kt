@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
+import com.sanchr.core.model.MessageStatus
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -93,6 +94,51 @@ interface MessageRepository {
 
     /** Marks all messages in a conversation as read. */
     suspend fun markAsRead(conversationId: String)
+
+    /**
+     * Resolves the single other participant of a DIRECT conversation, for
+     * [SendReadReceiptUseCase] — a read receipt is 1:1 only. Returns null
+     * when [conversationId] does not exist, is a GROUP, or (anything else
+     * unexpected) does not have exactly one other participant. Mirrors
+     * iOS's `oneToOneReceiptPeerId`.
+     *
+     * Deliberately narrower than [getOutboundRecipients], which throws on
+     * zero remote participants and does not expose the conversation's
+     * type — neither behaviour suits a receipt, which must silently do
+     * nothing for a group or a conversation it can no longer resolve.
+     */
+    suspend fun oneToOneRecipient(
+        conversationId: String,
+        selfUserId: String,
+    ): String?
+
+    /**
+     * Applies an inbound receipt's status to [messageId] — the same local
+     * effect `RealtimeManager.handleReceipt` produces for a server-generated
+     * cleartext receipt (uppercase the wire status, write it to the
+     * `messages` row's `status` column), reached through this repository
+     * because [ReceiveMessageUseCase] (the sealed-receipt caller) has no
+     * `MessageDao` of its own.
+     *
+     * [status] is a validated [MessageStatus], not a raw wire string,
+     * precisely so an unrecognised status can never reach here — the caller
+     * decodes the receipt and is responsible for that check; an unknown
+     * wire value must be ignored rather than written.
+     *
+     * A no-op if [messageId] does not name a row this device has (e.g. the
+     * receipt named a message this device never persisted, or one deleted
+     * by a race) — guaranteed by plain `UPDATE ... WHERE id = :messageId`
+     * semantics. The write itself is **not** guaranteed never to throw
+     * (e.g. a Room/SQLite failure): this method does not swallow that.
+     * [ReceiveMessageUseCase], the only caller today, guards its own call
+     * so a write failure here can never leave an envelope unacked; a future
+     * caller that needs the same "ack/complete regardless" property must
+     * guard its own call the same way.
+     */
+    suspend fun applyReceiptStatus(
+        messageId: String,
+        status: MessageStatus,
+    )
 
     /** Deletes a message locally (and requests remote deletion if own message). */
     suspend fun deleteMessage(
