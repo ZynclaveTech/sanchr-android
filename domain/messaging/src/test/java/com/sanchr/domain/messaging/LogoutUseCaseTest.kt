@@ -6,6 +6,8 @@ import com.sanchr.core.crypto.StagedIdentityStore
 import com.sanchr.core.database.SanchrDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
+import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
@@ -25,6 +27,7 @@ import kotlinx.coroutines.test.runTest
 class LogoutUseCaseTest {
     private val context = mockk<Context>(relaxed = true)
     private val sessionManager = mockk<SessionManager>(relaxed = true)
+    private val userPreferences = mockk<UserPreferences>(relaxed = true)
     private val database = mockk<SanchrDatabase>(relaxed = true)
     private val stagedIdentityStore = mockk<StagedIdentityStore>(relaxed = true)
     private val databasePassphraseProvider = mockk<DatabasePassphraseProvider>(relaxed = true)
@@ -42,6 +45,7 @@ class LogoutUseCaseTest {
         LogoutUseCase(
             context = context,
             sessionManager = sessionManager,
+            userPreferences = userPreferences,
             database = database,
             stagedIdentityStore = stagedIdentityStore,
             databasePassphraseProvider = databasePassphraseProvider,
@@ -92,6 +96,37 @@ class LogoutUseCaseTest {
             coVerifyOrder {
                 database.close()
                 databasePassphraseProvider.wipe()
+            }
+        }
+
+    /**
+     * Regression: without this wipe `has_completed_onboarding` (and every
+     * other user-level preference) leaks across accounts. A second user
+     * logging in on the same device would silently skip onboarding.
+     */
+    @Test
+    fun `userPreferences clear is called exactly once`() =
+        runTest {
+            useCase()
+
+            coVerify(exactly = 1) { userPreferences.clear() }
+        }
+
+    /**
+     * UserPreferences must be wiped AFTER sessionManager.clearSession() has
+     * flipped sessionActive → false (so the UI has already navigated away
+     * from any screens observing preference flows) but BEFORE the database
+     * is torn down — mirrors the documented step order in [LogoutUseCase].
+     */
+    @Test
+    fun `userPreferences clear runs between clearSession and database close`() =
+        runTest {
+            useCase()
+
+            coVerifyOrder {
+                sessionManager.clearSession()
+                userPreferences.clear()
+                database.close()
             }
         }
 

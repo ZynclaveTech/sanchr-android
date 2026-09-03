@@ -2,11 +2,14 @@ package com.sanchr.core.designsystem.component
 
 import android.content.Context
 import android.telephony.TelephonyManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,12 +19,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -35,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
+import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import kotlinx.coroutines.launch
 
 /**
@@ -105,9 +112,9 @@ private val DefaultCountry: Country = SanchrCountries.first { it.iso == "US" }
  * [TelephonyManager.simCountryIso] (MCC baked into the SIM). If neither
  * yields a match against [SanchrCountries], fall back to US.
  *
- * Callers pass this to [rememberCountryCodePickerState] as the seed; because
- * it's a one-shot read, updating the SIM mid-flow won't re-resolve — that's
- * an acceptable trade for avoiding a broadcast receiver.
+ * Callers pass this as the seed; because it's a one-shot read, updating the
+ * SIM mid-flow won't re-resolve — that's an acceptable trade for avoiding a
+ * broadcast receiver.
  */
 fun resolveDefaultCountry(context: Context): Country {
     val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return DefaultCountry
@@ -130,8 +137,10 @@ fun resolveDefaultCountry(context: Context): Country {
  * selected [Country] (usually mirrored into ViewModel state via the
  * existing `onPhoneChanged(countryCode, phone)` hook) and provides the
  * initial value via [resolveDefaultCountry].
+ *
+ * Public API preserved (H4): the inline-chip variant lives alongside in
+ * [CountryCodePickerInlineChip] and shares the same bottom-sheet body.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CountryCodePicker(
     selected: Country,
@@ -139,8 +148,6 @@ fun CountryCodePicker(
     modifier: Modifier = Modifier,
 ) {
     var sheetOpen by remember { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
 
     Surface(
         modifier =
@@ -169,19 +176,103 @@ fun CountryCodePicker(
     }
 
     if (sheetOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { sheetOpen = false },
-            sheetState = sheetState,
+        CountryCodePickerSheet(
+            onSelected = onSelected,
+            onDismiss = { sheetOpen = false },
+        )
+    }
+}
+
+/**
+ * Inline chip variant matching iOS `LoginView.swift:107-138` Menu button:
+ * 88dp wide x 60dp tall, [Icons.Filled.Public] globe icon (18dp,
+ * [SanchrIndigo500] tint), country dial code (`labelLarge`, `onSurface`),
+ * and a 1×28dp trailing divider painted with `LocalSanchrSurfaces.line`.
+ *
+ * Designed to sit inside the same `RoundedCornerShape(20.dp)` container as
+ * the phone `TextField` so the whole row reads as a single visual unit
+ * exactly as iOS renders it. Tapping opens the same bottom-sheet picker as
+ * [CountryCodePicker] via the shared [CountryCodePickerSheet] helper.
+ */
+@Composable
+fun CountryCodePickerInlineChip(
+    selected: Country,
+    onSelected: (Country) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var sheetOpen by remember { mutableStateOf(false) }
+    val lineColor = LocalSanchrSurfaces.current.line
+
+    Box(
+        modifier =
+            modifier
+                .width(88.dp)
+                .height(60.dp)
+                .clickable { sheetOpen = true },
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.align(Alignment.Center),
         ) {
-            CountryPickerSheetContent(
-                onPick = { country ->
-                    onSelected(country)
-                    scope.launch { sheetState.hide() }.invokeOnCompletion {
-                        if (!sheetState.isVisible) sheetOpen = false
-                    }
-                },
+            Icon(
+                imageVector = Icons.Filled.Public,
+                contentDescription = "Change country",
+                tint = SanchrIndigo500,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = selected.dialCode,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 1.dp)
+                    .width(1.dp)
+                    .height(28.dp)
+                    .background(lineColor),
+        )
+    }
+
+    if (sheetOpen) {
+        CountryCodePickerSheet(
+            onSelected = onSelected,
+            onDismiss = { sheetOpen = false },
+        )
+    }
+}
+
+/**
+ * Shared bottom-sheet implementation used by both [CountryCodePicker] and
+ * [CountryCodePickerInlineChip]. Owns its own [SheetState] and dismiss
+ * animation; [onSelected] fires once the user taps a country, after which
+ * the sheet hides itself and notifies via [onDismiss].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CountryCodePickerSheet(
+    onSelected: (Country) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        CountryPickerSheetContent(
+            onPick = { country ->
+                onSelected(country)
+                scope.launch { sheetState.hide() }.invokeOnCompletion {
+                    if (!sheetState.isVisible) onDismiss()
+                }
+            },
+        )
     }
 }
 

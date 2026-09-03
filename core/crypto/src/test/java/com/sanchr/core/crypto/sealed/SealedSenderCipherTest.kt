@@ -170,10 +170,18 @@ class SealedSenderCipherTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `BuildConfigTrustRootProvider throws when SEALED_SENDER_TRUST_ROOT is empty`() {
-        val provider = BuildConfigTrustRootProvider()
-        // M2 default: empty — this is the explicit, expected behaviour until M3.
-        assertFailsWith<IllegalStateException> { provider.trustRoot() }
+    fun `BuildConfigTrustRootProvider returns a valid Curve25519 ECPublicKey for the production sanchr-prod default`() {
+        // M3 wiring (commit on feat/android-auth-onboarding-realignment): the
+        // sanchr-prod trust-root pubkey is baked in as the default value of
+        // `sanchr.sealedSenderTrustRoot` in `core/crypto/build.gradle.kts`,
+        // derived from the backend's `auth.sealed_sender_key` via
+        // `cargo run -p sanchr-server-crypto --bin print-trust-root`.
+        // Anything else (empty, malformed, wrong type byte) must fail-fast at
+        // first decrypt so we never silently accept an unverified envelope.
+        val key = BuildConfigTrustRootProvider().trustRoot()
+        val bytes = key.serialize()
+        assertEquals(33, bytes.size)
+        assertEquals(0x05.toByte(), bytes[0])
     }
 
     // ------------------------------------------------------------------
@@ -283,8 +291,14 @@ class SealedSenderCipherTest {
         }
 
     @Test
-    fun `sealedDecrypt throws when TrustRoot is not configured`() =
+    fun `sealedDecrypt rejects garbage envelope bytes loudly`() =
         runTest {
+            // Pre-M3 this test asserted IllegalStateException because the
+            // TrustRoot was unconfigured. With the prod default now baked in,
+            // trustRoot() succeeds, and libsignal proceeds far enough to fail
+            // protobuf-decoding the envelope. The test still defends the same
+            // property — random bytes must not silently decrypt — just at the
+            // next layer down.
             val certManager =
                 SenderCertificateManager(
                     dispatchers,
@@ -298,7 +312,7 @@ class SealedSenderCipherTest {
                     trustRootProvider = BuildConfigTrustRootProvider(),
                     dispatchers = dispatchers,
                 )
-            assertFailsWith<IllegalStateException> {
+            assertFailsWith<org.signal.libsignal.metadata.InvalidMetadataMessageException> {
                 cipher.sealedDecrypt(ByteArray(32), System.currentTimeMillis())
             }
         }

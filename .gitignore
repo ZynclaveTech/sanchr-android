@@ -33,3 +33,5 @@ google-services.json
 keystore/*
 !keystore/.gitkeep
 !ci-assets/dummy-upload.jks
+
+.kotlin/

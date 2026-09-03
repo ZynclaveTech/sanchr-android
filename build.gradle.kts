@@ -91,6 +91,7 @@ dependencies {
     kover(project(":feature:vault"))
     kover(project(":feature:profile"))
     kover(project(":feature:settings"))
+    kover(project(":feature:onboarding"))
     kover(project(":sync"))
 }
 

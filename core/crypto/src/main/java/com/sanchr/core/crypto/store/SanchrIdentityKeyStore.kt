@@ -54,12 +54,33 @@ class SanchrIdentityKeyStore
         @Volatile
         private var stagedRegistrationId: Int? = null
 
-        init {
+        /**
+         * Lazy re-hydration of the staged-identity blob from disk.
+         *
+         * This work used to live in an `init { }` block, which bit us: Hilt
+         * instantiates `@Singleton` providers eagerly during
+         * `SanchrApp.onCreate`, and that runs on the main thread — so the
+         * `accountDao.getCurrentBlocking()` call there tripped Room's
+         * `assertNotMainThread` and crashed the app on launch.
+         *
+         * The class contract says every public entry point is called from
+         * `SignalDispatcher` (documented at the top of this file). Moving
+         * the hydration into a `lazy` means it runs on that dispatcher the
+         * first time any method is invoked, never on main. Correctness of
+         * the rehydration logic is unchanged — just the "when" is deferred.
+         *
+         * `LazyThreadSafetyMode.SYNCHRONIZED` is intentional: the single
+         * `SignalDispatcher` serialises calls but other dispatchers could
+         * race during initializeAccount → getIdentityKeyPair paths in
+         * future work; pay the small monitor-entry cost for safety.
+         */
+        private val stagedHydration: Unit by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
             // Re-hydrate in-memory staging from disk on process restart, but
             // only if no account row has been written yet (otherwise the DB
             // is the source of truth and the staged blob is stale garbage).
             if (accountDao.getCurrentBlocking() == null) {
-                stagedStore.loadStaged()?.let { staged ->
+                val staged = stagedStore.loadStaged()
+                if (staged != null) {
                     stagedIdentityKeyPair = staged.keypair
                     stagedRegistrationId = staged.registrationId
                 }
@@ -67,9 +88,19 @@ class SanchrIdentityKeyStore
                 // Account exists — any stale staged blob is dead weight.
                 stagedStore.clear()
             }
+            // Explicit Unit so the lazy block's inferred type is Unit, not
+            // Unit? (the `?.let { }` earlier made the `if` branch's value
+            // nullable even though we don't use it).
+            Unit
+        }
+
+        /** Forces [stagedHydration] to evaluate. No-op after the first call. */
+        private fun ensureHydrated() {
+            stagedHydration
         }
 
         override fun getIdentityKeyPair(): IdentityKeyPair {
+            ensureHydrated()
             stagedIdentityKeyPair?.let { return it }
             val account =
                 accountDao.getCurrentBlocking()
@@ -81,6 +112,7 @@ class SanchrIdentityKeyStore
         }
 
         override fun getLocalRegistrationId(): Int {
+            ensureHydrated()
             stagedRegistrationId?.let { return it }
             val account =
                 accountDao.getCurrentBlocking()
@@ -97,6 +129,7 @@ class SanchrIdentityKeyStore
          * identifiers.
          */
         fun storeIdentityKeyPair(identityKeyPair: IdentityKeyPair) {
+            ensureHydrated()
             val existing = accountDao.getCurrentBlocking()
             if (existing != null) {
                 accountDao.upsertBlocking(
@@ -119,6 +152,7 @@ class SanchrIdentityKeyStore
          * registration — see [storeIdentityKeyPair].
          */
         fun storeLocalRegistrationId(registrationId: Int) {
+            ensureHydrated()
             val existing = accountDao.getCurrentBlocking()
             if (existing != null) {
                 accountDao.upsertBlocking(existing.copy(registrationId = registrationId))
@@ -144,6 +178,7 @@ class SanchrIdentityKeyStore
             deviceId: String,
             phoneE164: String,
         ) {
+            ensureHydrated()
             val existing = accountDao.getCurrentBlocking()
             val staged = stagedIdentityKeyPair
             val stagedReg = stagedRegistrationId
@@ -209,6 +244,7 @@ class SanchrIdentityKeyStore
 
         /** Returns true once the identity key pair has been generated. */
         fun hasIdentityKeyPair(): Boolean {
+            ensureHydrated()
             if (stagedIdentityKeyPair != null) return true
             return accountDao.getCurrentBlocking()?.identityPrivateKey != null
         }
@@ -258,6 +294,9 @@ class SanchrIdentityKeyStore
 
         /** Wipes all identity material. Called on account deletion. */
         fun wipeAll() {
+            // No ensureHydrated(): we're about to null out staging and wipe
+            // disk-staged + account rows anyway. Hydrating first would read
+            // from disk just to overwrite it a line later.
             stagedIdentityKeyPair = null
             stagedRegistrationId = null
             stagedStore.clear()

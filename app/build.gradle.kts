@@ -147,6 +147,7 @@ dependencies {
     implementation(projects.feature.vault)
     implementation(projects.feature.settings)
     implementation(projects.feature.profile)
+    implementation(projects.feature.onboarding)
 
     // Proto (gRPC service clients)
     implementation(projects.proto)
@@ -191,6 +192,9 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.mockk)
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))

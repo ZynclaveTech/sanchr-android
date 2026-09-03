@@ -8,22 +8,21 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthResponse
 import com.sanchr.proto.auth.AuthServiceClient
-import com.sanchr.proto.auth.RegisterRequest
+import com.sanchr.proto.auth.RequestOtpRequest
+import com.sanchr.proto.auth.RequestOtpResponse
 import com.sanchr.proto.auth.User
 import com.sanchr.proto.auth.VerifyOTPRequest
-import io.mockk.Runs
 import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.coVerifyOrder
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +33,13 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
+/**
+ * State-machine unit tests for [AuthViewModel]. Covers the iOS-parity flow:
+ *
+ *   Splash -> LoginPhone -> OtpEntry -> Registering -> Done(isNewUser)
+ *
+ * Plus [AuthViewModel.attemptFastLogin] (silent warm-start) and [AuthViewModel.retry].
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthViewModelStateTest {
     private val testDispatcher = StandardTestDispatcher()
@@ -78,73 +84,105 @@ class AuthViewModelStateTest {
     }
 
     @Test
-    fun `valid phone transitions to ProfileEntry`() =
+    fun initialState_isSplash() =
         runTest {
             val vm = newViewModel()
-            vm.onPhoneChanged("+1", "4155551234")
-            vm.submitPhone()
-            assertEquals(AuthState.ProfileEntry(phoneE164 = "+14155551234"), vm.state.value)
+            assertEquals(AuthState.Splash, vm.state.value)
         }
 
     @Test
-    fun `invalid phone transitions to Error`() =
+    fun onSplashComplete_withNoCachedSession_transitionsToLoginPhone() =
+        runTest {
+            every { sessionManager.getAccessToken() } returns null
+            every { sessionManager.getStoredPhoneE164() } returns null
+
+            val vm = newViewModel()
+            vm.onSplashComplete()
+
+            val s = vm.state.value
+            assertIs<AuthState.LoginPhone>(s)
+            assertEquals("+1", s.countryCode)
+            assertEquals("", s.phone)
+        }
+
+    @Test
+    fun onLoginPhoneChanged_filtersNonDigits() =
         runTest {
             val vm = newViewModel()
-            vm.onPhoneChanged("+1", "123")
-            vm.submitPhone()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "123-abc-456")
+
+            val s = vm.state.value
+            assertIs<AuthState.LoginPhone>(s)
+            assertEquals("123456", s.phone)
+        }
+
+    @Test
+    fun submitLoginPhone_invalidPhone_transitionsToError() =
+        runTest {
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "")
+            vm.submitLoginPhone()
+
             val s = vm.state.value
             assertIs<AuthState.Error>(s)
-            assertIs<AuthState.PhoneEntry>(s.previousState)
+            assertIs<AuthState.LoginPhone>(s.previousState)
         }
 
     @Test
-    fun `submitProfile success transitions to OtpEntry and calls register with full payload`() =
+    fun submitLoginPhone_validPhone_callsRequestOtp_andTransitionsToOtpEntry() =
         runTest {
-            val request = slot<RegisterRequest>()
-            coEvery { authServiceClient.register(capture(request)) } returns AuthResponse()
-            every { sessionManager.saveAccountPassword(any()) } just Runs
+            val request = slot<RequestOtpRequest>()
+            coEvery { authServiceClient.requestOtp(capture(request)) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = false)
 
             val vm = newViewModel()
-            vm.onPhoneChanged("+1", "4155551234")
-            vm.submitPhone()
-            vm.onDisplayNameChanged("Alice")
-            vm.submitProfile()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
             advanceUntilIdle()
 
             assertEquals(
-                AuthState.OtpEntry(phoneE164 = "+14155551234", displayName = "Alice"),
+                AuthState.OtpEntry(phoneE164 = "+14155551234", displayName = ""),
                 vm.state.value,
             )
             val captured = request.captured
             assertEquals("+14155551234", captured.phoneNumber)
-            assertEquals("Alice", captured.displayName)
-            assertTrue(captured.password.isNotEmpty(), "password must be populated")
             assertEquals("install-1", captured.device?.installationId)
-            verify { sessionManager.saveAccountPassword(captured.password) }
+            verify { sessionManager.saveStoredPhoneE164("+14155551234") }
         }
 
     @Test
-    fun `submitProfile failure transitions to Error with ProfileEntry`() =
+    fun onOtpChanged_filtersNonDigitsAndCapsLength() =
         runTest {
-            coEvery { authServiceClient.register(any()) } throws RuntimeException("boom")
-
             val vm = newViewModel()
-            vm.onPhoneChanged("+1", "4155551234")
-            vm.submitPhone()
-            vm.onDisplayNameChanged("Alice")
-            vm.submitProfile()
+            // Force state to OtpEntry via the login path.
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = false)
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
             advanceUntilIdle()
 
+            vm.onOtpChanged("1234567abc")
             val s = vm.state.value
-            assertIs<AuthState.Error>(s)
-            assertIs<AuthState.ProfileEntry>(s.previousState)
-            assertEquals("boom", s.message)
+            assertIs<AuthState.OtpEntry>(s)
+            assertEquals("123456", s.otp)
         }
 
+    /**
+     * Returning user: backend's existing-phone short-circuit
+     * (handle_request_otp + handle_verify_otp) yields a populated `displayName`
+     * on the verify-OTP response. Surface `Done(isNewUser = false)` so
+     * downstream onboarding routing skips the profile-setup detour for
+     * someone who already has a profile.
+     */
     @Test
-    fun `submitOtp success transitions to Permissions and persists tokens`() =
+    fun submitOtp_returningUser_emitsDoneIsNewUserFalse() =
         runTest {
-            coEvery { authServiceClient.register(any()) } returns AuthResponse()
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = true)
             coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
                 AuthResponse(
                     accessToken = "at",
@@ -155,21 +193,17 @@ class AuthViewModelStateTest {
                 )
 
             val vm = newViewModel()
-            vm.onPhoneChanged("+1", "4155551234")
-            vm.submitPhone()
-            vm.onDisplayNameChanged("Alice")
-            vm.submitProfile()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
             advanceUntilIdle()
             vm.onOtpChanged("123456")
             vm.submitOtp()
             advanceUntilIdle()
 
             val s = vm.state.value
-            assertIs<AuthState.Permissions>(s)
-            assertEquals("user-42", s.userId)
-            assertEquals(7, s.deviceId)
-            assertEquals("+14155551234", s.phoneE164)
-            assertEquals("Alice", s.displayName)
+            assertIs<AuthState.Done>(s)
+            assertFalse(s.isNewUser, "server-side displayName means returning user")
             verify {
                 sessionManager.saveSession(
                     accessToken = "at",
@@ -182,85 +216,148 @@ class AuthViewModelStateTest {
             }
         }
 
+    /**
+     * New user: backend returns an empty/blank `displayName` on the first
+     * verify-OTP because the freshly created account has no profile yet.
+     * Surface `Done(isNewUser = true)` so downstream routes the user through
+     * profile setup.
+     */
     @Test
-    fun `retry from Error restores previous state`() =
+    fun submitOtp_newUser_emitsDoneIsNewUserTrue() =
         runTest {
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = false)
+            coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
+                AuthResponse(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    expiresIn = 3600,
+                    user = User(id = "user-99", displayName = ""),
+                    deviceId = 3,
+                )
+
             val vm = newViewModel()
-            vm.onPhoneChanged("+1", "123")
-            vm.submitPhone()
-            assertIs<AuthState.Error>(vm.state.value)
-            vm.retry()
-            assertEquals(AuthState.PhoneEntry(countryCode = "+1", phone = "123"), vm.state.value)
-        }
-
-    // ── Pipeline tests (2.3) ──────────────────────────────────────────────
-
-    private fun kotlinx.coroutines.test.TestScope.driveToPermissions(vm: AuthViewModel) {
-        coEvery { authServiceClient.register(any()) } returns AuthResponse()
-        coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
-            AuthResponse(
-                accessToken = "at",
-                refreshToken = "rt",
-                expiresIn = 3600,
-                user = User(id = "user-42", displayName = "Alice"),
-                deviceId = 7,
-            )
-        vm.onPhoneChanged("+1", "4155551234")
-        vm.submitPhone()
-        vm.onDisplayNameChanged("Alice")
-        vm.submitProfile()
-        advanceUntilIdle()
-        vm.onOtpChanged("123456")
-        vm.submitOtp()
-        advanceUntilIdle()
-    }
-
-    @Test
-    fun `pipeline calls uploadInitialKeyBundle before initializeAccount`() =
-        runTest {
-            val vm = newViewModel()
-            driveToPermissions(vm)
-
-            vm.submitPermissions()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
             advanceUntilIdle()
-
-            coVerifyOrder {
-                signalKeyManager.generateIdentity()
-                signalKeyManager.uploadInitialKeyBundle()
-                senderCertificateManager.refresh()
-                pushTokenManager.uploadToken()
-                identityKeyStore.initializeAccount(any(), any(), any())
-            }
-            assertEquals(AuthState.Done, vm.state.value)
-        }
-
-    @Test
-    fun `pipeline completes even when pushTokenManager throws`() =
-        runTest {
-            coEvery { pushTokenManager.uploadToken() } throws RuntimeException("no-play-services")
-
-            val vm = newViewModel()
-            driveToPermissions(vm)
-            vm.submitPermissions()
-            advanceUntilIdle()
-
-            assertEquals(AuthState.Done, vm.state.value)
-            coVerify { identityKeyStore.initializeAccount(any(), any(), any()) }
-        }
-
-    @Test
-    fun `pipeline failure at UPLOADING_KEYS transitions to Error with Permissions previous state`() =
-        runTest {
-            coEvery { signalKeyManager.uploadInitialKeyBundle() } throws RuntimeException("net")
-
-            val vm = newViewModel()
-            driveToPermissions(vm)
-            vm.submitPermissions()
+            vm.onOtpChanged("123456")
+            vm.submitOtp()
             advanceUntilIdle()
 
             val s = vm.state.value
-            assertIs<AuthState.Error>(s)
-            assertIs<AuthState.Permissions>(s.previousState)
-            coVerify(exactly = 0) { identityKeyStore.initializeAccount(any(), any(), any()) }
+            assertIs<AuthState.Done>(s)
+            assertTrue(s.isNewUser, "blank server displayName means new user")
+        }
+
+    /**
+     * Regression guard for review finding P1#1 (Phase 8).
+     *
+     * [AppBootstrapViewModel.hasCompletedOnboarding] piggy-backs on
+     * [SessionManager.isAuthenticated] as a trigger to re-read
+     * `getDisplayName()`. If `saveSession` (which flips `_isAuthenticated`)
+     * runs before `saveDisplayName`, the combine re-reads a stale null and
+     * emits `false` — silently bouncing returning users into onboarding
+     * despite a server-side display name being present.
+     *
+     * This test locks in the fix: `saveDisplayName` must be persisted
+     * BEFORE `saveSession` during OTP verification.
+     */
+    @Test
+    fun submitOtp_persistsDisplayName_beforeFlippingSession() =
+        runTest {
+            coEvery { authServiceClient.requestOtp(any()) } returns
+                RequestOtpResponse(expiresInSeconds = 300, existingUser = true)
+            coEvery { authServiceClient.verifyOtp(any<VerifyOTPRequest>()) } returns
+                AuthResponse(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    expiresIn = 3600,
+                    user = User(id = "user-42", displayName = "Alice"),
+                    deviceId = 7,
+                )
+
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
+            advanceUntilIdle()
+            vm.onOtpChanged("123456")
+            vm.submitOtp()
+            advanceUntilIdle()
+
+            // Strict ordering: displayName to disk BEFORE saveSession flips
+            // _isAuthenticated. verifyOrder allows other calls between these
+            // (e.g. saveDeviceId) but enforces relative order.
+            verifyOrder {
+                sessionManager.saveDisplayName("Alice")
+                sessionManager.saveSession(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    userId = "user-42",
+                    expiresAtMillis = any(),
+                )
+            }
+        }
+
+    /**
+     * Path 1 of [AuthViewModel.attemptFastLogin]: a still-valid access token
+     * is already on disk, so we short-circuit straight to
+     * `Done(isNewUser = false)` without any RPC. This is the only fast-login
+     * path post-H2 (the cached-password Login-RPC branch was removed because
+     * nothing in the auth feature persists an account password anymore, and
+     * iOS `LoginView` has no equivalent silent-Login path either).
+     */
+    @Test
+    fun attemptFastLogin_withValidAccessToken_transitionsToDoneIsNewUserFalse() =
+        runTest {
+            every { sessionManager.getAccessToken() } returns "live-at"
+            every { sessionManager.isTokenExpired() } returns false
+
+            val vm = newViewModel()
+            val job = vm.attemptFastLogin()
+            advanceUntilIdle()
+
+            assertEquals(null, job, "fast-login no longer launches any RPC")
+            val s = vm.state.value
+            assertIs<AuthState.Done>(s)
+            assertFalse(s.isNewUser, "fast-login is by definition a returning user")
+        }
+
+    /**
+     * No cached session at all: stay on [AuthState.Splash] silently so the
+     * splash-duration delay can advance the user to [AuthState.LoginPhone]
+     * via [AuthViewModel.onSplashComplete].
+     */
+    @Test
+    fun attemptFastLogin_withNoCachedSession_staysOnSplash() =
+        runTest {
+            every { sessionManager.getAccessToken() } returns null
+            every { sessionManager.getStoredPhoneE164() } returns null
+
+            val vm = newViewModel()
+            assertEquals(AuthState.Splash, vm.state.value)
+
+            val job = vm.attemptFastLogin()
+            advanceUntilIdle()
+
+            assertEquals(null, job, "no RPC should have been launched")
+            assertEquals(AuthState.Splash, vm.state.value)
+        }
+
+    @Test
+    fun retry_fromErrorState_restoresPreviousState() =
+        runTest {
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "")
+            vm.submitLoginPhone()
+            assertIs<AuthState.Error>(vm.state.value)
+
+            vm.retry()
+            val s = vm.state.value
+            assertIs<AuthState.LoginPhone>(s)
+            assertEquals("+1", s.countryCode)
+            assertEquals("", s.phone)
         }
 }

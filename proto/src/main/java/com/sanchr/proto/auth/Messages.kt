@@ -26,6 +26,29 @@ data class RegisterRequest(
     val device: DeviceInfo? = null,
 )
 
+/**
+ * Phone-only OTP request — see `backend/crates/sanchr-core/src/auth/handlers.rs`
+ * `handle_request_otp` (commit `bdfb5a7`). Replaces the previous
+ * Register-with-placeholder workaround on the login entry path.
+ */
+@Serializable
+data class RequestOtpRequest(
+    @SerialName("phone_number") val phoneNumber: String = "",
+    val device: DeviceInfo? = null,
+)
+
+/**
+ * @property expiresInSeconds Seconds until the issued OTP expires.
+ * @property existingUser True if the phone is already a verified user
+ *   (the OTP was issued for login); false if a pending registration was
+ *   created/refreshed.
+ */
+@Serializable
+data class RequestOtpResponse(
+    @SerialName("expires_in_seconds") val expiresInSeconds: Long = 0L,
+    @SerialName("existing_user") val existingUser: Boolean = false,
+)
+
 @Serializable
 data class VerifyOTPRequest(
     @SerialName("phone_number") val phoneNumber: String = "",

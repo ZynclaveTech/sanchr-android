@@ -44,6 +44,7 @@ class UserPreferences
             val DISAPPEARING_DEFAULT_DURATION = intPreferencesKey("disappearing_default_duration_seconds")
             val FONT_SIZE_SCALE = intPreferencesKey("font_size_scale") // percentage: 80, 100, 120
             val MEDIA_AUTO_DOWNLOAD = stringPreferencesKey("media_auto_download") // "wifi", "always", "never"
+            val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
         }
 
         // --- Theme ---
@@ -137,5 +138,43 @@ class UserPreferences
 
         suspend fun setMediaAutoDownload(policy: String) {
             dataStore.edit { it[Keys.MEDIA_AUTO_DOWNLOAD] = policy }
+        }
+
+        // --- Onboarding ---
+
+        /**
+         * Per-device flag gating the first-run onboarding flow (Welcome → Name →
+         * Avatar → ContactSync). Default false so fresh installs land on
+         * onboarding after OTP verify; flipped true by
+         * [setOnboardingCompleted] once `OnboardingViewModel.onContactSyncFinish`
+         * fires. iOS parity: `SanchrApp.swift:331` uses a per-device
+         * `@AppStorage("sanchr.activeOnboardingFlow")` flag combined with a
+         * display-name check — Android chooses per-device DataStore only
+         * (see plan §Step A). Returning users on a new device will see
+         * onboarding once — acceptable per Phase 5 design.
+         *
+         * On logout [clear] wipes this flag (alongside every other key) so a
+         * subsequent re-login with a different account on the same device
+         * re-runs onboarding correctly instead of silently inheriting the
+         * previous user's completion state.
+         */
+        val hasCompletedOnboardingFlow: Flow<Boolean> =
+            dataStore.data.map { it[Keys.HAS_COMPLETED_ONBOARDING] ?: false }
+
+        suspend fun setOnboardingCompleted(completed: Boolean) {
+            dataStore.edit { it[Keys.HAS_COMPLETED_ONBOARDING] = completed }
+        }
+
+        // --- Lifecycle ---
+
+        /**
+         * Wipes all user-level preferences. Called from `LogoutUseCase` so
+         * per-user flags (onboarding completion, privacy toggles, etc.) do
+         * not leak across accounts when a second user logs in on the same
+         * device. Device-global defaults re-materialise on the next read via
+         * the `?: <default>` fallbacks on each flow.
+         */
+        suspend fun clear() {
+            dataStore.edit { it.clear() }
         }
     }

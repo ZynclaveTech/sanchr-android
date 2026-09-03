@@ -16,6 +16,10 @@ import org.json.JSONObject
  *   Contacts, Vault, Media, Settings, Notifications, Backup.
  * - **Call** channel → [BuildConfig.GRPC_CALL_HOST] for CallSignaling.
  *
+ * Transport security is controlled by [BuildConfig.GRPC_USE_TLS] which is
+ * sourced from `local.properties` (`sanchr.grpc.tls`) or `SANCHR_GRPC_TLS`
+ * env, defaulting to `true` so production builds always use TLS.
+ *
  * A default 10 s unary deadline is applied channel-wide via
  * [grpc_service_config.json] loaded from classpath resources. The
  * [AuthInterceptor] and [UnauthenticatedRefreshInterceptor] are chained so
@@ -63,7 +67,7 @@ class GrpcChannelProvider
         ): ManagedChannel =
             OkHttpChannelBuilder
                 .forAddress(host, port)
-                .useTransportSecurity()
+                .let { if (BuildConfig.GRPC_USE_TLS) it.useTransportSecurity() else it.usePlaintext() }
                 .keepAliveTime(30, TimeUnit.SECONDS)
                 .keepAliveTimeout(10, TimeUnit.SECONDS)
                 .keepAliveWithoutCalls(false)

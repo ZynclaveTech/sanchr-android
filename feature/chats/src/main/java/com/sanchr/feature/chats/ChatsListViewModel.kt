@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.sanchr.core.common.Result
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ObserveConversationsUseCase
@@ -12,6 +13,7 @@ import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -42,15 +45,27 @@ sealed interface ChatsListUiState {
     ) : ChatsListUiState
 }
 
-/** UI state for the "new conversation by phone" bottom sheet. */
-data class NewChatState(
+/**
+ * UI state for the new-chat contact-picker bottom sheet.
+ *
+ * Mirrors iOS NewChatContactPickerSheet (Features/Chats/Presentation/
+ * NewChatContactPicker.swift): a list of already-synced contacts plus a
+ * search filter. Phone-number lookup is deliberately NOT here — it lives on
+ * the Contacts tab's "Add contact" entry, matching iOS.
+ *
+ * `contacts` is the unfiltered roster. `filteredContacts` is the live view
+ * after applying [searchQuery] (case-insensitive substring on display name,
+ * phone, and bio). The split is materialized in state rather than recomputed
+ * in the composable so tests can assert filtering without mounting Compose.
+ */
+data class NewChatPickerState(
     val isOpen: Boolean = false,
-    val phone: String = "",
-    val isSubmitting: Boolean = false,
-    val error: NewChatError? = null,
+    val contacts: List<User> = emptyList(),
+    val filteredContacts: List<User> = emptyList(),
+    val searchQuery: String = "",
+    val isLoading: Boolean = false,
+    val error: String? = null,
 )
-
-enum class NewChatError { INVALID_PHONE, NOT_FOUND, SERVER_ERROR }
 
 /** One-shot navigation events emitted by the chats-list VM. */
 sealed interface NewChatEvent {
@@ -72,8 +87,17 @@ class ChatsListViewModel
         private val _searchQuery = MutableStateFlow("")
         private val _isRefreshing = MutableStateFlow(false)
 
-        private val _newChat = MutableStateFlow(NewChatState())
-        val newChat: StateFlow<NewChatState> = _newChat.asStateFlow()
+        private val _picker = MutableStateFlow(NewChatPickerState())
+        val picker: StateFlow<NewChatPickerState> = _picker.asStateFlow()
+
+        /**
+         * Tracks the in-flight contact-load job so reopening the sheet
+         * cancels stale work instead of racing two concurrent loads.
+         */
+        private var contactLoadJob: Job? = null
+
+        /** Tracks an in-flight ensureConversation so double-taps no-op. */
+        private var startConversationJob: Job? = null
 
         private val _events =
             MutableSharedFlow<NewChatEvent>(
@@ -149,71 +173,135 @@ class ChatsListViewModel
             SyncWorker.syncNow(workManager)
         }
 
-        // ── New-chat bottom sheet ──────────────────────────────────────────
+        // ── New-chat contact picker ────────────────────────────────────────
 
-        fun openNewChat() {
-            _newChat.value = NewChatState(isOpen = true)
+        /**
+         * Opens the picker sheet and starts loading the synced-contact roster.
+         * Cancels any prior load to keep state monotonic.
+         */
+        fun openNewChatPicker() {
+            contactLoadJob?.cancel()
+            _picker.value =
+                NewChatPickerState(
+                    isOpen = true,
+                    isLoading = true,
+                )
+            contactLoadJob = viewModelScope.launch { loadContacts() }
         }
 
-        fun closeNewChat() {
-            _newChat.value = NewChatState()
+        fun closeNewChatPicker() {
+            contactLoadJob?.cancel()
+            startConversationJob?.cancel()
+            _picker.value = NewChatPickerState()
         }
 
-        fun onNewChatPhoneChanged(phone: String) {
-            _newChat.value = _newChat.value.copy(phone = phone, error = null)
+        /**
+         * Updates the search query and recomputes the filtered list. Filter is
+         * a case-insensitive substring match on display name, phone, and bio
+         * (matches iOS NewChatContactPickerSheet.filteredContacts).
+         */
+        fun onPickerSearchQueryChanged(query: String) {
+            val current = _picker.value
+            _picker.value =
+                current.copy(
+                    searchQuery = query,
+                    filteredContacts = filterContacts(current.contacts, query),
+                )
         }
 
-        fun submitNewChat() {
-            val current = _newChat.value
-            if (current.isSubmitting) return
-            val phone = current.phone.trim()
-            if (!E164_PATTERN.matches(phone)) {
-                _newChat.value = current.copy(error = NewChatError.INVALID_PHONE)
-                return
-            }
-            _newChat.value = current.copy(isSubmitting = true, error = null)
-            viewModelScope.launch {
-                val user =
-                    try {
-                        contactRepository.lookupByPhone(phone)
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                        throw cancellation
-                    } catch (_: Throwable) {
-                        _newChat.value =
-                            _newChat.value.copy(
-                                isSubmitting = false,
-                                error = NewChatError.SERVER_ERROR,
-                            )
-                        return@launch
-                    }
-                if (user == null) {
-                    _newChat.value =
-                        _newChat.value.copy(
-                            isSubmitting = false,
-                            error = NewChatError.NOT_FOUND,
-                        )
-                    return@launch
+        /**
+         * Begins ensuring a direct conversation with [contact] and emits an
+         * [NewChatEvent.OpenConversation] on success. Concurrent taps are
+         * coalesced — the first wins, the rest are ignored until it settles.
+         */
+        fun onPickerContactSelected(contact: User) {
+            if (startConversationJob?.isActive == true) return
+            startConversationJob =
+                viewModelScope.launch {
+                    val conversationId =
+                        try {
+                            messageRepository.ensureConversation(contact.id)
+                        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                            throw cancellation
+                        } catch (t: Throwable) {
+                            _picker.value =
+                                _picker.value.copy(
+                                    error = t.message ?: "Couldn't start conversation",
+                                )
+                            return@launch
+                        }
+                    _events.tryEmit(NewChatEvent.OpenConversation(conversationId))
+                    _picker.value = NewChatPickerState()
                 }
-                val conversationId =
-                    try {
-                        messageRepository.ensureConversation(user.id)
-                    } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                        throw cancellation
-                    } catch (_: Throwable) {
-                        _newChat.value =
-                            _newChat.value.copy(
-                                isSubmitting = false,
-                                error = NewChatError.SERVER_ERROR,
-                            )
-                        return@launch
-                    }
-                _events.tryEmit(NewChatEvent.OpenConversation(conversationId))
-                _newChat.value = NewChatState()
+        }
+
+        /**
+         * Loads the synced-contact roster. Source of truth is the local DB
+         * (already populated by [ContactRepository.syncContacts]); we kick a
+         * server sync in the background so newly registered users surface
+         * without forcing the user to re-trigger from the Contacts tab.
+         *
+         * On sync failure we keep whatever the DB already has and only flag an
+         * error if the DB is also empty — that way an offline open of the
+         * sheet still shows the cached roster instead of an empty error
+         * banner. Mirrors iOS NewChatContactPickerSheet.loadContacts.
+         */
+        private suspend fun loadContacts() {
+            // Best-effort background refresh; don't gate UI on its result.
+            launchBackgroundSync()
+
+            try {
+                // Take the current snapshot. observeRegisteredContacts is a
+                // hot DB observation; the first emission is the current state.
+                val contacts = contactRepository.observeRegisteredContacts().first()
+                _picker.value =
+                    _picker.value.copy(
+                        contacts = contacts,
+                        filteredContacts = filterContacts(contacts, _picker.value.searchQuery),
+                        isLoading = false,
+                        error = null,
+                    )
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                _picker.value =
+                    _picker.value.copy(
+                        isLoading = false,
+                        error = t.message ?: "Couldn't load contacts",
+                    )
             }
         }
 
-        private companion object {
-            /** Minimal E.164 check: leading + followed by 7–15 digits. */
-            private val E164_PATTERN = Regex("^\\+\\d{7,15}$")
+        /**
+         * Fires `contactRepository.syncContacts()` without blocking the UI on
+         * its result. Failure is silent — the local DB is the source of truth
+         * for the picker; sync is a freshness optimization, not a hard
+         * dependency.
+         */
+        private fun launchBackgroundSync() {
+            viewModelScope.launch {
+                try {
+                    contactRepository.syncContacts()
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Intentional: see KDoc — picker reads from local DB.
+                }
+            }
+        }
+
+        private fun filterContacts(
+            contacts: List<User>,
+            query: String,
+        ): List<User> {
+            val sorted = contacts.sortedBy { it.displayName.lowercase() }
+            val trimmed = query.trim()
+            if (trimmed.isEmpty()) return sorted
+            val needle = trimmed.lowercase()
+            return sorted.filter { user ->
+                user.displayName.lowercase().contains(needle) ||
+                    user.phoneNumber.lowercase().contains(needle) ||
+                    (user.bio?.lowercase()?.contains(needle) == true)
+            }
         }
     }
