@@ -12,13 +12,18 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.coroutineContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -54,6 +59,9 @@ class RealtimeManagerTest {
     /** How many times `messageStream(...)` was collected from at all. */
     private val totalStarts = AtomicInteger(0)
 
+    /** Whether the most recently completed collection was cancelled rather than finishing normally. */
+    private val lastCollectionWasCancelled = AtomicBoolean(false)
+
     /**
      * Stands in for the real gRPC stream: a cold flow that never emits and never completes on
      * its own. Every `collect` re-runs this block, so overlapping collectors show up as
@@ -68,6 +76,7 @@ class RealtimeManagerTest {
                 awaitCancellation()
             } finally {
                 activeCollectors.decrementAndGet()
+                lastCollectionWasCancelled.set(coroutineContext[Job]?.isCancelled == true)
             }
         }
 
@@ -87,7 +96,9 @@ class RealtimeManagerTest {
     }
 
     private fun TestScope.buildManager(): RealtimeManager {
-        val scope = CoroutineScope(StandardTestDispatcher(testScheduler))
+        // Matches production's AppModule-provided `@ApplicationScope`, which is backed by a
+        // SupervisorJob so one child failure doesn't cascade-cancel its siblings.
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         return RealtimeManager(
             appContext = appContext,
             messagingClient = messagingClient,
@@ -191,6 +202,10 @@ class RealtimeManagerTest {
             runCurrent()
 
             verify(exactly = 0) { Log.e(any(), any(), any()) }
+            assertTrue(
+                lastCollectionWasCancelled.get(),
+                "an ordinary stop should complete the stream job cancelled, not normally",
+            )
         }
 
     // --- Test 5: repeated backgrounding schedules at most one pending stop ------------------

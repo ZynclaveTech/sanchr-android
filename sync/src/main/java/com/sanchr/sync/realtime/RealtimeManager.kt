@@ -46,6 +46,10 @@ class RealtimeManager
         private val sessionManager: SessionManager,
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
+        // `@ApplicationScope` runs on Dispatchers.Default (see AppModule) and is shared with
+        // other app-wide singletons, so everything reached from handleServerEvent() must stay
+        // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
+        // ReceiveMessageUseCase.receive does it.
         @ApplicationScope private val appScope: CoroutineScope,
     ) : DefaultLifecycleObserver {
         companion object {
@@ -82,8 +86,8 @@ class RealtimeManager
             synchronized(lock) {
                 pendingStopJob?.cancel()
                 pendingStopJob = null
+                ensureStreamStartedLocked()
             }
-            ensureStreamStarted()
         }
 
         fun enterBackground() {
@@ -125,31 +129,33 @@ class RealtimeManager
             }
         }
 
-        private fun ensureStreamStarted() {
-            synchronized(lock) {
-                if (streamJob != null) return
+        // Must be called with `lock` held: cancelling any pending stop and (re)starting the
+        // stream have to happen as one atomic step, otherwise a stop that is already past its
+        // delay and blocked on the lock can see the not-yet-cleared `pendingStopJob` and tear
+        // down the stream this call just started.
+        private fun ensureStreamStartedLocked() {
+            if (streamJob != null) return
 
-                val job =
-                    appScope.launch(start = CoroutineStart.LAZY) {
-                        try {
-                            messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
-                                handleServerEvent(event)
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (error: Exception) {
-                            Log.e(TAG, "Realtime stream failed", error)
-                        } finally {
-                            synchronized(lock) {
-                                if (streamJob === coroutineContext[Job]) {
-                                    streamJob = null
-                                }
+            val job =
+                appScope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
+                            handleServerEvent(event)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (error: Exception) {
+                        Log.e(TAG, "Realtime stream failed", error)
+                    } finally {
+                        synchronized(lock) {
+                            if (streamJob === coroutineContext[Job]) {
+                                streamJob = null
                             }
                         }
                     }
-                streamJob = job
-                job.start()
-            }
+                }
+            streamJob = job
+            job.start()
         }
 
         private fun stopStream() {
