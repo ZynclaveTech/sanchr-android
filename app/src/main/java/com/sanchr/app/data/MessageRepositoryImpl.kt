@@ -223,6 +223,22 @@ class MessageRepositoryImpl
                     timestamp = timestamp,
                 )
             messageDao.insertMessage(entity)
+            stageAck(conversationId, messageId, flushAckImmediately)
+        }
+
+        override suspend fun ackEnvelope(
+            conversationId: String,
+            messageId: String,
+            flushAckImmediately: Boolean,
+        ) {
+            stageAck(conversationId, messageId, flushAckImmediately)
+        }
+
+        private suspend fun stageAck(
+            conversationId: String,
+            messageId: String,
+            flushAckImmediately: Boolean,
+        ) {
             pendingMessageAckDao.insertAck(
                 PendingMessageAckEntity(
                     conversationId = conversationId,

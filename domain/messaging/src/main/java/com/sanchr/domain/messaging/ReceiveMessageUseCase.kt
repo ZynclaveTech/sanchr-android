@@ -121,17 +121,7 @@ class ReceiveMessageUseCase
             withContext(dispatchers.io) {
                 try {
                     val success = decryptByKind(envelopeBytes, kind, serverTimestamp, declaredSender)
-                    envelopeContext?.let { ctx ->
-                        messageRepository.get().insertDecryptedMessage(
-                            conversationId = ctx.conversationId,
-                            messageId = ctx.messageId,
-                            senderId = success.senderUserId,
-                            content = String(success.plaintext, Charsets.UTF_8),
-                            contentType = ctx.contentType,
-                            timestamp = success.serverTimestamp,
-                            flushAckImmediately = flushAckImmediately,
-                        )
-                    }
+                    envelopeContext?.let { ctx -> routeAndPersist(success, ctx, flushAckImmediately) }
                     success
                 } catch (e: DuplicateMessageException) {
                     Log.d(TAG, "duplicate message (unsealed) ignored", e)
@@ -215,6 +205,69 @@ class ReceiveMessageUseCase
                         serverTimestamp = serverTimestamp,
                     )
                 }
+            }
+
+        /**
+         * Routes a successfully decrypted plaintext via [SealedEnvelopeRouter]
+         * and acts on the result — persisting a [RoutedPayload.UserMessage],
+         * or just acking a [RoutedPayload.Control] without persisting it.
+         *
+         * The envelope is acked separately from persistence
+         * ([MessageRepository.ackEnvelope], keyed by [ctx]'s own ids) rather
+         * than relying on [MessageRepository.insertDecryptedMessage]'s
+         * built-in ack staging, because that staging is keyed by whatever
+         * conversation/message id the row itself uses — and a
+         * [RoutedPayload.UserMessage] row is keyed by the *payload's* id
+         * when one is present (see below), not the envelope's. The server's
+         * delivery queue only recognizes the envelope's own id, so acking
+         * must always use [ctx], independent of what got persisted.
+         */
+        private suspend fun routeAndPersist(
+            success: EnvelopeDecryptResult.Success,
+            ctx: IncomingEnvelopeContext,
+            flushAckImmediately: Boolean,
+        ) {
+            when (val routed = SealedEnvelopeRouter.route(success.plaintext, fallbackContentType = ctx.contentType)) {
+                is RoutedPayload.Control -> {
+                    Log.d(TAG, "control payload (${routed.contentType}) received; not persisted as a message")
+                    messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
+                }
+                is RoutedPayload.UserMessage -> {
+                    // The row is keyed on the payload's own ids so that a
+                    // resend of the same logical message (e.g. after a local
+                    // DB write failed post-send) replaces the same row
+                    // instead of duplicating it — see InnerPayload.messageId.
+                    // A blank/absent payload id falls back to the envelope's.
+                    messageRepository.get().insertDecryptedMessage(
+                        conversationId = resolveId("conversation_id", routed.conversationId, ctx.conversationId),
+                        messageId = resolveId("message_id", routed.messageId, ctx.messageId),
+                        senderId = success.senderUserId,
+                        content = routed.content,
+                        contentType = routed.contentType,
+                        timestamp = success.serverTimestamp,
+                        // The real ack is staged below, keyed by the envelope's
+                        // own ids — not by whatever this call just used.
+                        flushAckImmediately = false,
+                    )
+                    messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
+                }
+                RoutedPayload.Ignored -> {
+                    // No rule produces this today (see RoutedPayload.Ignored);
+                    // logged rather than silently swallowed so a future
+                    // regression here is visible.
+                    Log.d(TAG, "payload routed to Ignored; not persisted, not acked")
+                }
+            }
+        }
+
+        /** Prefers [payloadValue] when non-blank; falls back to [envelopeValue] and logs at debug otherwise. */
+        private fun resolveId(
+            field: String,
+            payloadValue: String?,
+            envelopeValue: String,
+        ): String =
+            payloadValue?.takeIf { it.isNotBlank() } ?: envelopeValue.also {
+                Log.d(TAG, "payload's $field is blank; falling back to the envelope's '$it'")
             }
 
         private suspend fun quarantineAndResult(

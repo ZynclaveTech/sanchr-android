@@ -166,4 +166,28 @@ interface MessageRepository {
      * callers can decouple ack flushing from individual insert calls.
      */
     suspend fun flushPendingAcks()
+
+    /**
+     * Stages a pending ack for an envelope keyed by its own server-assigned
+     * [conversationId] / [messageId] — the ids the server's delivery queue
+     * actually tracks — regardless of any different id a decoded payload
+     * may carry.
+     *
+     * A control payload (e.g. `receipt/v1`, `profile-key/v1`) is routed
+     * away from [insertDecryptedMessage] entirely, since it must not be
+     * persisted as a message, so without this call its envelope would
+     * never be acked and the server would redeliver it indefinitely. Also
+     * safe to call for an envelope that *was* persisted under a different
+     * (payload-preferred) id: the extra ack entry this stages is either
+     * identical to the one [insertDecryptedMessage] already staged (an
+     * idempotent no-op) or, when the ids genuinely differ, an additional
+     * harmless entry the server silently ignores.
+     *
+     * @param flushAckImmediately Same contract as [insertDecryptedMessage].
+     */
+    suspend fun ackEnvelope(
+        conversationId: String,
+        messageId: String,
+        flushAckImmediately: Boolean = true,
+    )
 }
