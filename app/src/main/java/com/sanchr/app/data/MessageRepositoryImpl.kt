@@ -150,6 +150,13 @@ class MessageRepositoryImpl
             return others.singleOrNull()
         }
 
+        override suspend fun applyReceiptStatus(
+            messageId: String,
+            status: MessageStatus,
+        ) {
+            messageDao.updateMessageStatus(messageId, status.name)
+        }
+
         override suspend fun deleteMessage(
             messageId: String,
             forEveryone: Boolean,

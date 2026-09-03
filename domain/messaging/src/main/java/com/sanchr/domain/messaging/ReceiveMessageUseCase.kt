@@ -4,6 +4,7 @@ import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.model.MessageStatus
 import dagger.Lazy
 import java.util.UUID
 import javax.inject.Inject
@@ -25,6 +26,7 @@ import org.signal.libsignal.protocol.InvalidVersionException
 import org.signal.libsignal.protocol.LegacyMessageException
 import org.signal.libsignal.protocol.NoSessionException
 import org.signal.libsignal.protocol.UntrustedIdentityException
+import sanchr.messaging.Messaging
 
 /**
  * How an inbound envelope reached the device. Derived from the RPC channel
@@ -231,6 +233,9 @@ class ReceiveMessageUseCase
             when (val routed = SealedEnvelopeRouter.route(success.plaintext, fallbackContentType = ctx.contentType)) {
                 is RoutedPayload.Control -> {
                     Log.d(TAG, "control payload (${routed.contentType}) received; not persisted as a message")
+                    if (routed.contentType == RECEIPT_CONTENT_TYPE) {
+                        applyReceiptUpdate(routed.payload.content)
+                    }
                     messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
                 }
                 is RoutedPayload.UserMessage -> {
@@ -262,6 +267,52 @@ class ReceiveMessageUseCase
                     Log.d(TAG, "payload routed to Ignored; not persisted, not acked")
                 }
             }
+        }
+
+        /**
+         * Decodes a `receipt/v1` control payload's [InnerPayload.content] as
+         * a [Messaging.ReceiptUpdate] and applies its status to the message
+         * it names.
+         *
+         * The real conversation/message ids live only inside this protobuf
+         * — [InnerPayload.conversationId] / [InnerPayload.messageId] and the
+         * envelope's own ids ([ctx][IncomingEnvelopeContext]) are
+         * deliberately left empty for a receipt by the sender (see
+         * `SendReadReceiptUseCase`), so [ctx] must never be consulted here.
+         *
+         * Never throws. Silently does nothing — and writes nothing — for a
+         * payload whose `content` fails to decode as a [Messaging.ReceiptUpdate],
+         * carries a blank message id, or carries a status that does not
+         * match a known [MessageStatus] name case-insensitively (`"read"`
+         * is the only status the sealed sender emits today, but this stays
+         * open to `sent/delivered/failed` without a code change). Landing
+         * on the same local effect as the cleartext path in
+         * `RealtimeManager.handleReceipt` — uppercase the wire status,
+         * write it to the message row — via [MessageRepository.applyReceiptStatus]
+         * rather than a second, independent case-conversion.
+         *
+         * The caller (`routeAndPersist`) acks the envelope unconditionally
+         * after this returns, regardless of what happened here — an
+         * unrecognised or malformed receipt must never leave its envelope
+         * unacked, or the server redelivers it forever.
+         */
+        private suspend fun applyReceiptUpdate(content: ByteArray) {
+            val receipt =
+                runCatching { Messaging.ReceiptUpdate.parseFrom(content) }.getOrNull()
+                    ?: run {
+                        Log.d(TAG, "receipt/v1 payload content did not decode as a ReceiptUpdate; ignoring")
+                        return
+                    }
+            if (receipt.messageId.isBlank()) {
+                Log.d(TAG, "receipt/v1 payload carried a blank message id; ignoring")
+                return
+            }
+            val status = runCatching { MessageStatus.valueOf(receipt.status.uppercase()) }.getOrNull()
+            if (status == null) {
+                Log.d(TAG, "receipt/v1 payload carried an unrecognised status '${receipt.status}'; ignoring")
+                return
+            }
+            messageRepository.get().applyReceiptStatus(receipt.messageId, status)
         }
 
         /** Prefers [payloadValue] when non-blank; falls back to [envelopeValue] and logs at debug otherwise. */
@@ -327,6 +378,7 @@ class ReceiveMessageUseCase
 
         private companion object {
             private const val TAG = "ReceiveMessage"
+            private const val RECEIPT_CONTENT_TYPE = "receipt/v1"
 
             @Suppress("unused")
             private val FallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

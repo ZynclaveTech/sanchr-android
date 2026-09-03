@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
+import com.sanchr.core.model.MessageStatus
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -110,6 +111,28 @@ interface MessageRepository {
         conversationId: String,
         selfUserId: String,
     ): String?
+
+    /**
+     * Applies an inbound receipt's status to [messageId] — the same local
+     * effect `RealtimeManager.handleReceipt` produces for a server-generated
+     * cleartext receipt (uppercase the wire status, write it to the
+     * `messages` row's `status` column), reached through this repository
+     * because [ReceiveMessageUseCase] (the sealed-receipt caller) has no
+     * `MessageDao` of its own.
+     *
+     * [status] is a validated [MessageStatus], not a raw wire string,
+     * precisely so an unrecognised status can never reach here — the caller
+     * decodes the receipt and is responsible for that check; an unknown
+     * wire value must be ignored rather than written.
+     *
+     * A no-op if [messageId] does not name a row this device has (e.g. the
+     * receipt named a message this device never persisted, or one deleted
+     * by a race). Never throws.
+     */
+    suspend fun applyReceiptStatus(
+        messageId: String,
+        status: MessageStatus,
+    )
 
     /** Deletes a message locally (and requests remote deletion if own message). */
     suspend fun deleteMessage(

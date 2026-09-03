@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.model.MessageStatus
 import dagger.Lazy
 import io.mockk.coEvery
 import io.mockk.coJustRun
@@ -18,6 +19,7 @@ import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.InvalidMessageException
 import org.signal.libsignal.protocol.NoSessionException
 import org.signal.libsignal.protocol.UntrustedIdentityException
+import sanchr.messaging.Messaging
 
 class ReceiveMessageUseCaseTest {
     private val sealedSenderCipher = mockk<SealedSenderCipher>()
@@ -343,6 +345,138 @@ class ReceiveMessageUseCaseTest {
                     timestamp = 1L,
                     flushAckImmediately = false,
                     stageAck = false,
+                )
+            }
+        }
+
+    // ── Task 3: applying an inbound sealed read receipt ──
+
+    private fun receiptPlaintext(
+        messageId: String,
+        status: String,
+        conversationId: String = "",
+    ): ByteArray {
+        val receipt =
+            Messaging.ReceiptUpdate
+                .newBuilder()
+                .setConversationId(conversationId)
+                .setMessageId(messageId)
+                .setRecipientId("peer-uuid")
+                .setStatus(status)
+                .setTimestamp(12345L)
+                .build()
+        // Envelope ids are deliberately left empty by the sender (Task 2) —
+        // the real ids travel only inside the serialized ReceiptUpdate.
+        val payload =
+            InnerPayload(
+                conversationId = "",
+                messageId = null,
+                contentType = "receipt/v1",
+                content = receipt.toByteArray(),
+            )
+        return payload.encode()
+    }
+
+    @Test
+    fun sealed_success_with_a_well_formed_receipt_updates_the_named_message_s_status_and_still_acks() =
+        runTest {
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = receiptPlaintext(messageId = "inner-msg", status = "read"),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            // The status update is keyed on the id decoded out of the
+            // protobuf ("inner-msg"), never the envelope's own id
+            // ("env-msg") — the envelope's ids are deliberately empty for a
+            // receipt, so reaching for ctx here would be a bug.
+            coVerify(exactly = 1) { messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ) }
+            coVerify(exactly = 0) { messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
+                )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_an_unrecognised_receipt_status_is_ignored_but_still_acks() =
+        runTest {
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = receiptPlaintext(messageId = "inner-msg", status = "seen"),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any()) }
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
+                )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_malformed_receipt_content_does_not_throw_and_still_acks() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "",
+                    messageId = null,
+                    contentType = "receipt/v1",
+                    // field 1, wire type 7 — wire type 7 is not a valid
+                    // protobuf wire type, so parseFrom must throw
+                    // InvalidProtocolBufferException on this byte.
+                    content = byteArrayOf(0x0F),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            val result = useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            assertTrue(result is EnvelopeDecryptResult.Success)
+            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any()) }
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
+                )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_a_blank_receipt_message_id_is_ignored_but_still_acks() =
+        runTest {
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = receiptPlaintext(messageId = "", status = "read"),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any()) }
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
                 )
             }
         }
