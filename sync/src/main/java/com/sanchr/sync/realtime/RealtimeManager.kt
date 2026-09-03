@@ -23,7 +23,10 @@ import com.sanchr.sync.rotation.PreKeyReplenishWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -55,7 +58,9 @@ class RealtimeManager
 
         val typingCache: StateFlow<Map<String, TypingIndicator>> = _typingCache.asStateFlow()
 
+        private val lock = Any()
         private var streamJob: Job? = null
+        private var pendingStopJob: Job? = null
         private var initialized = false
 
         fun initialize() {
@@ -74,6 +79,10 @@ class RealtimeManager
 
         fun enterForeground() {
             if (sessionManager.getAccessToken().isNullOrEmpty()) return
+            synchronized(lock) {
+                pendingStopJob?.cancel()
+                pendingStopJob = null
+            }
             ensureStreamStarted()
         }
 
@@ -83,9 +92,20 @@ class RealtimeManager
                 return
             }
 
-            appScope.launch {
-                delay(BACKGROUND_DRAIN_DELAY_MS)
-                stopStream()
+            synchronized(lock) {
+                pendingStopJob?.cancel()
+                val job =
+                    appScope.launch(start = CoroutineStart.LAZY) {
+                        delay(BACKGROUND_DRAIN_DELAY_MS)
+                        synchronized(lock) {
+                            if (pendingStopJob === coroutineContext[Job]) {
+                                stopStreamLocked()
+                                pendingStopJob = null
+                            }
+                        }
+                    }
+                pendingStopJob = job
+                job.start()
             }
         }
 
@@ -106,23 +126,37 @@ class RealtimeManager
         }
 
         private fun ensureStreamStarted() {
-            if (streamJob != null) return
+            synchronized(lock) {
+                if (streamJob != null) return
 
-            streamJob =
-                appScope.launch {
-                    try {
-                        messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
-                            handleServerEvent(event)
+                val job =
+                    appScope.launch(start = CoroutineStart.LAZY) {
+                        try {
+                            messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
+                                handleServerEvent(event)
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (error: Exception) {
+                            Log.e(TAG, "Realtime stream failed", error)
+                        } finally {
+                            synchronized(lock) {
+                                if (streamJob === coroutineContext[Job]) {
+                                    streamJob = null
+                                }
+                            }
                         }
-                    } catch (error: Exception) {
-                        Log.e(TAG, "Realtime stream failed", error)
-                    } finally {
-                        streamJob = null
                     }
-                }
+                streamJob = job
+                job.start()
+            }
         }
 
         private fun stopStream() {
+            synchronized(lock) { stopStreamLocked() }
+        }
+
+        private fun stopStreamLocked() {
             streamJob?.cancel()
             streamJob = null
         }
