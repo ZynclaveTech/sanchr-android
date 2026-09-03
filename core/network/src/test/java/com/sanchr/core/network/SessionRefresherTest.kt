@@ -14,6 +14,7 @@ import io.mockk.verify
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -37,7 +38,15 @@ class SessionRefresherTest {
     fun `concurrent callers share one RPC`() =
         runTest {
             every { session.getRefreshToken() } returns "r1"
-            coEvery { auth.refreshToken(any()) } returns AuthResponse(accessToken = "a2", refreshToken = "r2", expiresIn = 900)
+            // A real suspension point: without it, the mock returns
+            // synchronously and the three callers never truly overlap, so
+            // this test would pass even with the lock removed. `yield()`
+            // forces caller A to give up the coroutine dispatcher mid-RPC so
+            // callers B and C actually get a chance to run concurrently.
+            coEvery { auth.refreshToken(any()) } coAnswers {
+                yield()
+                AuthResponse(accessToken = "a2", refreshToken = "r2", expiresIn = 900)
+            }
 
             listOf(async { refresher.refresh() }, async { refresher.refresh() }, async { refresher.refresh() }).awaitAll()
 

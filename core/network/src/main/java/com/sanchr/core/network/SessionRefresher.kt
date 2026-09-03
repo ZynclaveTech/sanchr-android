@@ -9,6 +9,7 @@ import io.grpc.StatusException
 import io.grpc.StatusRuntimeException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -54,9 +55,19 @@ class SessionRefresher(
                     val rotated = response.refreshToken.ifEmpty { refreshToken }
                     sessionManager.updateTokens(response.accessToken, rotated, clock() + response.expiresIn * 1000L)
                     RefreshResult.Refreshed
+                } catch (e: CancellationException) {
+                    // Structured concurrency: a cancelled scope must propagate,
+                    // never be absorbed as a refresh outcome.
+                    throw e
                 } catch (e: Exception) {
                     when (statusOf(e)) {
-                        Status.Code.UNAUTHENTICATED, Status.Code.PERMISSION_DENIED -> {
+                        // Only an explicit UNAUTHENTICATED means the refresh
+                        // token itself was rejected. Anything else (including
+                        // PERMISSION_DENIED, which the refresh endpoint never
+                        // returns today) is treated as transient rather than
+                        // signing every device out — a wrong destructive
+                        // sign-out is worse than a retry.
+                        Status.Code.UNAUTHENTICATED -> {
                             Log.w(TAG, "Refresh token rejected; signing out", e)
                             sessionManager.clearSession()
                             RefreshResult.SignedOut
