@@ -119,4 +119,54 @@ class InnerPayloadTest {
             InnerPayload(conversationId = "c", contentType = "text", content = byteArrayOf(1), senderProfileKey = ByteArray(0))
         assertTrue(withNullKey != withEmptyKey)
     }
+
+    @Test
+    fun `encode omits null optionals rather than writing null literals`() {
+        // Android is the producer here; iOS is the reader. This is the direction
+        // that actually protects the wire contract, so it must be pinned directly
+        // rather than only inferred from the decode-side tests above.
+        val json =
+            String(
+                InnerPayload(conversationId = "c-1", contentType = "text", content = byteArrayOf(1)).encode(),
+                Charsets.UTF_8,
+            )
+        assertFalse(json.contains("null"), json)
+        listOf(
+            "\"message_id\"",
+            "\"expires_after_secs\"",
+            "\"sender_profile_key\"",
+            "\"sender_user_id\"",
+            "\"sender_device_id\"",
+            "\"reply_to_message_id\"",
+        ).forEach { assertFalse(json.contains(it), "unexpected $it present in $json") }
+    }
+
+    @Test
+    fun `round trips bytes above 0x7F and explicitly empty byte arrays`() {
+        // A profile key is 32 random bytes, so it very likely contains
+        // high-bit values; every prior round-trip test happened to stay
+        // below 0x7F and would not have caught a sign-extension mistake.
+        val highBytes = byteArrayOf(0xFF.toByte(), 0x80.toByte(), 0x7F, 0x00)
+        val withHighBytes =
+            InnerPayload(
+                conversationId = "c-1",
+                contentType = "text",
+                content = highBytes,
+                senderProfileKey = highBytes,
+            )
+        val decodedHighBytes = InnerPayload.decode(withHighBytes.encode())!!
+        assertContentEquals(highBytes, decodedHighBytes.content)
+        assertContentEquals(highBytes, decodedHighBytes.senderProfileKey)
+
+        val withEmptyArrays =
+            InnerPayload(
+                conversationId = "c-1",
+                contentType = "text",
+                content = ByteArray(0),
+                senderProfileKey = ByteArray(0),
+            )
+        val decodedEmptyArrays = InnerPayload.decode(withEmptyArrays.encode())!!
+        assertContentEquals(ByteArray(0), decodedEmptyArrays.content)
+        assertContentEquals(ByteArray(0), decodedEmptyArrays.senderProfileKey)
+    }
 }
