@@ -19,7 +19,9 @@ import io.mockk.mockk
 import io.mockk.slot
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
@@ -206,6 +208,26 @@ class SendReadReceiptUseCaseTest {
 
             // Must not throw.
             useCase.invoke("conv-1", "msg-1")
+        }
+
+    @Test
+    fun `cancellation from sendSealedMessage escapes invoke rather than being swallowed`() =
+        runTest {
+            // This exact class of bug — a broad catch absorbing
+            // CancellationException instead of rethrowing it — has been
+            // fixed three times on this project (phase 0's SessionRefresher,
+            // 1b-1's adoptServerIdSafely/replenishTokenPoolSafely, and the
+            // catch order this use case copies). Pinned directly rather than
+            // trusted by convention.
+            primeCommonMocks()
+            coEvery {
+                signalSessionManager.encryptForAllDevices(any(), "peer-uuid")
+            } returns listOf(DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1), messageType = 3, registrationId = 42))
+            coEvery { messagingClient.sendSealedMessage(any()) } throws CancellationException("scope cancelled")
+
+            assertFailsWith<CancellationException> {
+                useCase.invoke("conv-1", "msg-1")
+            }
         }
 
     @Test
