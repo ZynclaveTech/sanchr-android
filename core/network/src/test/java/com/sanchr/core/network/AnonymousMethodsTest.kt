@@ -3,6 +3,7 @@ package com.sanchr.core.network
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import sanchr.messaging.MessagingServiceGrpc
 
 class AnonymousMethodsTest {
     @Test
@@ -18,5 +19,15 @@ class AnonymousMethodsTest {
             "sanchr.messaging.MessagingService/GetSenderCertificate",
             "sanchr.auth.AuthService/VerifyOTP",
         ).forEach { assertFalse(AnonymousMethods.isAnonymous(it), it) }
+    }
+
+    @Test
+    fun `the anonymous path matches the generated method descriptor`() {
+        val generatedName = MessagingServiceGrpc.getSendSealedMessageMethod().fullMethodName
+
+        assertTrue(
+            AnonymousMethods.isAnonymous(generatedName),
+            "the hand-typed constant has drifted from the generated service name",
+        )
     }
 }
