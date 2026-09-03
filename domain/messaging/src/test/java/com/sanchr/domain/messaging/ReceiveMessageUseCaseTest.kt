@@ -182,4 +182,168 @@ class ReceiveMessageUseCaseTest {
             assertTrue(result is EnvelopeDecryptResult.Quarantined)
             assertEquals(FailureClass.CRYPTO_OTHER, result.failureClass)
         }
+
+    // ── Task 6: routing an inner payload ahead of persistence ──
+
+    private val ctx = IncomingEnvelopeContext(conversationId = "env-conv", messageId = "env-msg", contentType = "text")
+
+    @Test
+    fun sealed_success_with_inner_payload_persists_using_the_payload_s_ids_and_content() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "hi there".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            val result = useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            assertTrue(result is EnvelopeDecryptResult.Success)
+            // stageAck = false: the row is keyed on the payload's id (a v4
+            // UUID), which the server's delivery queue would not recognize
+            // as an ack target — so this call must not also stage one.
+            coVerify {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    senderId = "alice-uuid",
+                    content = "hi there",
+                    contentType = "text",
+                    timestamp = 42L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                )
+            }
+            // Exactly one ack is staged for the envelope, keyed on its own
+            // (server) ids — never the payload's. This is the property the
+            // stageAck = false above exists to protect: a resend-safe row
+            // id must not also produce a second, server-rejected ack entry.
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
+                )
+            }
+            coVerify(exactly = 0) { messageRepository.ackEnvelope("payload-conv", "payload-msg", any()) }
+        }
+
+    @Test
+    fun sealed_success_with_blank_payload_ids_falls_back_to_the_envelope_s_ids() =
+        runTest {
+            val payload = InnerPayload(contentType = "text", content = "hi".toByteArray())
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    senderId = "alice-uuid",
+                    content = "hi",
+                    contentType = "text",
+                    timestamp = 1L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_a_control_payload_does_not_persist_a_message_but_still_acks() =
+        runTest {
+            val payload = InnerPayload(conversationId = "payload-conv", contentType = "receipt/v1", content = "x".toByteArray())
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            val result = useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            assertTrue(result is EnvelopeDecryptResult.Success)
+            coVerify(exactly = 0) { messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
+            coVerify {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = true,
+                )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_legacy_bare_utf8_plaintext_persists_as_a_user_message_with_the_envelope_s_content_type() =
+        runTest {
+            val legacyPlaintext = "hey there".toByteArray()
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = legacyPlaintext,
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    senderId = "alice-uuid",
+                    content = "hey there",
+                    contentType = "text",
+                    timestamp = 1L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                )
+            }
+        }
+
+    @Test
+    fun sealed_success_with_an_unrecognised_content_type_still_persists_as_a_user_message() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "sticker/v9",
+                    content = "surprise".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 1L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    senderId = "alice-uuid",
+                    content = "surprise",
+                    contentType = "sticker/v9",
+                    timestamp = 1L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                )
+            }
+        }
 }

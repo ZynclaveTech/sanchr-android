@@ -169,4 +169,28 @@ class AuthInterceptorTest {
 
         assertNull(headers.get(authKey))
     }
+
+    @Test
+    fun `a sealed send carries neither an authorization nor a device-id header`() {
+        every { sessionManager.getAccessToken() } returns "tok-must-not-leak"
+        every { sessionManager.getDeviceId() } returns "device-must-not-leak"
+        val interceptor = AuthInterceptor(sessionManager)
+
+        val headers = capture(interceptor, "sanchr.messaging.MessagingService/SendSealedMessage")
+
+        assertNull(headers.get(authKey))
+        assertNull(headers.get(deviceIdKey))
+    }
+
+    @Test
+    fun `an ordinary authenticated call still carries both`() {
+        every { sessionManager.getAccessToken() } returns "tok-123"
+        every { sessionManager.getDeviceId() } returns "device-abc"
+        val interceptor = AuthInterceptor(sessionManager)
+
+        val headers = capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
+
+        assertEquals("Bearer tok-123", headers.get(authKey))
+        assertEquals("device-abc", headers.get(deviceIdKey))
+    }
 }

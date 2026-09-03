@@ -232,3 +232,66 @@ data class SenderCertificateResponse(
 
     override fun hashCode(): Int = certificate.contentHashCode() * 31 + expiration.hashCode()
 }
+
+data class DeliveryTokenRequest(
+    val count: Int = 0,
+)
+
+data class DeliveryTokenResponse(
+    val tokens: List<ByteArray> = emptyList(),
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is DeliveryTokenResponse) return false
+        if (tokens.size != other.tokens.size) return false
+        return tokens.indices.all { tokens[it].contentEquals(other.tokens[it]) }
+    }
+
+    override fun hashCode(): Int = tokens.fold(0) { acc, t -> 31 * acc + t.contentHashCode() }
+}
+
+data class SealedDeviceMessage(
+    val recipientId: String = "",
+    val deviceId: Int = 0,
+    val sealedEnvelope: ByteArray = ByteArray(0),
+    val conversationId: String = "",
+    // Opt-out flag: suppresses only the recipient's offline push. Defaults to false so an
+    // ordinary message still alerts, matching the proto's opt-out design for older clients.
+    val silent: Boolean = false,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SealedDeviceMessage) return false
+        return recipientId == other.recipientId &&
+            deviceId == other.deviceId &&
+            sealedEnvelope.contentEquals(other.sealedEnvelope) &&
+            conversationId == other.conversationId &&
+            silent == other.silent
+    }
+
+    override fun hashCode(): Int {
+        var result = recipientId.hashCode()
+        result = 31 * result + deviceId
+        result = 31 * result + sealedEnvelope.contentHashCode()
+        result = 31 * result + conversationId.hashCode()
+        result = 31 * result + silent.hashCode()
+        return result
+    }
+}
+
+data class SendSealedMessageRequest(
+    val deliveryToken: ByteArray = ByteArray(0),
+    val deviceMessages: List<SealedDeviceMessage> = emptyList(),
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SendSealedMessageRequest) return false
+        return deliveryToken.contentEquals(other.deliveryToken) && deviceMessages == other.deviceMessages
+    }
+
+    override fun hashCode(): Int = 31 * deliveryToken.contentHashCode() + deviceMessages.hashCode()
+}
+
+data class SendSealedMessageResponse(
+    val serverTimestamp: Long = 0L,
+)

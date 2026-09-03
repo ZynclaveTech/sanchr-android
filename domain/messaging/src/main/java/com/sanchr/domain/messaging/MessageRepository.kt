@@ -132,8 +132,9 @@ interface MessageRepository {
     )
 
     /**
-     * Inserts a decrypted incoming message into local storage and stages a
-     * pending ack. When [flushAckImmediately] is true (the default), the
+     * Inserts a decrypted incoming message into local storage and, by
+     * default, stages a pending ack keyed on this same [conversationId] /
+     * [messageId]. When [flushAckImmediately] is true (the default), the
      * pending ack batch is flushed to the server synchronously — that is the
      * right behavior for single-shot decrypt paths such as `RealtimeManager`.
      * Callers that drain many envelopes in a tight loop (e.g.
@@ -141,14 +142,27 @@ interface MessageRepository {
      * [flushPendingAcks] once after the loop so the RPC count is O(1) in the
      * batch, not O(N) in envelopes.
      *
-     * @param conversationId The conversation this message belongs to.
-     * @param messageId The server-assigned message ID.
+     * @param conversationId The conversation this message belongs to. May be
+     *        a payload-preferred id rather than the envelope's own — see
+     *        [stageAck].
+     * @param messageId The message ID this row is keyed on. Same caveat as
+     *        [conversationId].
      * @param senderId The sender's user ID.
      * @param content The decrypted plaintext content.
      * @param contentType The message content type (e.g., "text", "image").
      * @param timestamp The server timestamp in epoch milliseconds.
      * @param flushAckImmediately If true, fires the ack RPC now; if false,
-     *        stages a pending-ack row and defers the flush to the caller.
+     *        stages a pending-ack row (when [stageAck] is true) and defers
+     *        the flush to the caller.
+     * @param stageAck Whether this call should also stage a pending ack
+     *        under [conversationId] / [messageId]. Defaults to `true` — the
+     *        pre-existing behavior every caller but [ReceiveMessageUseCase]
+     *        relies on. [ReceiveMessageUseCase] passes `false` because it
+     *        stages the *envelope's* ack itself via [ackEnvelope]: this
+     *        row's id can be a payload-preferred id the server's delivery
+     *        queue does not recognize (see [ackEnvelope]'s doc), so staging
+     *        an ack here too would just be a second, server-rejected entry
+     *        for no benefit.
      */
     suspend fun insertDecryptedMessage(
         conversationId: String,
@@ -158,6 +172,7 @@ interface MessageRepository {
         contentType: String,
         timestamp: Long,
         flushAckImmediately: Boolean = true,
+        stageAck: Boolean = true,
     )
 
     /**
@@ -166,4 +181,33 @@ interface MessageRepository {
      * callers can decouple ack flushing from individual insert calls.
      */
     suspend fun flushPendingAcks()
+
+    /**
+     * Stages a pending ack for an envelope keyed by its own server-assigned
+     * [conversationId] / [messageId] — the ids the server's delivery queue
+     * actually tracks — regardless of any different id a decoded payload
+     * may carry.
+     *
+     * This is the *only* place an envelope's ack gets staged once
+     * [ReceiveMessageUseCase] routes a payload: a control payload (e.g.
+     * `receipt/v1`, `profile-key/v1`) is routed away from
+     * [insertDecryptedMessage] entirely, since it must not be persisted as
+     * a message, so without this call its envelope would never be acked
+     * and the server would redeliver it indefinitely. For a
+     * [RoutedPayload.UserMessage] persisted under a payload-preferred id,
+     * [ReceiveMessageUseCase] passes `stageAck = false` to
+     * [insertDecryptedMessage] and relies on this call instead — otherwise
+     * the row's own (possibly payload-keyed) ack staging would produce a
+     * second entry the server silently rejects on every such message
+     * (a payload id is a random v4 UUID; the server's delivery queue only
+     * recognizes its own v1 timeuuid), which is needless load and log
+     * noise this method exists to avoid.
+     *
+     * @param flushAckImmediately Same contract as [insertDecryptedMessage].
+     */
+    suspend fun ackEnvelope(
+        conversationId: String,
+        messageId: String,
+        flushAckImmediately: Boolean = true,
+    )
 }

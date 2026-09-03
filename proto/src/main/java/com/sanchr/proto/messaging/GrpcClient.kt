@@ -30,6 +30,10 @@ interface MessagingServiceClient {
     suspend fun getConversations(request: GetConversationsRequest): GetConversationsResponse
 
     suspend fun getSenderCertificate(request: SenderCertificateRequest): SenderCertificateResponse
+
+    suspend fun getDeliveryTokens(request: DeliveryTokenRequest): DeliveryTokenResponse
+
+    suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse
 }
 
 class MessagingServiceGrpcClient(
@@ -75,6 +79,12 @@ class MessagingServiceGrpcClient(
             expiration = response.expiration,
         )
     }
+
+    override suspend fun getDeliveryTokens(request: DeliveryTokenRequest): DeliveryTokenResponse =
+        stub.getDeliveryTokens(request.toProto()).toManual()
+
+    override suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse =
+        stub.sendSealedMessage(request.toProto()).toManual()
 }
 
 private fun StartDirectConversationRequest.toProto(): Messaging.StartDirectConversationRequest =
@@ -249,3 +259,40 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent? =
             null
         }
     }
+
+private fun DeliveryTokenRequest.toProto(): Messaging.DeliveryTokenRequest =
+    Messaging.DeliveryTokenRequest
+        .newBuilder()
+        .setCount(count)
+        .build()
+
+private fun Messaging.DeliveryTokenResponse.toManual(): DeliveryTokenResponse =
+    DeliveryTokenResponse(
+        tokens = tokensList.map { it.toByteArray() },
+    )
+
+private fun SealedDeviceMessage.toProto(): Messaging.SealedDeviceMessage =
+    Messaging.SealedDeviceMessage
+        .newBuilder()
+        .setRecipientId(recipientId)
+        .setDeviceId(deviceId)
+        .setSealedEnvelope(ByteString.copyFrom(sealedEnvelope))
+        .setConversationId(conversationId)
+        .setSilent(silent)
+        .build()
+
+private fun SendSealedMessageRequest.toProto(): Messaging.SendSealedMessageRequest =
+    Messaging.SendSealedMessageRequest
+        .newBuilder()
+        .setDeliveryToken(ByteString.copyFrom(deliveryToken))
+        .addAllDeviceMessages(deviceMessages.map(SealedDeviceMessage::toProto))
+        .build()
+
+private fun Messaging.SendSealedMessageResponse.toManual(): SendSealedMessageResponse =
+    SendSealedMessageResponse(
+        serverTimestamp = serverTimestamp,
+    )
+
+internal fun SealedDeviceMessage.toProtoForTest(): Messaging.SealedDeviceMessage = toProto()
+
+internal fun Messaging.DeliveryTokenResponse.toManualForTest(): DeliveryTokenResponse = toManual()

@@ -29,6 +29,14 @@ import kotlinx.coroutines.withContext
  * layer listens to for reactive navigation back to the auth graph. As
  * long as `clearSession` itself completes, logout navigation happens
  * even if e.g. a keystore wipe raced with another process.
+ *
+ * Also drops the in-memory delivery-token pool ([DeliveryTokenStore] is a
+ * `@Singleton` seeded from [SessionManager] at construction time, so
+ * wiping the persisted key alone would not touch the live pool): without
+ * this, a second account signing in in the same process would spend the
+ * first account's leftover tokens, some of which may already be expired,
+ * failing that account's first sends with `UNAUTHENTICATED` until the
+ * stale pool drains.
  */
 @Singleton
 class LogoutUseCase
@@ -40,6 +48,7 @@ class LogoutUseCase
         private val database: SanchrDatabase,
         private val stagedIdentityStore: StagedIdentityStore,
         private val databasePassphraseProvider: DatabasePassphraseProvider,
+        private val deliveryTokenStore: DeliveryTokenStore,
         private val dispatchers: DispatcherProvider,
     ) {
         suspend operator fun invoke() =
@@ -63,6 +72,10 @@ class LogoutUseCase
                 runCatching { context.deleteDatabase(DATABASE_FILE_NAME) }
                 // 6. Wipe Keystore-wrapped DB passphrase
                 runCatching { databasePassphraseProvider.wipe() }
+                // 7. Drop the in-memory delivery-token pool so a second
+                //    account signing in in this process cannot spend the
+                //    first account's leftover (possibly expired) tokens.
+                runCatching { deliveryTokenStore.clear() }
             }
 
         private companion object {
