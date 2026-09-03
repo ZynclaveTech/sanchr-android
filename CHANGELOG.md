@@ -11,6 +11,16 @@ commit that adds a release entry below.
 
 ## [Unreleased]
 
+### Changed
+- Protos resynced to backend `1305d39`: `GetUserProfiles`, `profile_key_version`, `current_pin`, `silent`; `profile_key` fields are reserved server-side.
+- The stored theme mode (System / Light / Dark) is applied at the activity root; the launch window and splash follow it.
+- Launcher icon is the navy composition shared with iOS; the in-app mark is transparent.
+
+### Fixed
+- Push token registration no longer overwrites the server device id (key bundles uploaded as device 0).
+- An expired access token now refreshes once, in flight, on the first 401; the rotated refresh token is stored.
+- Notification taps open the conversation or call; notifications use the brand status icon.
+
 ## [1.0.0] — 2026-04-24
 
 Initial internal-track release (Milestone M6).

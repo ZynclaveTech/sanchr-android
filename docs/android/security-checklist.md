@@ -9,20 +9,6 @@ release manager.
 
 ## BLOCKERS (must fix before internal release)
 
-- **FLAG_SECURE is not actually applied anywhere.** The Security settings
-  screen advertises a "Screenshot Protection" toggle
-  (`feature/settings/.../SecurityScreen.kt:145`, backed by
-  `SettingsViewModel.setScreenshotProtection` at
-  `feature/settings/.../SettingsViewModel.kt:359`), but there is **no call to
-  `window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)` anywhere in the
-  codebase** (confirmed by `rg "FLAG_SECURE|WindowManager.LayoutParams|setSecure"`
-  returning only the UI subtitle string). OTP entry
-  (`feature/auth/.../OtpScreen.kt`) and recovery-key screens are therefore
-  **unprotected against screenshots and the recents-screen preview**. User
-  toggle updates a StateFlow that nothing consumes at the Activity layer.
-  Action: wire the toggle (and unconditionally for OTP + recovery-key screens)
-  into `MainActivity.onCreate` / a `DisposableEffect` in the screen composables.
-
 - **(RESOLVED) SQLCipher passphrase is never zeroed in memory.**
   `DatabasePassphraseProvider` now exposes only a block-scoped
   `withPassphrase { bytes -> ... }` API which zero-fills the plaintext buffer
@@ -107,11 +93,15 @@ release manager.
   Follow-up: expose a `ByteArray` accessor for tokens and zero after use, OR
   explicitly risk-accept given that heap dumps on a locked device still
   require a keystore-gated unlock.
+  Rotated refresh tokens persisted via `SessionManager.updateTokens` (Phase 0).
 
-- [ ] **7. FLAG_SECURE on OTP + recovery-key screens.**
-  See BLOCKERS. Grep for `FLAG_SECURE` returns one hit — a user-facing
-  description string at `feature/settings/.../SecurityScreen.kt:145`. Zero
-  call-sites apply the flag to a `Window`.
+- [x] **7. FLAG_SECURE on OTP + recovery-key screens.**
+  `MainActivity.observeScreenshotProtectionPreference()` at
+  `app/src/main/java/com/sanchr/app/MainActivity.kt:156` reactively applies
+  `FLAG_SECURE` based on the user preference. `SecureScreen` composable at
+  `core/designsystem/src/main/java/com/sanchr/core/designsystem/component/SecureScreen.kt:22`
+  applies the flag unconditionally. OTP screen unconditionally invokes
+  `SecureScreen()` at `feature/auth/src/main/java/com/sanchr/feature/auth/OtpScreen.kt:78`.
 
 - [x] **8. ProGuard enabled + verified.**
   `app/build.gradle.kts:90-103` sets `isMinifyEnabled = true` and
@@ -178,8 +168,6 @@ release manager.
 
 ## Summary
 
-- **Checked:** 8 / 14 items (3, 5, 8, 9, 10, 11, 12, 13, 14 — nine actually).
-- **Unchecked:** 6 items (1, 2, 4, 6, 7). Two are BLOCKERS (7 — FLAG_SECURE
-  not wired; 4 — passphrase not zeroed). The remaining four are release-gate
-  follow-ups.
-- **BLOCKERS:** 2 (see top of document).
+- **Checked:** 9 / 14 items (3, 5, 7, 8, 9, 10, 11, 12, 13, 14).
+- **Unchecked:** 5 items (1, 2, 4, 6). One is a BLOCKER (4 — passphrase not zeroed). The remaining four are release-gate follow-ups.
+- **BLOCKERS:** 1 (see top of document).
