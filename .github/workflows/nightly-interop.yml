@@ -9,12 +9,12 @@ name: nightly-interop
 # instrumented interop test deserialises and decrypts them successfully,
 # the two platforms agree on the shared crypto wire format.
 #
-# The backend is booted in-job from `sanchr-backend-oss` — the public
-# backend-oss repo is cloned to a sibling workspace and its integration
-# docker-compose harness is brought up with the same config the backend
-# repo's own CI uses. If the backend repo ever publishes a tagged Docker
-# image of the test harness, this workflow can switch to a pull — tracked
-# as a post-M6 follow-up in the plan doc.
+# The backend is booted in-job from `sanchr-backend` — the canonical
+# backend repo is cloned to a sibling workspace and its top-level
+# `docker-compose.yml` is brought up to provide the integration harness.
+# If the backend repo ever
+# publishes a tagged Docker image of the test harness, this workflow can
+# switch to a pull — tracked as a post-M6 follow-up in the plan doc.
 
 on:
   schedule:
@@ -23,9 +23,9 @@ on:
   workflow_dispatch:
     inputs:
       backend_ref:
-        description: 'sanchr-backend-oss ref to use (default: main)'
+        description: 'sanchr-backend ref to use (default: feat/persistent-refresh-tokens)'
         required: false
-        default: 'main'
+        default: 'feat/persistent-refresh-tokens'
 
 concurrency:
   group: nightly-interop
@@ -46,12 +46,12 @@ jobs:
         with:
           path: sanchr-android
 
-      - name: Checkout backend-oss
+      - name: Checkout backend
         uses: actions/checkout@v4
         with:
-          repository: ZynclaveTech/sanchr-backend-oss
-          ref: ${{ github.event.inputs.backend_ref || 'main' }}
-          path: sanchr-backend-oss
+          repository: ZynclaveTech/sanchr-backend
+          ref: ${{ github.event.inputs.backend_ref || 'feat/persistent-refresh-tokens' }}
+          path: sanchr-backend
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -71,7 +71,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Boot backend test harness
-        working-directory: sanchr-backend-oss/tests/compose
+        working-directory: sanchr-backend
         run: |
           docker compose up -d --wait
           # Emulator → host mapping: the interop test reads
@@ -97,8 +97,8 @@ jobs:
 
       - name: Tear down backend
         if: always()
-        working-directory: sanchr-backend-oss/tests/compose
-        run: docker compose logs > ../../../backend-compose.log 2>&1 || true; docker compose down -v
+        working-directory: sanchr-backend
+        run: docker compose logs > ../backend-compose.log 2>&1 || true; docker compose down -v
 
       - name: Upload interop artifacts
         if: always()
@@ -132,7 +132,7 @@ jobs:
               `Nightly interop failed at run ${context.runId}.`,
               ``,
               `- Run URL: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              `- Backend ref: main`,
+              `- Backend ref: feat/persistent-refresh-tokens`,
               ``,
               `Check the \`nightly-interop-reports\` artifact for JUnit output and backend compose logs.`,
               `Close this issue once the regression is resolved; a new issue opens on the next failure.`,

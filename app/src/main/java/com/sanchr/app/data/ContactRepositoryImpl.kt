@@ -6,9 +6,10 @@ import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.ContactServiceClient
-import com.sanchr.proto.contacts.LookedUpUser
+import com.sanchr.proto.contacts.MatchedContact
 import com.sanchr.proto.contacts.SyncContactsRequest
 import com.sanchr.proto.contacts.UnblockContactRequest
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -76,26 +77,61 @@ class ContactRepositoryImpl
             contactDao.setFavorite(userId, favorite)
         }
 
-        override suspend fun lookupByPhone(phoneE164: String): User? = contactClient.lookupUser(phoneE164)?.toDomain()
+        /**
+         * Phone-based user lookup via SyncContacts(phoneHashes = [SHA-256(phone)]).
+         *
+         * Mirrors iOS ContactRepository.searchUser
+         * (ios/Sanchr-iOS/Shared/Repositories/ContactRepository.swift:170-197):
+         * the raw phone never leaves the device — only the SHA-256 of the
+         * normalized E.164 form is sent. The server matches against its
+         * registered-user hash table and returns at most one [MatchedContact]
+         * for a single-element request.
+         *
+         * Hex-encoding the digest matches the existing convention in
+         * `ContactsViewModel.readAndHashDeviceContacts`, which is the only
+         * other Android caller of `SyncContacts`. Both clients (Android
+         * single-element here, Android bulk in ContactsViewModel) must agree
+         * on encoding so the server returns matches consistently.
+         *
+         * Returns null when the server reports no match. Network / RPC errors
+         * propagate to the caller (matching the iOS contract — the VM layer
+         * decides what to surface to the UI).
+         */
+        override suspend fun lookupByPhone(phoneE164: String): User? {
+            val normalized = phoneE164.replace(Regex("[^0-9+]"), "")
+            val hash =
+                MessageDigest
+                    .getInstance("SHA-256")
+                    .digest(normalized.toByteArray(Charsets.UTF_8))
+                    .joinToString("") { "%02x".format(it) }
+            val response =
+                contactClient.syncContacts(
+                    SyncContactsRequest(phoneHashes = listOf(hash)),
+                )
+            return response.matchedContacts.firstOrNull()?.toDomain(phoneE164)
+        }
 
         // ── Mapping helpers ──
 
-        private fun LookedUpUser.toDomain(): User =
+        /**
+         * Maps a single-result [MatchedContact] (from the phone-lookup path)
+         * into the domain [User]. The caller's `phoneE164` is preferred over
+         * the server-reported `phoneNumber` because (a) the lookup-by-hash RPC
+         * may legitimately omit phone-number echo (privacy), and (b) the
+         * caller already knows the canonical E.164 form they searched for.
+         * Server-supplied phone is used only as a fallback.
+         */
+        private fun MatchedContact.toDomain(phoneE164: String): User =
             User(
-                id = id,
-                phoneNumber = phoneNumber,
+                id = userId,
+                phoneNumber = phoneNumber.ifEmpty { phoneE164 },
                 displayName = displayName,
                 avatarUrl = avatarUrl.ifEmpty { null },
                 bio = null,
                 isOnline = false,
                 lastSeen = null,
                 publicKeyFingerprint = null,
-                // `createdAt` is an RFC 3339 timestamp from the server. Parsing
-                // is best-effort: an empty or malformed value falls back to
-                // epoch-zero so the UI still has a non-null Instant to render.
-                createdAt =
-                    runCatching { Instant.parse(createdAt) }
-                        .getOrDefault(Instant.fromEpochMilliseconds(0L)),
+                createdAt = Instant.fromEpochMilliseconds(0L),
             )
 
         private fun ContactEntity.toDomain(): User =

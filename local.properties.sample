@@ -1,0 +1,26 @@
+# Sample local.properties — copy to `local.properties` and uncomment to use.
+# `local.properties` is gitignored; nothing here is shipped.
+#
+# Android SDK location (Android Studio writes this automatically):
+# sdk.dir=/Users/you/Library/Android/sdk
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# gRPC backend overrides (consumed by core/network/build.gradle.kts).
+#
+# Defaults (no overrides set) preserve production wiring:
+#   host=api-dev.sanchr.com  port=443  tls=true
+#   call.host=call-dev.sanchr.com  call.port=443
+#
+# For local dev against a backend running on the host machine while the
+# Android emulator routes 10.0.2.2 → host loopback:
+#
+# sanchr.grpc.host=10.0.2.2
+# sanchr.grpc.port=50051
+# sanchr.grpc.tls=false
+# sanchr.grpc.call.host=10.0.2.2
+# sanchr.grpc.call.port=50051
+#
+# CI / scripted builds may inject the same values via env vars instead:
+#   SANCHR_GRPC_HOST, SANCHR_GRPC_PORT, SANCHR_GRPC_TLS,
+#   SANCHR_GRPC_CALL_HOST, SANCHR_GRPC_CALL_PORT
+# `local.properties` wins over env when both are set.

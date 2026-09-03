@@ -1,5 +1,6 @@
 package com.sanchr.app
 
+import android.util.Log
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,8 @@ import com.sanchr.feature.auth.navigation.authGraph
 import com.sanchr.feature.calls.navigation.callsGraph
 import com.sanchr.feature.chats.navigation.chatsGraph
 import com.sanchr.feature.contacts.navigation.contactsGraph
+import com.sanchr.feature.onboarding.navigation.ONBOARDING_GRAPH_ROUTE
+import com.sanchr.feature.onboarding.navigation.onboardingGraph
 import com.sanchr.feature.profile.navigation.profileGraph
 import com.sanchr.feature.settings.navigation.settingsGraph
 import com.sanchr.feature.vault.navigation.vaultGraph
@@ -86,6 +89,7 @@ fun SanchrNavHost(
     bootstrapViewModel: AppBootstrapViewModel = hiltViewModel(),
 ) {
     val startState by bootstrapViewModel.startDestination.collectAsState()
+    val hasCompletedOnboarding by bootstrapViewModel.hasCompletedOnboarding.collectAsState()
 
     when (val state = startState) {
         is StartDestination.Loading -> {
@@ -97,8 +101,23 @@ fun SanchrNavHost(
             }
         }
         is StartDestination.Auth, is StartDestination.Main -> {
+            // Start route resolution matrix (see has_completed_onboarding plan):
+            //   - no session                              → "auth"
+            //   - session & onboarding completed           → "main"
+            //   - session & onboarding NOT completed       → "onboarding"
+            // Returning users on a fresh install will land here with
+            // StartDestination.Main but flag=false and therefore see
+            // onboarding once; that is intentional per the per-device
+            // gating design (plan Phase 5).
+            val startRoute =
+                when (state) {
+                    StartDestination.Main ->
+                        if (hasCompletedOnboarding) "main" else ONBOARDING_GRAPH_ROUTE
+                    StartDestination.Auth -> "auth"
+                    StartDestination.Loading -> "auth" // unreachable, compiler exhaustiveness
+                }
             ResolvedNavHost(
-                startRoute = if (state is StartDestination.Main) "main" else "auth",
+                startRoute = startRoute,
                 bootstrapViewModel = bootstrapViewModel,
                 modifier = modifier,
             )
@@ -116,6 +135,7 @@ private fun ResolvedNavHost(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val sessionActive by bootstrapViewModel.sessionActive.collectAsState()
+    val hasCompletedOnboarding by bootstrapViewModel.hasCompletedOnboarding.collectAsState()
 
     // Reactive logout: if the session flips off while we're inside the main
     // graph, pop back to the auth graph. This covers logout from any screen
@@ -126,11 +146,14 @@ private fun ResolvedNavHost(
     // retry happens on the next recomposition once the back-stack entry settles.
     LaunchedEffect(sessionActive, currentDestination) {
         if (!sessionActive) {
-            val inMain =
-                currentDestination?.hierarchy?.any { it.route == "main" } == true
-            if (inMain) {
+            val inAuthenticatedArea =
+                currentDestination?.hierarchy?.any {
+                    it.route == "main" || it.route == ONBOARDING_GRAPH_ROUTE
+                } == true
+            if (inAuthenticatedArea) {
                 navController.navigate("auth") {
                     popUpTo("main") { inclusive = true }
+                    popUpTo(ONBOARDING_GRAPH_ROUTE) { inclusive = true }
                     launchSingleTop = true
                 }
             }
@@ -185,8 +208,34 @@ private fun ResolvedNavHost(
             authGraph(
                 navController = navController,
                 onAuthSuccess = {
-                    navController.navigate("main") {
+                    // Post-OTP routing gate. Read the flag's latest value at
+                    // click-time (captured via the enclosing composable's
+                    // `hasCompletedOnboarding` state). New-user path: flag is
+                    // false (default), navigate to onboarding graph.
+                    // Returning-user path on the same device: flag was set
+                    // true by a prior onboarding, skip straight to main.
+                    // Returning-user path on a new device: flag is false, see
+                    // onboarding once (design decision — per-device semantics;
+                    // plan Phase 5).
+                    val target = if (hasCompletedOnboarding) "main" else ONBOARDING_GRAPH_ROUTE
+                    Log.d(
+                        "AuthFlow",
+                        "SanchrNavHost.onAuthSuccess: hasCompletedOnboarding=$hasCompletedOnboarding -> $target",
+                    )
+                    navController.navigate(target) {
                         popUpTo("auth") { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+
+            // Onboarding flow (authenticated, first run on this device)
+            onboardingGraph(
+                navController = navController,
+                onOnboardingComplete = {
+                    navController.navigate("main") {
+                        popUpTo(ONBOARDING_GRAPH_ROUTE) { inclusive = true }
+                        launchSingleTop = true
                     }
                 },
             )

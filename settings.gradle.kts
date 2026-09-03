@@ -56,6 +56,7 @@ include(":feature:contacts")
 include(":feature:vault")
 include(":feature:settings")
 include(":feature:profile")
+include(":feature:onboarding")
 
 // Background sync
 include(":sync")

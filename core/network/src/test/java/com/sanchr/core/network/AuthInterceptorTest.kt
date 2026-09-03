@@ -126,24 +126,7 @@ class AuthInterceptorTest {
     }
 
     @Test
-    fun `caches token and does not re-read from SessionManager on every call`() {
-        var reads = 0
-        every { sessionManager.getAccessToken() } answers {
-            reads++
-            "tok-123"
-        }
-        every { sessionManager.getDeviceId() } returns "device-abc"
-        val interceptor = AuthInterceptor(sessionManager)
-
-        capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
-        capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
-        capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
-
-        assertEquals(1, reads)
-    }
-
-    @Test
-    fun `invalidateToken forces re-read on next call`() {
+    fun `re-reads access token from SessionManager on every call so a session change is reflected immediately`() {
         var reads = 0
         every { sessionManager.getAccessToken() } answers {
             reads++
@@ -153,11 +136,37 @@ class AuthInterceptorTest {
         val interceptor = AuthInterceptor(sessionManager)
 
         val first = capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
+        val second = capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
+        val third = capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
+
+        assertEquals("Bearer tok-1", first.get(authKey))
+        assertEquals("Bearer tok-2", second.get(authKey))
+        assertEquals("Bearer tok-3", third.get(authKey))
+        assertEquals(3, reads)
+    }
+
+    @Test
+    fun `invalidateToken is a no-op kept for source compat`() {
+        every { sessionManager.getAccessToken() } returnsMany listOf("tok-1", "tok-2")
+        every { sessionManager.getDeviceId() } returns "device-abc"
+        val interceptor = AuthInterceptor(sessionManager)
+
+        val first = capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
         interceptor.invalidateToken()
         val second = capture(interceptor, "sanchr.messaging.MessagingService/SendMessage")
 
         assertEquals("Bearer tok-1", first.get(authKey))
         assertEquals("Bearer tok-2", second.get(authKey))
-        assertEquals(2, reads)
+    }
+
+    @Test
+    fun `RequestOtp is in unauthenticated allowlist`() {
+        every { sessionManager.getAccessToken() } returns "tok-must-not-leak"
+        every { sessionManager.getDeviceId() } returns "device-abc"
+        val interceptor = AuthInterceptor(sessionManager)
+
+        val headers = capture(interceptor, "sanchr.auth.AuthService/RequestOtp")
+
+        assertNull(headers.get(authKey))
     }
 }

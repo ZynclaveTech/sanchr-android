@@ -12,15 +12,23 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Base64-encoded ECPublicKey (33 bytes) of the sealed-sender TrustRoot.
-        // Supplied at build time via the `sanchr.sealedSenderTrustRoot` Gradle
-        // property — empty default so [BuildConfigTrustRootProvider] throws a
-        // loud error if sealed-sender decrypt is attempted in an unconfigured
-        // build. Production / CI builds set the property; see [SealedSenderCipher].
+        // Base64-encoded ECPublicKey (33 bytes, type-prefixed Curve25519) of the
+        // sealed-sender TrustRoot — derived from the backend's `auth.sealed_sender_key`
+        // via `cargo run -p sanchr-server-crypto --bin print-trust-root`.
+        //
+        // Sanchr-prod default is wired in here so debug + release builds both
+        // talk to api.sanchr.com out of the box. Override at build time via
+        // `-Psanchr.sealedSenderTrustRoot=<b64>` for self-hosted servers, dev
+        // backends with a different signing key, or interop test fixtures.
+        //
+        // Rotation: when `sealed-sender-key` changes server-side, run the CLI
+        // again and replace this default. Clients that haven't shipped the new
+        // trust root will reject sealed-sender envelopes from the rotated
+        // backend (which is the correct fail-closed behaviour).
         buildConfigField(
             "String",
             "SEALED_SENDER_TRUST_ROOT",
-            "\"${project.findProperty("sanchr.sealedSenderTrustRoot") ?: ""}\"",
+            "\"${project.findProperty("sanchr.sealedSenderTrustRoot") ?: "BZFElwaYUULnyMFfDrQAduNGzl9XMGNo/bCIuP2N8DQ2"}\"",
         )
         // iOS → Android interop contract test fixtures. All four are empty by
         // default so [SealedSenderInteropContractTest] skips via assumeTrue in

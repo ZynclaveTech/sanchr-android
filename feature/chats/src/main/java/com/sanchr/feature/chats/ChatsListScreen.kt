@@ -64,7 +64,7 @@ fun ChatsListScreen(
     viewModel: ChatsListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val newChatState by viewModel.newChat.collectAsStateWithLifecycle()
+    val pickerState by viewModel.picker.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -81,7 +81,7 @@ fun ChatsListScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = viewModel::openNewChat,
+                onClick = viewModel::openNewChatPicker,
                 containerColor = SanchrIndigo500,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
@@ -242,12 +242,12 @@ fun ChatsListScreen(
             }
         }
 
-        if (newChatState.isOpen) {
-            NewChatBottomSheet(
-                state = newChatState,
-                onPhoneChange = viewModel::onNewChatPhoneChanged,
-                onSubmit = viewModel::submitNewChat,
-                onDismiss = viewModel::closeNewChat,
+        if (pickerState.isOpen) {
+            NewChatContactPickerSheet(
+                state = pickerState,
+                onSearchQueryChanged = viewModel::onPickerSearchQueryChanged,
+                onContactSelected = viewModel::onPickerContactSelected,
+                onDismiss = viewModel::closeNewChatPicker,
             )
         }
     }

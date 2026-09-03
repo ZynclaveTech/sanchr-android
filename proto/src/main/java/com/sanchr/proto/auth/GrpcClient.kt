@@ -16,6 +16,14 @@ import sanchr.auth.AuthServiceGrpcKt
 interface AuthServiceClient {
     suspend fun register(request: RegisterRequest): AuthResponse
 
+    /**
+     * Phone-only OTP request. Backend handler:
+     * `backend/crates/sanchr-core/src/auth/handlers.rs::handle_request_otp`
+     * (added in commit `bdfb5a7`). Replaces the previous
+     * Register-with-placeholder workaround on the login entry path.
+     */
+    suspend fun requestOtp(request: RequestOtpRequest): RequestOtpResponse
+
     suspend fun verifyOtp(request: VerifyOTPRequest): AuthResponse
 
     suspend fun login(request: LoginRequest): AuthResponse
@@ -32,6 +40,8 @@ class AuthServiceGrpcClient(
     private val stub by lazy { AuthServiceGrpcKt.AuthServiceCoroutineStub(channel, callOptions) }
 
     override suspend fun register(request: RegisterRequest): AuthResponse = stub.register(request.toProto()).toManual()
+
+    override suspend fun requestOtp(request: RequestOtpRequest): RequestOtpResponse = stub.requestOtp(request.toProto()).toManual()
 
     override suspend fun verifyOtp(request: VerifyOTPRequest): AuthResponse = stub.verifyOTP(request.toProto()).toManual()
 
@@ -66,6 +76,15 @@ private fun RegisterRequest.toProto(): Auth.RegisterRequest {
             .setEmail(email)
     // challenge_proof intentionally left unset — Android does not
     // perform proof-of-work; server accepts empty in v1.
+    device?.let { builder.device = it.toProto() }
+    return builder.build()
+}
+
+private fun RequestOtpRequest.toProto(): Auth.RequestOtpRequest {
+    val builder =
+        Auth.RequestOtpRequest
+            .newBuilder()
+            .setPhoneNumber(phoneNumber)
     device?.let { builder.device = it.toProto() }
     return builder.build()
 }
@@ -126,6 +145,12 @@ private fun Auth.AuthResponse.toManual(): AuthResponse =
         user = if (hasUser()) user.toManual() else null,
         deviceId = deviceId,
         expiresIn = JwtExpiryExtractor.extractExpiresInSeconds(accessToken),
+    )
+
+private fun Auth.RequestOtpResponse.toManual(): RequestOtpResponse =
+    RequestOtpResponse(
+        expiresInSeconds = expiresInSeconds,
+        existingUser = existingUser,
     )
 
 // endregion

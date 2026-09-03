@@ -6,6 +6,7 @@ import com.sanchr.core.crypto.StagedIdentityStore
 import com.sanchr.core.database.SanchrDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,8 +19,8 @@ import kotlinx.coroutines.withContext
  * currently authenticated account: in-flight staged identity material,
  * the SQLCipher message database (closed then deleted on-disk, including
  * journal + WAL files), encrypted session preferences (tokens, account
- * password, display name), and the AndroidKeyStore-wrapped database
- * passphrase.
+ * password, display name), user preferences (onboarding flag, privacy
+ * toggles), and the AndroidKeyStore-wrapped database passphrase.
  *
  * Each step is wrapped in [runCatching] so that a failure in an earlier
  * step does not prevent the remaining steps from running. In particular
@@ -35,6 +36,7 @@ class LogoutUseCase
     constructor(
         @ApplicationContext private val context: Context,
         private val sessionManager: SessionManager,
+        private val userPreferences: UserPreferences,
         private val database: SanchrDatabase,
         private val stagedIdentityStore: StagedIdentityStore,
         private val databasePassphraseProvider: DatabasePassphraseProvider,
@@ -47,13 +49,19 @@ class LogoutUseCase
                 //    All subsequent steps run after nav teardown has been signalled,
                 //    so the DB is never closed while live collectors are still active.
                 runCatching { sessionManager.clearSession() }
-                // 2. Clear in-flight staged identity (if any)
+                // 2. Wipe UserPreferences (onboarding flag, privacy toggles, etc.)
+                //    so a second account logging in on the same device does not
+                //    inherit the previous user's per-user preference state —
+                //    most importantly `has_completed_onboarding`, which would
+                //    otherwise skip onboarding for the new user.
+                runCatching { userPreferences.clear() }
+                // 3. Clear in-flight staged identity (if any)
                 runCatching { stagedIdentityStore.clear() }
-                // 3. Close SQLCipher DB so its file handles release
+                // 4. Close SQLCipher DB so its file handles release
                 runCatching { database.close() }
-                // 4. Delete DB file — includes journal & wal
+                // 5. Delete DB file — includes journal & wal
                 runCatching { context.deleteDatabase(DATABASE_FILE_NAME) }
-                // 5. Wipe Keystore-wrapped DB passphrase
+                // 6. Wipe Keystore-wrapped DB passphrase
                 runCatching { databasePassphraseProvider.wipe() }
             }
 

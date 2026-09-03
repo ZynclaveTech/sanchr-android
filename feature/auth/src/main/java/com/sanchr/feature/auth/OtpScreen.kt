@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,16 +15,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
+import com.sanchr.core.designsystem.component.SanchrCenteredHeader
 import com.sanchr.core.designsystem.component.SanchrOtpInput
 import com.sanchr.core.designsystem.component.SanchrTextButton
-import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.component.SecureScreen
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -33,12 +34,36 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import kotlinx.coroutines.delay
 
 private const val RESEND_COOLDOWN_SECONDS = 30
+private const val OTP_AUTOFOCUS_DELAY_MS = 100L
 
 /**
  * OTP verification step. Consumes [AuthViewModel.state]; renders for
  * [AuthState.OtpEntry] (and the Error-wrapped variant). Auto-submits on final
  * digit via [SanchrOtpInput.onComplete]; a separate Verify button is kept for
  * explicit confirmation / accessibility.
+ *
+ * iOS-parity copy synced 2026-04-25 against `OTPView.swift`. Title
+ * ("Verify your number"), subtitle ("Enter the 6-digit code sent to"),
+ * resend prompt ("Didn't receive the code?") and resend label ("Resend")
+ * are taken character-for-character from `OTPView.swift:30-83`. The
+ * resend countdown format ("Resend in 0:30") matches iOS line 69's
+ * `Resend in \(viewModel.formattedCountdown)` output.
+ *
+ * iOS-deviation: Material `TopAppBar` carries the static title
+ * "Verification" — Android navigation idiom requires a top-bar title,
+ * iOS leaves the bar empty save for the `Back` chevron.
+ *
+ * iOS-deviation: an explicit "Verify" CTA (and its loading variant
+ * "Verifying...") sits below the input. iOS auto-submits silently on the
+ * 6th digit with no visible button; Android keeps the button for
+ * accessibility (TalkBack users may not realise auto-submit fired) and
+ * for users who paste a code mid-typing.
+ *
+ * iOS-parity: the soft keyboard pops automatically on entry, matching
+ * `OTPView`'s `@FocusState`/`onAppear` autofocus. The [rememberSaveable]
+ * `didAutoFocus` guard prevents config-change re-focus (rotation, dark-mode
+ * toggle) after the user has dismissed the IME — same pattern as
+ * `OnboardingNameScreen`.
  *
  * Unconditionally applies [SecureScreen] — the OTP code is sensitive and must
  * not leak via screenshots or the app-switcher thumbnail (M6 security checklist,
@@ -54,16 +79,34 @@ fun OtpScreen(
 
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // OtpScreen also renders for Error(previousState=Registering) — when the
+    // post-OTP key-bootstrap pipeline fails, we want to surface the error and
+    // a Retry button on this screen instead of going blank. Synthesize an
+    // OtpEntry from whatever the previous state carried.
     val otpEntry: AuthState.OtpEntry =
         when (val s = state) {
             is AuthState.OtpEntry -> s
-            is AuthState.Error -> s.previousState as? AuthState.OtpEntry ?: return
+            is AuthState.Error ->
+                when (val prev = s.previousState) {
+                    is AuthState.OtpEntry -> prev
+                    is AuthState.Registering ->
+                        AuthState.OtpEntry(
+                            phoneE164 = prev.phoneE164,
+                            displayName = prev.displayName,
+                            otp = "",
+                            isSubmitting = false,
+                        )
+                    else -> return
+                }
             else -> return
         }
     val errorMessage = (state as? AuthState.Error)?.message
 
     var resendCountdown by remember { mutableIntStateOf(RESEND_COOLDOWN_SECONDS) }
     var canResend by remember { mutableStateOf(false) }
+
+    val otpFocusRequester = remember { FocusRequester() }
+    var didAutoFocus by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(resendCountdown) {
         if (resendCountdown > 0) {
@@ -74,32 +117,47 @@ fun OtpScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            SanchrTopBar(title = "Verification", onNavigateBack = onNavigateBack)
-        },
-        modifier = modifier,
-    ) { innerPadding ->
+    LaunchedEffect(Unit) {
+        if (!didAutoFocus) {
+            // Small delay so the IME animation does not fight the navigation transition.
+            delay(OTP_AUTOFOCUS_DELAY_MS)
+            try {
+                otpFocusRequester.requestFocus()
+            } catch (_: IllegalStateException) {
+                // Focus target not yet attached — SanchrOtpInput's tap fallback will recover.
+            }
+            didAutoFocus = true
+        }
+    }
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .imePadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // iOS-parity centered header — handles status-bar padding internally.
+        SanchrCenteredHeader(
+            title = "Verification",
+            onNavigateBack = onNavigateBack,
+        )
+
         Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = SanchrTheme.spacing.xl)
-                    .imePadding(),
+            modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
             Text(
-                text = "Enter the 6-digit code",
+                text = "Verify your number",
                 style = MaterialTheme.typography.headlineMedium,
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             Text(
-                text = "We sent a verification code to",
+                text = "Enter the 6-digit code sent to",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -118,6 +176,7 @@ fun OtpScreen(
                 value = otpEntry.otp,
                 onValueChange = viewModel::onOtpChanged,
                 isError = errorMessage != null,
+                focusRequester = otpFocusRequester,
                 onComplete = {
                     if (!otpEntry.isSubmitting) {
                         if (state is AuthState.Error) viewModel.retry()
@@ -144,6 +203,11 @@ fun OtpScreen(
                     color = SanchrGray400,
                 )
             } else {
+                Text(
+                    text = "Didn't receive the code?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 SanchrTextButton(
                     onClick = {
                         canResend = false
@@ -153,7 +217,7 @@ fun OtpScreen(
                     },
                 ) {
                     Text(
-                        text = "Didn't receive? Resend code",
+                        text = "Resend",
                         style = MaterialTheme.typography.labelLarge,
                         color = SanchrIndigo500,
                     )
@@ -162,6 +226,8 @@ fun OtpScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
+            // iOS-deviation: iOS auto-submits on 6th digit without a button.
+            // Android keeps a Verify button for accessibility and paste UX.
             SanchrButton(
                 text = if (otpEntry.isSubmitting) "Verifying..." else "Verify",
                 onClick = {
