@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
@@ -22,10 +23,11 @@ import com.sanchr.sync.rotation.PreKeyReplenishWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,19 +46,25 @@ class RealtimeManager
         private val sessionManager: SessionManager,
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
+        // `@ApplicationScope` runs on Dispatchers.Default (see AppModule) and is shared with
+        // other app-wide singletons, so everything reached from handleServerEvent() must stay
+        // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
+        // ReceiveMessageUseCase.receive does it.
+        @ApplicationScope private val appScope: CoroutineScope,
     ) : DefaultLifecycleObserver {
         companion object {
             private const val TAG = "RealtimeManager"
             private const val BACKGROUND_DRAIN_DELAY_MS = 200L
         }
 
-        private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val outboundEvents = Channel<ClientEvent>(capacity = Channel.BUFFERED)
         private val _typingCache = MutableStateFlow<Map<String, TypingIndicator>>(emptyMap())
 
         val typingCache: StateFlow<Map<String, TypingIndicator>> = _typingCache.asStateFlow()
 
+        private val lock = Any()
         private var streamJob: Job? = null
+        private var pendingStopJob: Job? = null
         private var initialized = false
 
         fun initialize() {
@@ -75,7 +83,11 @@ class RealtimeManager
 
         fun enterForeground() {
             if (sessionManager.getAccessToken().isNullOrEmpty()) return
-            ensureStreamStarted()
+            synchronized(lock) {
+                pendingStopJob?.cancel()
+                pendingStopJob = null
+                ensureStreamStartedLocked()
+            }
         }
 
         fun enterBackground() {
@@ -84,9 +96,20 @@ class RealtimeManager
                 return
             }
 
-            appScope.launch {
-                delay(BACKGROUND_DRAIN_DELAY_MS)
-                stopStream()
+            synchronized(lock) {
+                pendingStopJob?.cancel()
+                val job =
+                    appScope.launch(start = CoroutineStart.LAZY) {
+                        delay(BACKGROUND_DRAIN_DELAY_MS)
+                        synchronized(lock) {
+                            if (pendingStopJob === coroutineContext[Job]) {
+                                stopStreamLocked()
+                                pendingStopJob = null
+                            }
+                        }
+                    }
+                pendingStopJob = job
+                job.start()
             }
         }
 
@@ -106,24 +129,40 @@ class RealtimeManager
             }
         }
 
-        private fun ensureStreamStarted() {
+        // Must be called with `lock` held: cancelling any pending stop and (re)starting the
+        // stream have to happen as one atomic step, otherwise a stop that is already past its
+        // delay and blocked on the lock can see the not-yet-cleared `pendingStopJob` and tear
+        // down the stream this call just started.
+        private fun ensureStreamStartedLocked() {
             if (streamJob != null) return
 
-            streamJob =
-                appScope.launch {
+            val job =
+                appScope.launch(start = CoroutineStart.LAZY) {
                     try {
                         messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
                             handleServerEvent(event)
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (error: Exception) {
                         Log.e(TAG, "Realtime stream failed", error)
                     } finally {
-                        streamJob = null
+                        synchronized(lock) {
+                            if (streamJob === coroutineContext[Job]) {
+                                streamJob = null
+                            }
+                        }
                     }
                 }
+            streamJob = job
+            job.start()
         }
 
         private fun stopStream() {
+            synchronized(lock) { stopStreamLocked() }
+        }
+
+        private fun stopStreamLocked() {
             streamJob?.cancel()
             streamJob = null
         }
