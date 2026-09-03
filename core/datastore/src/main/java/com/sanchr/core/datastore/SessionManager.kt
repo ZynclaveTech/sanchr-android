@@ -6,6 +6,7 @@ import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.Base64 as JavaBase64
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -45,6 +46,7 @@ class SessionManager
             const val KEY_ACCOUNT_PHONE_E164 = "account_phone_e164"
             const val KEY_DISPLAY_NAME = "display_name"
             const val KEY_FCM_TOKEN = "fcm_token"
+            const val KEY_DELIVERY_TOKENS = "delivery_tokens"
         }
 
         private val masterKey: MasterKey by lazy {
@@ -222,6 +224,31 @@ class SessionManager
                 .apply()
         }
 
+        /**
+         * Returns the cached delivery-token pool, oldest first, or an empty
+         * list if none is stored.
+         *
+         * Persisted as a single comma-separated string of base64 tokens
+         * rather than JSON: this module has no serialization dependency,
+         * and base64's alphabet (`A-Z a-z 0-9 + / =`) never contains a
+         * comma, so the delimiter needs no escaping. Uses `java.util.Base64`
+         * rather than `android.util.Base64`, which is a no-op stub under
+         * this module's Robolectric-less JVM unit tests.
+         */
+        fun getDeliveryTokens(): List<ByteArray> {
+            val stored = encryptedPrefs.getString(KEY_DELIVERY_TOKENS, null)
+            if (stored.isNullOrEmpty()) return emptyList()
+            return stored.split(",").map { JavaBase64.getDecoder().decode(it) }
+        }
+
+        fun saveDeliveryTokens(tokens: List<ByteArray>) {
+            val encoded = tokens.joinToString(",") { JavaBase64.getEncoder().encodeToString(it) }
+            encryptedPrefs
+                .edit()
+                .putString(KEY_DELIVERY_TOKENS, encoded)
+                .apply()
+        }
+
         fun clearSenderCertificate() {
             encryptedPrefs.edit().remove(KEY_SENDER_CERTIFICATE).apply()
         }
@@ -349,6 +376,7 @@ class SessionManager
                 .remove(KEY_BACKUP_LAST_AT)
                 .remove(KEY_BACKUP_LAST_CONTENT_HASH)
                 .remove(KEY_FCM_TOKEN)
+                .remove(KEY_DELIVERY_TOKENS)
                 .commit()
             _isAuthenticated.value = false
         }
