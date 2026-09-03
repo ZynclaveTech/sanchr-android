@@ -22,6 +22,7 @@ import io.mockk.slot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
@@ -288,5 +289,45 @@ class SendMessageUseCaseTest {
             // The token top-up is independent bookkeeping too, and must
             // still run even though adoptServerId failed.
             coVerify(exactly = 1) { deliveryTokenStore.replenishIfNeeded() }
+        }
+
+    @Test
+    fun `attemptSend does not swallow cancellation from adoptServerId as a reported SENT`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { deliveryTokenStore.acquire() } returns byteArrayOf(9, 8, 7)
+            coEvery {
+                signalSessionManager.encryptForAllDevices(any(), "peer-uuid")
+            } returns
+                listOf(
+                    DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1, 2, 3), messageType = 3, registrationId = 42),
+                )
+            coEvery {
+                messagingClient.sendSealedMessage(any())
+            } returns SendSealedMessageResponse(serverTimestamp = 5_000L)
+            coEvery {
+                messageRepository.adoptServerId(any(), any(), any())
+            } throws CancellationException("scope cancelled")
+
+            val result = useCase.attemptSend(entity)
+
+            // attemptSendOrThrow's own try/catch must rethrow the
+            // CancellationException rather than logging-and-continuing the
+            // way it does for an ordinary write failure (the sibling test
+            // above) — absorbing it here would let the function return a
+            // normal Message(status = SENT) after its scope was already
+            // cancelled, a structured-concurrency violation. The exception
+            // still surfaces as a Result.Error rather than as a genuine
+            // thrown cancellation, because runCatchingResult (core:common)
+            // wraps every use-case call in its own broad `catch (e:
+            // Exception)`; that shared wrapper predates this task and is out
+            // of scope here. What this test pins is the property this task
+            // owns: the exception that reaches that wrapper is still the
+            // real CancellationException — not swallowed and replaced by a
+            // fabricated success.
+            assertTrue(result is Result.Error)
+            assertTrue(result.exception is CancellationException)
+            coVerify(exactly = 0) { messageRepository.requeueAfterFailure(any()) }
+            coVerify(exactly = 0) { messageRepository.markSendFailed(any(), any(), any()) }
         }
 }

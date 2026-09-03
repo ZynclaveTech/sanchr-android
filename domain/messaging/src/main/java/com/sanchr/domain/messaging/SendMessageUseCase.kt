@@ -14,6 +14,7 @@ import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SealedDeviceMessage
 import com.sanchr.proto.messaging.SendSealedMessageRequest
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 import org.signal.libsignal.protocol.UntrustedIdentityException
@@ -140,44 +141,14 @@ class SendMessageUseCase
                 }
 
             // The RPC above succeeded: the server has accepted and delivered
-            // the message. Everything from here on is post-send bookkeeping,
-            // and its failure must never be attributed back to the send —
-            // neither requeueAfterFailure nor markSendFailed may run past
-            // this point, or a delivered message would be reported FAILED,
-            // or (worse) resurface as still-sending to the user.
-            //
-            // No server-assigned id exists on a sealed send — the sender
-            // assigns it (see InnerPayload.messageId) and the recipient
-            // reads it back out of the envelope — so the local id is already
-            // permanent; adoptServerId is called with newMessageId ==
-            // oldMessageId purely to flip the row to SENT and stamp the
-            // server timestamp in one UPDATE. If this write itself throws
-            // (disk I/O, a full disk, cancellation on process death), the
-            // row may be left QUEUED and get picked up and resent by
-            // SendRetryWorker. That is safe, not silently lossy: the id
-            // handed to the server inside InnerPayload.messageId is this
-            // same, stable local id on every retry, and the receive path's
-            // insertMessage is REPLACE-on-conflict keyed on that id, so a
-            // resend lands as an idempotent replace of the same row rather
-            // than a duplicate message. The one thing that must not happen
-            // is this successful send being reported as failed, so we log
-            // and swallow rather than let it fall into a retry/fail branch.
-            runCatching {
-                messageRepository.adoptServerId(
-                    oldMessageId = entity.id,
-                    newMessageId = entity.id,
-                    serverTimestamp = response.serverTimestamp,
-                )
-            }.onFailure {
-                Log.e(TAG, "adoptServerId failed after a successful sealed send for message ${entity.id}", it)
-            }
-
-            // Best-effort top-up: a failure here must not undo a send that
-            // has already succeeded, so — same reasoning as adoptServerId
-            // above — it is not allowed to requeue or fail an already-SENT
-            // row either.
-            runCatching { deliveryTokenStore.replenishIfNeeded() }
-                .onFailure { Log.w(TAG, "replenishIfNeeded failed after a successful send", it) }
+            // the message. Everything from here on is post-send bookkeeping;
+            // see adoptServerIdSafely and replenishTokenPoolSafely for why
+            // an ordinary failure there must never be attributed back to the
+            // send, and why CancellationException is handled differently.
+            // Both are extracted to their own functions — like encryptFanOut
+            // above — so this function's own throws budget stays untouched.
+            adoptServerIdSafely(entity, response.serverTimestamp)
+            replenishTokenPoolSafely()
 
             return Message(
                 id = entity.id,
@@ -189,6 +160,68 @@ class SendMessageUseCase
                 status = MessageStatus.SENT,
                 timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
             )
+        }
+
+        /**
+         * Flips the row to SENT and stamps the server timestamp, called
+         * with `newMessageId == oldMessageId` because a sealed send has no
+         * server-assigned id to adopt (see [attemptSendOrThrow]'s call
+         * site). Extracted so its own `catch` clauses don't count against
+         * [attemptSendOrThrow]'s throws budget.
+         *
+         * By the time this runs, the RPC has already succeeded — the
+         * server has the message — so an ordinary failure here (disk I/O,
+         * a full disk) is logged and swallowed rather than reported via
+         * [MessageRepository.requeueAfterFailure] or
+         * [MessageRepository.markSendFailed]: doing either would mark a
+         * delivered message FAILED, or bounce it back to "sending" in the
+         * UI. The row may be left QUEUED and get resent by
+         * `SendRetryWorker` instead — safe, not silently lossy, because the
+         * id handed to the server inside `InnerPayload.messageId` is this
+         * same, stable local id on every retry, and the receive path's
+         * `insertMessage` is REPLACE-on-conflict keyed on that id, so a
+         * resend lands as an idempotent replace rather than a duplicate.
+         *
+         * [CancellationException] is the one exception NOT swallowed:
+         * absorbing it here would let this function return normally after
+         * its coroutine scope was already cancelled, a structured-
+         * concurrency violation (see `SessionRefresher.refresh` for the
+         * same rule applied to the same shape). A send cancelled at this
+         * point will not report SENT and the row stays QUEUED — safe, for
+         * the same id-stability reason given above.
+         */
+        private suspend fun adoptServerIdSafely(
+            entity: MessageEntity,
+            serverTimestamp: Long,
+        ) {
+            try {
+                messageRepository.adoptServerId(
+                    oldMessageId = entity.id,
+                    newMessageId = entity.id,
+                    serverTimestamp = serverTimestamp,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.e(TAG, "adoptServerId failed after a successful sealed send for message ${entity.id}", error)
+            }
+        }
+
+        /**
+         * Best-effort token-pool top-up after a successful send. Extracted
+         * for the same reason as [adoptServerIdSafely]: a failure here —
+         * cancellation aside — must not undo a send that already succeeded,
+         * and its own `catch` clauses must not count against
+         * [attemptSendOrThrow]'s throws budget.
+         */
+        private suspend fun replenishTokenPoolSafely() {
+            try {
+                deliveryTokenStore.replenishIfNeeded()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "replenishIfNeeded failed after a successful send", error)
+            }
         }
 
         /**
