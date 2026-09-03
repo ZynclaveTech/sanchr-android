@@ -220,6 +220,37 @@ class SendMessageUseCaseTest {
         }
 
     @Test
+    fun `encryptAndWrapDeviceMessages sets silent from the kind argument, not a literal`() =
+        runTest {
+            coEvery {
+                signalSessionManager.encryptForAllDevices(any(), "peer-uuid")
+            } returns
+                listOf(
+                    DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1), messageType = 3, registrationId = 42),
+                )
+
+            val messageDeviceMessages =
+                useCase.encryptAndWrapDeviceMessages(
+                    plaintext = byteArrayOf(0),
+                    recipients = listOf("peer-uuid"),
+                    conversationId = "conv-1",
+                    kind = SealedSendKind.Message,
+                )
+            val controlDeviceMessages =
+                useCase.encryptAndWrapDeviceMessages(
+                    plaintext = byteArrayOf(0),
+                    recipients = listOf("peer-uuid"),
+                    conversationId = "conv-1",
+                    kind = SealedSendKind.Control,
+                )
+
+            assertTrue(messageDeviceMessages.isNotEmpty())
+            assertTrue(messageDeviceMessages.all { !it.silent }, "Message kind must not be silent")
+            assertTrue(controlDeviceMessages.isNotEmpty())
+            assertTrue(controlDeviceMessages.all { it.silent }, "Control kind must be silent")
+        }
+
+    @Test
     fun `attemptSend fails without acquiring a token when fan-out exceeds 100 device messages`() =
         runTest {
             primeCommonMocks()
