@@ -21,6 +21,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -39,4 +43,8 @@ dependencies {
     // Firebase Cloud Messaging
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.junit)
 }
