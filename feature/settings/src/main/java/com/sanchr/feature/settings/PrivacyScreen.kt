@@ -98,8 +98,16 @@ fun PrivacyScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             var expanded by remember { mutableStateOf(false) }
-            val options = listOf("Everyone", "Contacts Only", "Nobody")
-            val currentLabel = if (uiState.profilePhotoVisible) "Everyone" else "Nobody"
+            // Wire values, not labels. The label was previously derived from a
+            // boolean, so "Contacts Only" could be chosen but never shown back
+            // — and was stored as "Everyone".
+            val options =
+                listOf(
+                    "everyone" to "Everyone",
+                    "contacts" to "Contacts Only",
+                    "nobody" to "Nobody",
+                )
+            val currentLabel = options.firstOrNull { it.first == uiState.profilePhotoVisibility }?.second ?: "Everyone"
 
             Column {
                 Text(
@@ -131,12 +139,12 @@ fun PrivacyScreen(
                     expanded = expanded,
                     onDismissRequest = { expanded = false },
                 ) {
-                    options.forEach { option ->
+                    options.forEach { (value, label) ->
                         DropdownMenuItem(
-                            text = { Text(option) },
+                            text = { Text(label) },
                             onClick = {
                                 expanded = false
-                                viewModel.setProfilePhotoVisible(option != "Nobody")
+                                viewModel.setProfilePhotoVisibility(value)
                             },
                         )
                     }

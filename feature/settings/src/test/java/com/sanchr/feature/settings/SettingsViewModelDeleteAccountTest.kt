@@ -39,6 +39,7 @@ class SettingsViewModelDeleteAccountTest {
     private val userPreferences =
         mockk<UserPreferences>(relaxed = true).also {
             every { it.disappearingDefaultSeconds } returns flowOf(0)
+            every { it.profilePhotoVisibility } returns flowOf("everyone")
         }
     private val recoveryKeyManager = mockk<RecoveryKeyManager>(relaxed = true)
     private val notificationServiceClient = mockk<NotificationServiceClient>(relaxed = true)
