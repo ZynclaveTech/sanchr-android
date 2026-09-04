@@ -63,6 +63,7 @@ class SettingsViewModelDeleteAccountTest {
             settingsServiceClient = settingsServiceClient,
             chatBackupManager = chatBackupManager,
             deleteAccountUseCase = deleteAccountUseCase,
+            profileUpdater = mockk(relaxed = true),
         )
 
     @Test

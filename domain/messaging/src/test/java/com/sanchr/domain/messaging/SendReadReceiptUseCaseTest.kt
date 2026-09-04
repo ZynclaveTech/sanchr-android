@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.DeviceEncryptedMessage
 import com.sanchr.core.crypto.SignalSessionManager
+import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -37,6 +38,8 @@ class SendReadReceiptUseCaseTest {
     private val deliveryTokenStore = mockk<DeliveryTokenStore>()
     private val receiptClock = mockk<ReceiptClock>()
     private val receiptJitter = mockk<ReceiptJitter>()
+    private val ownProfileKey = ByteArray(32) { 0x5A }
+    private val profileKeyStore = mockk<ProfileKeyStore> { every { ownProfileKey() } returns ownProfileKey }
     private val dispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher = Dispatchers.Unconfined
@@ -59,6 +62,7 @@ class SendReadReceiptUseCaseTest {
             deliveryTokenStore,
             userPreferences,
             dispatchers,
+            profileKeyStore,
         )
 
     private val useCase =
@@ -72,6 +76,7 @@ class SendReadReceiptUseCaseTest {
             dispatchers,
             receiptClock,
             receiptJitter,
+            profileKeyStore,
         )
 
     private fun primeCommonMocks() {
