@@ -9,9 +9,8 @@ import sanchr.auth.AuthServiceGrpcKt
  * gRPC client interface for the AuthService.
  * Adapter over the generated `sanchr.auth.AuthServiceGrpcKt.AuthServiceCoroutineStub`.
  *
- * DeleteAccount and RequestChallenge are intentionally omitted — the Android
- * client does not drive account deletion (M6+) or proof-of-work challenges
- * (server accepts empty proof in v1).
+ * RequestChallenge is intentionally omitted — the server accepts an empty
+ * proof-of-work proof in v1.
  */
 interface AuthServiceClient {
     suspend fun register(request: RegisterRequest): AuthResponse
@@ -31,6 +30,14 @@ interface AuthServiceClient {
     suspend fun refreshToken(request: RefreshTokenRequest): AuthResponse
 
     suspend fun logout(request: LogoutRequest): LogoutResponse
+
+    /**
+     * Permanently deletes the authenticated account server-side. Callers are
+     * responsible for the local wipe afterwards — see `DeleteAccountUseCase`,
+     * which only wipes once this has returned successfully, so a failed
+     * delete never strands a still-live account on a wiped device.
+     */
+    suspend fun deleteAccount(request: DeleteAccountRequest): DeleteAccountResponse
 }
 
 class AuthServiceGrpcClient(
@@ -52,6 +59,11 @@ class AuthServiceGrpcClient(
     override suspend fun logout(request: LogoutRequest): LogoutResponse {
         stub.logout(request.toProto())
         return LogoutResponse(success = true)
+    }
+
+    override suspend fun deleteAccount(request: DeleteAccountRequest): DeleteAccountResponse {
+        stub.deleteAccount(Auth.DeleteAccountRequest.getDefaultInstance())
+        return DeleteAccountResponse(success = true)
     }
 }
 

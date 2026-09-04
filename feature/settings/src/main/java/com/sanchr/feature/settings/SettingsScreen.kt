@@ -17,22 +17,28 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.HelpCenter
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +68,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val accountDeletion by viewModel.accountDeletion.collectAsStateWithLifecycle()
+    var showDeleteAccountDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -230,12 +238,14 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.sm))
 
-            // Logout button
+            // Delete Account. Deliberately the only exit from Sanchr: there
+            // is no sign-out, because a signed-out install still holds account
+            // material on-device.
             Row(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = viewModel::logout)
+                        .clickable { showDeleteAccountDialog = true }
                         .padding(
                             horizontal = SanchrTheme.spacing.default,
                             vertical = SanchrTheme.spacing.md,
@@ -243,14 +253,14 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    imageVector = Icons.Filled.DeleteForever,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(modifier = Modifier.width(SanchrTheme.spacing.default))
                 Text(
-                    text = "Log Out",
+                    text = "Delete Account",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -268,6 +278,108 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
         }
     }
+
+    if (showDeleteAccountDialog) {
+        DeleteAccountDialog(
+            state = accountDeletion,
+            onConfirm = viewModel::deleteAccount,
+            onDismiss = {
+                showDeleteAccountDialog = false
+                viewModel.dismissAccountDeletionError()
+            },
+        )
+    }
+}
+
+/**
+ * Confirmation for the one irreversible action in the app. Two deliberate
+ * frictions, mirroring iOS's `DeleteAccountConfirmationSheet`: the
+ * consequences are named rather than summarised, and the destructive button
+ * stays disabled until the user actively acknowledges them — a plain
+ * "Are you sure?" is too easy to dismiss for something unrecoverable.
+ *
+ * The dialog cannot be dismissed while the delete is in flight, so a
+ * half-completed deletion cannot be hidden by tapping outside.
+ */
+@Composable
+private fun DeleteAccountDialog(
+    state: AccountDeletionState,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var acknowledged by remember { mutableStateOf(false) }
+    val inProgress = state is AccountDeletionState.InProgress
+
+    AlertDialog(
+        onDismissRequest = { if (!inProgress) onDismiss() },
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.DeleteForever,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+            )
+        },
+        title = { Text(text = "Delete Account") },
+        text = {
+            Column {
+                Text(
+                    text = "This permanently deletes your account. It cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+                listOf(
+                    "Your account and phone number are removed from Sanchr",
+                    "Your message history on this device is erased",
+                    "You are removed from all your conversations",
+                    "Your encryption keys are destroyed and cannot be recovered",
+                ).forEach { consequence ->
+                    Text(
+                        text = "•  $consequence",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                if (state is AccountDeletionState.Failed) {
+                    Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = acknowledged,
+                        onCheckedChange = { acknowledged = it },
+                        enabled = !inProgress,
+                    )
+                    Text(
+                        text = "I understand this cannot be undone",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                enabled = acknowledged && !inProgress,
+            ) {
+                Text(
+                    text = if (inProgress) "Deleting…" else "Delete Account",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !inProgress) {
+                Text(text = "Cancel")
+            }
+        },
+    )
 }
 
 @Composable

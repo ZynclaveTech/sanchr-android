@@ -96,6 +96,19 @@ data class LogoutResponse(
     val success: Boolean = false,
 )
 
+/**
+ * Empty by design. `auth.proto` reserves field 1 for a future
+ * password/OTP confirmation; today the server authenticates the caller
+ * from the Bearer access token alone, so there is nothing to send.
+ */
+@Serializable
+class DeleteAccountRequest
+
+@Serializable
+data class DeleteAccountResponse(
+    val success: Boolean = false,
+)
+
 @Serializable
 data class User(
     val id: String = "",

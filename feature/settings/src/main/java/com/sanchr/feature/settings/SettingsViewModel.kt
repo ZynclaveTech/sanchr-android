@@ -3,10 +3,11 @@ package com.sanchr.feature.settings
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.common.Result
 import com.sanchr.core.crypto.RecoveryKeyManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.PushTokenManager
-import com.sanchr.domain.messaging.LogoutUseCase
+import com.sanchr.domain.messaging.DeleteAccountUseCase
 import com.sanchr.proto.notifications.NotificationServiceClient
 import com.sanchr.proto.notifications.UpdateNotificationPrefsRequest
 import com.sanchr.proto.settings.GetSettingsRequest
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
@@ -81,7 +83,7 @@ class SettingsViewModel
         private val pushTokenManager: PushTokenManager,
         private val settingsServiceClient: SettingsServiceClient,
         private val chatBackupManager: ChatBackupManager,
-        private val logoutUseCase: LogoutUseCase,
+        private val deleteAccountUseCase: DeleteAccountUseCase,
     ) : ViewModel() {
         companion object {
             private const val TAG = "SettingsViewModel"
@@ -98,6 +100,8 @@ class SettingsViewModel
         private val _backupConfiguration = MutableStateFlow(recoveryKeyManager.loadConfiguration())
         private val _backupBusy = MutableStateFlow(false)
         private val _pendingRecoveryKey = MutableStateFlow<String?>(null)
+        private val _accountDeletion = MutableStateFlow<AccountDeletionState>(AccountDeletionState.Idle)
+        val accountDeletion: StateFlow<AccountDeletionState> = _accountDeletion.asStateFlow()
         private val _disappearingMessagesDefault = MutableStateFlow("off")
         private val _lowDataMode = MutableStateFlow(false)
 
@@ -512,26 +516,54 @@ class SettingsViewModel
             }
         }
 
-        // --- Logout ---
+        // --- Account deletion ---
 
-        fun logout() {
+        /**
+         * Deleting the account is the only way out of Sanchr — there is
+         * deliberately no sign-out — so this is the single exit path.
+         *
+         * [DeleteAccountUseCase] deletes server-side first and only wipes the
+         * device once that succeeds, so a failed delete is retryable rather
+         * than stranding a live account on a wiped device. On success the wipe
+         * flips `SessionManager.sessionActive` to false, which `SanchrNavHost`
+         * observes to navigate back to the auth graph — this ViewModel does
+         * not navigate itself.
+         *
+         * Failure is surfaced through [accountDeletion] rather than
+         * [SettingsEvent.Error]: `SettingsScreen` does not collect the event
+         * flow, so an emitted event would be invisible to the user.
+         */
+        fun deleteAccount() {
+            if (_accountDeletion.value is AccountDeletionState.InProgress) return
+            // Flip to InProgress synchronously, before launching: setting it
+            // inside the coroutine leaves a window where a second tap passes
+            // the guard because neither body has run yet, and starts a second
+            // delete.
+            _accountDeletion.value = AccountDeletionState.InProgress
             viewModelScope.launch {
-                // Deregister the FCM token with the backend first — this is a
-                // server-side side effect that does not touch local state, so
-                // it runs before the local wipe. Failures here must not block
-                // the local teardown: a stale token on the backend is far less
-                // dangerous than leaking account material on-device.
+                // Deregister the FCM token first: a server-side side effect
+                // that touches no local state. A failure here must not block
+                // deletion — a stale token is far less dangerous than an
+                // account the user believes is gone.
                 try {
                     pushTokenManager.clearToken()
                 } catch (_: Exception) {
                     // Non-fatal
                 }
-                // Full local wipe: DB + Keystore-wrapped passphrase + staged
-                // identity + encrypted session prefs. Flips
-                // `SessionManager.sessionActive` to false, which
-                // `SanchrNavHost` observes to navigate back to the auth graph.
-                logoutUseCase()
+                _accountDeletion.value =
+                    when (val result = deleteAccountUseCase()) {
+                        is Result.Success -> AccountDeletionState.Idle
+                        is Result.Error ->
+                            AccountDeletionState.Failed(
+                                result.exception.message ?: "Couldn't delete your account. Please try again.",
+                            )
+                        is Result.Loading -> AccountDeletionState.InProgress
+                    }
             }
+        }
+
+        fun dismissAccountDeletionError() {
+            _accountDeletion.value = AccountDeletionState.Idle
         }
 
         // --- Backend sync helpers ---
@@ -579,6 +611,17 @@ class SettingsViewModel
             }
         }
     }
+
+/** In-flight and failure state for the account-deletion flow. */
+sealed interface AccountDeletionState {
+    data object Idle : AccountDeletionState
+
+    data object InProgress : AccountDeletionState
+
+    data class Failed(
+        val message: String,
+    ) : AccountDeletionState
+}
 
 sealed interface SettingsEvent {
     data object ProfileUpdated : SettingsEvent
