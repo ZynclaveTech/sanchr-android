@@ -16,8 +16,32 @@ interface ContactRepository {
     /** Searches contacts by name or phone number. */
     fun searchContacts(query: String): Flow<List<User>>
 
-    /** Syncs device contacts with the server to discover registered users. */
+    /**
+     * Re-resolves the contacts already known to be registered, refreshing
+     * their profiles. Sends hashes of numbers the server has *already*
+     * matched for this account — the bounded set discovery previously
+     * returned — never the address book. Safe to call in the background
+     * without contacts permission.
+     */
     suspend fun syncContacts()
+
+    /**
+     * Full privacy-preserving discovery over the device address book.
+     *
+     * Normalises [deviceNumbers] to E.164 using the signed-in user's own
+     * country, asks [DiscoveryRepository] which are registered (the server
+     * sees blinded points only), and resolves **just that intersection** to
+     * user records via `SyncContacts`. The server necessarily learns the
+     * intersection — it has to, to return the accounts — but never the
+     * address book.
+     *
+     * Fails closed: a discovery error propagates. There is deliberately no
+     * fallback to uploading hashes of everything, which is the leak this
+     * exists to prevent.
+     *
+     * @return the number of registered contacts found.
+     */
+    suspend fun discoverAndSyncContacts(deviceNumbers: List<String>): Int
 
     /** Blocks or unblocks a contact. */
     suspend fun setBlocked(
@@ -34,9 +58,10 @@ interface ContactRepository {
     /**
      * Looks up a single registered user by E.164 phone number.
      *
-     * Returns `null` if the server has no registered user matching this phone
-     * (NOT_FOUND). Non-NOT_FOUND errors (network, INVALID_ARGUMENT, etc.)
-     * propagate as exceptions for the caller to handle.
+     * Returns `null` if no registered user matches this phone. Asks the same
+     * way the address-book sync does — OPRF first, then resolve only on a
+     * match — so manual entry is not a path around discovery's privacy. Other
+     * errors (network, protocol) propagate for the caller to handle.
      */
     suspend fun lookupByPhone(phoneE164: String): User?
 }

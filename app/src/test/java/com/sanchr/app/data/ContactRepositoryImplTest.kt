@@ -2,6 +2,8 @@ package com.sanchr.app.data
 
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.entity.ContactEntity
+import com.sanchr.core.datastore.SessionManager
+import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.BlockContactResponse
 import com.sanchr.proto.contacts.ContactServiceClient
@@ -14,6 +16,8 @@ import com.sanchr.proto.contacts.SyncContactsRequest
 import com.sanchr.proto.contacts.SyncContactsResponse
 import com.sanchr.proto.contacts.UnblockContactRequest
 import com.sanchr.proto.contacts.UnblockContactResponse
+import io.mockk.every
+import io.mockk.mockk
 import java.security.MessageDigest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -22,6 +26,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
@@ -48,10 +53,7 @@ class ContactRepositoryImplTest {
         runTest {
             val client = RecordingSyncContactsClient(response = SyncContactsResponse())
             val repo =
-                ContactRepositoryImpl(
-                    contactClient = client,
-                    contactDao = NoOpContactDao(),
-                )
+                repo(client, NoOpContactDao())
 
             // Note the punctuation: spaces, parens, and dashes must be stripped
             // by the normalizer; only digits and the leading '+' survive.
@@ -65,6 +67,8 @@ class ContactRepositoryImplTest {
 
             val captured = client.capturedRequests.single()
             assertEquals(listOf(expectedHash), captured.phoneHashes)
+            // and only after discovery confirmed it, with the normalised number
+            assertEquals(listOf("+15550001234"), discovery.queried.single())
         }
 
     @Test
@@ -86,10 +90,7 @@ class ContactRepositoryImplTest {
                         ),
                 )
             val repo =
-                ContactRepositoryImpl(
-                    contactClient = client,
-                    contactDao = NoOpContactDao(),
-                )
+                repo(client, NoOpContactDao())
 
             val user = repo.lookupByPhone("+15550001234")
             assertNotNull(user)
@@ -120,10 +121,7 @@ class ContactRepositoryImplTest {
                         ),
                 )
             val repo =
-                ContactRepositoryImpl(
-                    contactClient = client,
-                    contactDao = NoOpContactDao(),
-                )
+                repo(client, NoOpContactDao())
 
             val user = repo.lookupByPhone("+15550001234")
             // When the server does echo a phone, that authoritative copy wins
@@ -136,10 +134,7 @@ class ContactRepositoryImplTest {
         runTest {
             val client = RecordingSyncContactsClient(response = SyncContactsResponse())
             val repo =
-                ContactRepositoryImpl(
-                    contactClient = client,
-                    contactDao = NoOpContactDao(),
-                )
+                repo(client, NoOpContactDao())
 
             assertNull(repo.lookupByPhone("+15550009999"))
         }
@@ -149,10 +144,7 @@ class ContactRepositoryImplTest {
         runTest {
             val boom = RuntimeException("network down")
             val repo =
-                ContactRepositoryImpl(
-                    contactClient = ThrowingClient(boom),
-                    contactDao = NoOpContactDao(),
-                )
+                repo(ThrowingClient(boom), NoOpContactDao())
 
             try {
                 repo.lookupByPhone("+15550001234")
@@ -166,7 +158,7 @@ class ContactRepositoryImplTest {
     fun `blocking is written locally even when the server call fails`() =
         runTest {
             val dao = RecordingContactDao()
-            val repo = ContactRepositoryImpl(contactClient = BlockRejectingClient(), contactDao = dao)
+            val repo = repo(BlockRejectingClient(), dao)
 
             repo.setBlocked("peer-uuid", blocked = true)
 
@@ -180,7 +172,7 @@ class ContactRepositoryImplTest {
     @Test
     fun `a failed block sync does not surface as an error to the caller`() =
         runTest {
-            val repo = ContactRepositoryImpl(contactClient = BlockRejectingClient(), contactDao = RecordingContactDao())
+            val repo = repo(BlockRejectingClient(), RecordingContactDao())
 
             // Does not throw.
             repo.setBlocked("peer-uuid", blocked = true)
@@ -191,14 +183,166 @@ class ContactRepositoryImplTest {
     fun `unblocking is written locally too`() =
         runTest {
             val dao = RecordingContactDao()
-            val repo = ContactRepositoryImpl(contactClient = BlockRejectingClient(), contactDao = dao)
+            val repo = repo(BlockRejectingClient(), dao)
 
             repo.setBlocked("peer-uuid", blocked = false)
 
             assertEquals(listOf("peer-uuid" to false), dao.blockWrites)
         }
 
+    // ── Construction ─────────────────────────────────────────────────────
+
+    /** Discovery that reports every queried number as registered, unless [registered] is given. */
+    private val discovery = FakeDiscovery()
+
+    private fun repo(
+        client: ContactServiceClient,
+        dao: ContactDao,
+        discovery: DiscoveryRepository = this.discovery,
+        own: String? = "+15550000000",
+    ) = ContactRepositoryImpl(
+        contactClient = client,
+        contactDao = dao,
+        discoveryRepository = discovery,
+        sessionManager = mockk<SessionManager> { every { getStoredPhoneE164() } returns own },
+    )
+
+    // ── Discovery-first sync ─────────────────────────────────────────────
+
+    @Test
+    fun `SyncContacts only ever receives hashes of numbers discovery confirmed`() =
+        runTest {
+            // The property the feature exists for: the address book has three
+            // numbers, discovery says one is registered, and the server is
+            // asked to resolve exactly that one.
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
+            val discovery = FakeDiscovery(registered = setOf("+15550001234"))
+
+            repo(client, NoOpContactDao(), discovery)
+                .discoverAndSyncContacts(listOf("(555) 000-1234", "(555) 000-5678", "+44 20 7123 4567"))
+
+            assertEquals(
+                "every normalised candidate is blinded and queried",
+                setOf("+15550001234", "+15550005678", "+442071234567"),
+                discovery.queried.single().toSet(),
+            )
+            val expectedHash = sha256Hex("+15550001234")
+            assertEquals(listOf(expectedHash), client.capturedRequests.single().phoneHashes)
+        }
+
+    @Test
+    fun `discovery failure propagates - the caller cannot fall back to bulk upload`() =
+        runTest {
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
+            val discovery =
+                object : DiscoveryRepository {
+                    override suspend fun discoverRegistered(phoneNumbersE164: List<String>): List<String> =
+                        throw IllegalStateException("UNAVAILABLE")
+                }
+
+            try {
+                repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf("(555) 000-1234"))
+                fail("expected the discovery failure to propagate")
+            } catch (e: IllegalStateException) {
+                assertEquals("UNAVAILABLE", e.message)
+            }
+            assertTrue("SyncContacts must not be called after a discovery failure", client.capturedRequests.isEmpty())
+        }
+
+    @Test
+    fun `no registered matches means no resolution call and a count of zero`() =
+        runTest {
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
+            val discovery = FakeDiscovery(registered = emptySet())
+
+            val count = repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf("(555) 000-1234"))
+
+            assertEquals(0, count)
+            assertTrue(client.capturedRequests.isEmpty())
+        }
+
+    @Test
+    fun `matches are stored as registered contacts and counted`() =
+        runTest {
+            val client =
+                RecordingSyncContactsClient(
+                    response =
+                        SyncContactsResponse(
+                            matchedContacts =
+                                listOf(
+                                    MatchedContact(userId = "u-1", displayName = "Ada", phoneNumber = "+15550001234"),
+                                ),
+                        ),
+                )
+            val dao = InsertRecordingContactDao()
+
+            val count = repo(client, dao, FakeDiscovery(setOf("+15550001234"))).discoverAndSyncContacts(listOf("555-000-1234"))
+
+            assertEquals(1, count)
+            assertEquals(listOf("u-1"), dao.inserted.map { it.userId })
+            assertTrue(dao.inserted.single().isRegistered)
+        }
+
+    @Test
+    fun `lookupByPhone returns null without a resolution call when discovery finds nothing`() =
+        runTest {
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
+
+            val user = repo(client, NoOpContactDao(), FakeDiscovery(registered = emptySet())).lookupByPhone("+15550009999")
+
+            assertNull(user)
+            assertTrue("an unregistered number must never be hashed to the server", client.capturedRequests.isEmpty())
+        }
+
+    @Test
+    fun `background syncContacts re-resolves only already-known registered numbers`() =
+        runTest {
+            val client = RecordingSyncContactsClient(response = SyncContactsResponse())
+            val dao =
+                object : NoOpContactDao() {
+                    override suspend fun getAllContacts(): List<ContactEntity> =
+                        listOf(
+                            ContactEntity(
+                                id = "u-1",
+                                userId = "u-1",
+                                phoneNumber = "+15550001234",
+                                displayName = "Ada",
+                                isRegistered = true,
+                            ),
+                            ContactEntity(id = "local", phoneNumber = "+15550007777", displayName = "Not on Sanchr", isRegistered = false),
+                        )
+                }
+
+            repo(client, dao).syncContacts()
+
+            assertEquals(listOf(sha256Hex("+15550001234")), client.capturedRequests.single().phoneHashes)
+            assertTrue("background refresh must not run discovery", discovery.queried.isEmpty())
+        }
+
+    private fun sha256Hex(s: String): String =
+        MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
     // ── Test doubles ──────────────────────────────────────────────────────
+
+    /** Records what was queried; reports [registered] (or everything, when null) as registered. */
+    private class FakeDiscovery(
+        private val registered: Set<String>? = null,
+    ) : DiscoveryRepository {
+        val queried = mutableListOf<List<String>>()
+
+        override suspend fun discoverRegistered(phoneNumbersE164: List<String>): List<String> {
+            queried += phoneNumbersE164
+            return registered?.let { r -> phoneNumbersE164.filter { it in r } } ?: phoneNumbersE164
+        }
+    }
+
+    private class InsertRecordingContactDao : NoOpContactDao() {
+        val inserted = mutableListOf<ContactEntity>()
+
+        override suspend fun insertContacts(contacts: List<ContactEntity>) {
+            inserted += contacts
+        }
+    }
 
     /** Records every local block-state write. */
     private class RecordingContactDao : NoOpContactDao() {

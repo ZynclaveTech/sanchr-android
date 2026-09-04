@@ -3,8 +3,11 @@ package com.sanchr.app.data
 import android.util.Log
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.entity.ContactEntity
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.contacts.DiscoveryRepository
+import com.sanchr.domain.contacts.PhoneNumberNormalizer
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.MatchedContact
@@ -24,6 +27,8 @@ class ContactRepositoryImpl
     constructor(
         private val contactClient: ContactServiceClient,
         private val contactDao: ContactDao,
+        private val discoveryRepository: DiscoveryRepository,
+        private val sessionManager: SessionManager,
     ) : ContactRepository {
         override fun observeRegisteredContacts(): Flow<List<User>> =
             contactDao.observeRegisteredContacts().map { entities ->
@@ -41,7 +46,35 @@ class ContactRepositoryImpl
             }
 
         override suspend fun syncContacts() {
-            val response = contactClient.syncContacts(SyncContactsRequest())
+            // Only numbers the server has already matched for this account:
+            // the previously returned intersection, not the address book.
+            val known = contactDao.getAllContacts().filter { it.isRegistered }.map { it.phoneNumber }
+            if (known.isEmpty()) return
+            resolveAndStore(known)
+        }
+
+        override suspend fun discoverAndSyncContacts(deviceNumbers: List<String>): Int {
+            val own = sessionManager.getStoredPhoneE164()
+            val candidates = deviceNumbers.flatMap { PhoneNumberNormalizer.candidates(it, own) }.distinct()
+            if (candidates.isEmpty()) return 0
+
+            // OPRF-PSI: the server learns which blinded points it evaluated,
+            // never which numbers. No fallback on failure — this throws.
+            val registered = discoveryRepository.discoverRegistered(candidates)
+            if (registered.isEmpty()) return 0
+
+            return resolveAndStore(registered)
+        }
+
+        /**
+         * Resolves already-confirmed E.164 numbers to user records via
+         * `SyncContacts` and upserts them. Callers must pass only numbers
+         * discovery has confirmed (or that are already known to be
+         * registered): this is the one call the server can read.
+         */
+        private suspend fun resolveAndStore(confirmedE164: List<String>): Int {
+            val response =
+                contactClient.syncContacts(SyncContactsRequest(phoneHashes = confirmedE164.map { phoneHashHex(it) }))
             val now = System.currentTimeMillis()
             val entities =
                 response.matchedContacts.map { matched ->
@@ -58,6 +91,7 @@ class ContactRepositoryImpl
             if (entities.isNotEmpty()) {
                 contactDao.insertContacts(entities)
             }
+            return entities.size
         }
 
         /**
@@ -119,18 +153,23 @@ class ContactRepositoryImpl
          * decides what to surface to the UI).
          */
         override suspend fun lookupByPhone(phoneE164: String): User? {
-            val normalized = phoneE164.replace(Regex("[^0-9+]"), "")
-            val hash =
-                MessageDigest
-                    .getInstance("SHA-256")
-                    .digest(normalized.toByteArray(Charsets.UTF_8))
-                    .joinToString("") { "%02x".format(it) }
-            val response =
-                contactClient.syncContacts(
-                    SyncContactsRequest(phoneHashes = listOf(hash)),
-                )
-            return response.matchedContacts.firstOrNull()?.toDomain(phoneE164)
+            val candidates = PhoneNumberNormalizer.candidates(phoneE164, sessionManager.getStoredPhoneE164())
+            if (candidates.isEmpty()) return null
+
+            // OPRF first, exactly as the address-book sync: manual entry must
+            // not be a path around discovery's privacy. Only a confirmed
+            // number is ever hashed and sent to SyncContacts.
+            val matched = discoveryRepository.discoverRegistered(candidates).firstOrNull() ?: return null
+            val response = contactClient.syncContacts(SyncContactsRequest(phoneHashes = listOf(phoneHashHex(matched))))
+            return response.matchedContacts.firstOrNull()?.toDomain(matched)
         }
+
+        /** Unsalted SHA-256 of the E.164 UTF-8 bytes, lowercase hex — the same digest iOS's `hashPhoneNumber` sends. */
+        private fun phoneHashHex(e164: String): String =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(e164.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
 
         // ── Mapping helpers ──
 

@@ -9,6 +9,8 @@ import com.sanchr.proto.calling.CallSignalingServiceClient
 import com.sanchr.proto.calling.CallSignalingServiceGrpcClient
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.ContactServiceGrpcClient
+import com.sanchr.proto.discovery.DiscoveryServiceClient
+import com.sanchr.proto.discovery.DiscoveryServiceGrpcClient
 import com.sanchr.proto.keys.KeyServiceClient
 import com.sanchr.proto.keys.KeyServiceGrpcClient
 import com.sanchr.proto.media.MediaServiceClient
@@ -48,6 +50,11 @@ object GrpcServiceModule {
     @Singleton
     fun provideContactServiceClient(channelProvider: GrpcChannelProvider): ContactServiceClient =
         ContactServiceGrpcClient(channelProvider.getCoreChannel())
+
+    @Provides
+    @Singleton
+    fun provideDiscoveryServiceClient(channelProvider: GrpcChannelProvider): DiscoveryServiceClient =
+        DiscoveryServiceGrpcClient(channelProvider.getCoreChannel())
 
     @Provides
     @Singleton
