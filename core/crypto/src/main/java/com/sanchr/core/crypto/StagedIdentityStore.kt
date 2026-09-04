@@ -151,7 +151,9 @@ open class StagedIdentityStore
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(AES_KEY_BITS)
                     .setRandomizedEncryptionRequired(true)
-            if (unlockedDeviceRequired) {
+            // The SDK check stays inline: Android Lint cannot see through a
+            // boolean parameter and would flag a minSdk violation.
+            if (unlockedDeviceRequired && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 builder.setUnlockedDeviceRequired(true)
             }
 

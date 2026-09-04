@@ -184,10 +184,12 @@ class DatabasePassphraseProvider
             // Both flags are API 28+; below that every rung is identical, so
             // there is nothing to step down to.
             val effective = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) hardening else KeyHardening.NONE
-            if (effective != KeyHardening.NONE) {
+            // SDK checks stay inline at each call: Android Lint cannot see
+            // through `effective` and would flag minSdk violations.
+            if (effective != KeyHardening.NONE && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 builder.setUnlockedDeviceRequired(true)
             }
-            if (effective == KeyHardening.STRONGBOX_AND_UNLOCKED) {
+            if (effective == KeyHardening.STRONGBOX_AND_UNLOCKED && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 builder.setIsStrongBoxBacked(true)
             }
 
