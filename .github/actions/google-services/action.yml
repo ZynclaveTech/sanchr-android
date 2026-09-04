@@ -1,0 +1,36 @@
+name: Provision google-services.json
+description: >
+  Writes app/google-services.json for the build. Uses the real config from the
+  GOOGLE_SERVICES_JSON secret when it is set; otherwise falls back to a
+  structurally valid CI placeholder so lint, unit, assemble and the smoke suite
+  can build. The file is gitignored, so nothing else provisions it — without
+  this step every job fails at processGoogleServices before compiling a line.
+
+inputs:
+  json:
+    description: Contents of the real google-services.json (pass secrets.GOOGLE_SERVICES_JSON). May be empty.
+    required: false
+    default: ""
+  app-dir:
+    description: Directory containing the app module.
+    required: false
+    default: app
+
+runs:
+  using: composite
+  steps:
+    - name: Write google-services.json
+      shell: bash
+      env:
+        GS_JSON: ${{ inputs.json }}
+      run: |
+        set -euo pipefail
+        target="${{ inputs.app-dir }}/google-services.json"
+        if [ -n "${GS_JSON:-}" ]; then
+          printf '%s' "$GS_JSON" > "$target"
+          echo "google-services.json: using GOOGLE_SERVICES_JSON secret"
+        else
+          cp "${{ github.action_path }}/../../ci/google-services.placeholder.json" "$target"
+          echo "::notice title=google-services.json::GOOGLE_SERVICES_JSON secret not set; using CI placeholder (Firebase features are inert in this build)"
+        fi
+        python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$target" && echo "google-services.json: valid JSON"

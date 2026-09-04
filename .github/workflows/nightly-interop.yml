@@ -53,6 +53,12 @@ jobs:
           ref: ${{ github.event.inputs.backend_ref || 'feat/persistent-refresh-tokens' }}
           path: sanchr-backend
 
+      - name: Provision google-services.json
+        uses: ./sanchr-android/.github/actions/google-services
+        with:
+          json: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          app-dir: sanchr-android/app
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
