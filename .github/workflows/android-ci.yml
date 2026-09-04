@@ -25,6 +25,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Provision google-services.json
+        uses: ./.github/actions/google-services
+        with:
+          json: ${{ secrets.GOOGLE_SERVICES_JSON }}
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -76,6 +81,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Provision google-services.json
+        uses: ./.github/actions/google-services
+        with:
+          json: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -137,6 +147,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Provision google-services.json
+        uses: ./.github/actions/google-services
+        with:
+          json: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4

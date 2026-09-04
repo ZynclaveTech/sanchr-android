@@ -1,0 +1,24 @@
+{
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "sanchr-ci-placeholder",
+    "storage_bucket": "sanchr-ci-placeholder.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "android_client_info": { "package_name": "com.sanchr.app" }
+      },
+      "api_key": [ { "current_key": "AIzaSyCIPLACEHOLDER0000000000000000000000" } ]
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000001",
+        "android_client_info": { "package_name": "com.sanchr.app.debug" }
+      },
+      "api_key": [ { "current_key": "AIzaSyCIPLACEHOLDER0000000000000000000000" } ]
+    }
+  ],
+  "configuration_version": "1"
+}
