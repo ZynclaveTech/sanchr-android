@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -134,10 +135,42 @@ class DatabasePassphraseProvider
             (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let {
                 return it.secretKey
             }
-            return generateWrappingKey(useStrongBox = true)
+            return generateWrappingKey(KeyHardening.STRONGBOX_AND_UNLOCKED)
         }
 
-        private fun generateWrappingKey(useStrongBox: Boolean): SecretKey {
+        /**
+         * Hardening requested of the Keystore, strongest first. Each rung is a
+         * defence-in-depth property, not a correctness requirement: the key
+         * is equally random and equally non-exportable without them.
+         */
+        private enum class KeyHardening {
+            STRONGBOX_AND_UNLOCKED,
+            UNLOCKED,
+            NONE,
+            ;
+
+            fun weaker(): KeyHardening? =
+                when (this) {
+                    STRONGBOX_AND_UNLOCKED -> UNLOCKED
+                    UNLOCKED -> NONE
+                    NONE -> null
+                }
+        }
+
+        /**
+         * Generates the wrapping key at [hardening], stepping down one rung at
+         * a time when the Keystore refuses. StrongBox is absent on most
+         * hardware, and some KeyMint implementations reject
+         * `setUnlockedDeviceRequired` outright with `SYSTEM_ERROR` — the
+         * API 34 x86_64 emulator does, on both the default and google_apis
+         * images. Before this stepped down only from StrongBox, so that
+         * refusal escaped as a ProviderException out of Hilt's database
+         * provider and crashed the app in Application.onCreate.
+         *
+         * The last rung throws: a Keystore that cannot generate a plain
+         * AES-GCM key is a real failure.
+         */
+        private fun generateWrappingKey(hardening: KeyHardening): SecretKey {
             val builder =
                 KeyGenParameterSpec
                     .Builder(
@@ -148,13 +181,14 @@ class DatabasePassphraseProvider
                     .setKeySize(AES_KEY_BITS)
                     .setRandomizedEncryptionRequired(true)
 
-            val strongBoxRequested =
-                useStrongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // Both flags are API 28+; below that every rung is identical, so
+            // there is nothing to step down to.
+            val effective = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) hardening else KeyHardening.NONE
+            if (effective != KeyHardening.NONE) {
                 builder.setUnlockedDeviceRequired(true)
-                if (strongBoxRequested) {
-                    builder.setIsStrongBoxBacked(true)
-                }
+            }
+            if (effective == KeyHardening.STRONGBOX_AND_UNLOCKED) {
+                builder.setIsStrongBoxBacked(true)
             }
 
             val generator =
@@ -163,11 +197,10 @@ class DatabasePassphraseProvider
                 generator.init(builder.build())
                 generator.generateKey()
             } catch (e: Exception) {
-                if (strongBoxRequested && isStrongBoxUnavailable(e)) {
-                    generateWrappingKey(useStrongBox = false)
-                } else {
-                    throw e
-                }
+                val weaker = effective.weaker() ?: throw e
+                val reason = if (isStrongBoxUnavailable(e)) "StrongBox unavailable" else "Keystore refused ($e)"
+                Log.w(TAG, "$reason at $effective; retrying wrapping key generation at $weaker")
+                generateWrappingKey(weaker)
             }
         }
 
@@ -178,6 +211,7 @@ class DatabasePassphraseProvider
         }
 
         private companion object {
+            const val TAG = "DbPassphrase"
             const val PREFS_FILE = "sanchr-db-secrets"
             const val KEY_WRAPPED_PASSPHRASE = "wrapped_passphrase"
             const val KEY_WRAP_IV = "wrap_iv"

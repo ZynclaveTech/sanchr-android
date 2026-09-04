@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.nio.ByteBuffer
@@ -129,7 +130,18 @@ open class StagedIdentityStore
         private fun getOrCreateKey(): SecretKey {
             val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             (ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+            return generateKey(unlockedDeviceRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+        }
 
+        /**
+         * `setUnlockedDeviceRequired` is defence in depth, and some KeyMint
+         * implementations reject it outright with `SYSTEM_ERROR` (the API 34
+         * x86_64 emulator does). Retry without it rather than fail
+         * registration; a Keystore that cannot generate a plain AES-GCM key
+         * is a real failure and is allowed to throw. Same ladder as
+         * `DatabasePassphraseProvider`.
+         */
+        private fun generateKey(unlockedDeviceRequired: Boolean): SecretKey {
             val builder =
                 KeyGenParameterSpec
                     .Builder(
@@ -139,14 +151,20 @@ open class StagedIdentityStore
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(AES_KEY_BITS)
                     .setRandomizedEncryptionRequired(true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (unlockedDeviceRequired) {
                 builder.setUnlockedDeviceRequired(true)
             }
 
             val generator =
                 KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-            generator.init(builder.build())
-            return generator.generateKey()
+            return try {
+                generator.init(builder.build())
+                generator.generateKey()
+            } catch (e: Exception) {
+                if (!unlockedDeviceRequired) throw e
+                Log.w(TAG, "Keystore refused unlockedDeviceRequired ($e); retrying staged-identity key without it")
+                generateKey(unlockedDeviceRequired = false)
+            }
         }
 
         private fun getExistingKey(): SecretKey? {
@@ -156,6 +174,7 @@ open class StagedIdentityStore
         }
 
         private companion object {
+            const val TAG = "StagedIdentity"
             const val SUBDIR = ".sanchr"
             const val FILENAME = "staged-identity.bin"
             const val KEY_ALIAS = "sanchr-staged-identity-v1"
