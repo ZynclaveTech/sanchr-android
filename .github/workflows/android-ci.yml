@@ -15,6 +15,7 @@ permissions:
 
 env:
   SANCHR_PROTO_SRC: ${{ github.workspace }}/.backend-protos/crates/sanchr-proto/proto
+  BACKEND_READ_TOKEN: ${{ secrets.BACKEND_READ_TOKEN }}
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -38,11 +39,17 @@ jobs:
       # Locally that is a sibling checkout; here it is a sparse checkout of
       # backend main, pointed at via SANCHR_PROTO_SRC. Without this the gate
       # fails every job with "canonical proto dir not found".
+      # Both repos are private, so the default GITHUB_TOKEN cannot read the
+      # backend; this needs a fine-grained PAT with Contents: read on
+      # sanchr-backend, stored as BACKEND_READ_TOKEN. Without it the step is
+      # skipped and the gate emits a warning instead of failing.
       - name: Checkout backend protos (drift gate)
+        if: ${{ env.BACKEND_READ_TOKEN != '' }}
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend
           ref: main
+          token: ${{ env.BACKEND_READ_TOKEN }}
           path: .backend-protos
           sparse-checkout: crates/sanchr-proto/proto
           sparse-checkout-cone-mode: false
@@ -109,11 +116,17 @@ jobs:
       # Locally that is a sibling checkout; here it is a sparse checkout of
       # backend main, pointed at via SANCHR_PROTO_SRC. Without this the gate
       # fails every job with "canonical proto dir not found".
+      # Both repos are private, so the default GITHUB_TOKEN cannot read the
+      # backend; this needs a fine-grained PAT with Contents: read on
+      # sanchr-backend, stored as BACKEND_READ_TOKEN. Without it the step is
+      # skipped and the gate emits a warning instead of failing.
       - name: Checkout backend protos (drift gate)
+        if: ${{ env.BACKEND_READ_TOKEN != '' }}
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend
           ref: main
+          token: ${{ env.BACKEND_READ_TOKEN }}
           path: .backend-protos
           sparse-checkout: crates/sanchr-proto/proto
           sparse-checkout-cone-mode: false
@@ -198,11 +211,17 @@ jobs:
       # Locally that is a sibling checkout; here it is a sparse checkout of
       # backend main, pointed at via SANCHR_PROTO_SRC. Without this the gate
       # fails every job with "canonical proto dir not found".
+      # Both repos are private, so the default GITHUB_TOKEN cannot read the
+      # backend; this needs a fine-grained PAT with Contents: read on
+      # sanchr-backend, stored as BACKEND_READ_TOKEN. Without it the step is
+      # skipped and the gate emits a warning instead of failing.
       - name: Checkout backend protos (drift gate)
+        if: ${{ env.BACKEND_READ_TOKEN != '' }}
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend
           ref: main
+          token: ${{ env.BACKEND_READ_TOKEN }}
           path: .backend-protos
           sparse-checkout: crates/sanchr-proto/proto
           sparse-checkout-cone-mode: false
