@@ -65,7 +65,7 @@ robolectric = "4.13"
 # Code quality
 ktlint = "12.1.1"
 detekt = "1.23.7"
-kover = "0.9.0"
+kover = "0.9.1"
 
 [libraries]
 # AndroidX Core

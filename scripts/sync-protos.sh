@@ -3,7 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SRC="$ANDROID_ROOT/../../backend/crates/sanchr-proto/proto"
+# Canonical proto source. Defaults to the sibling backend checkout used in
+# local development; CI has no sibling layout and sets SANCHR_PROTO_SRC to a
+# sparse checkout of the backend instead.
+SRC="${SANCHR_PROTO_SRC:-$ANDROID_ROOT/../../backend/crates/sanchr-proto/proto}"
 DST="$ANDROID_ROOT/proto/src/main/proto"
 
 if [[ ! -d "$SRC" ]]; then
