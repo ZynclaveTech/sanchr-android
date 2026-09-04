@@ -13,6 +13,13 @@ message OprfDiscoverRequest {
 
 message OprfDiscoverResponse {
   repeated bytes evaluated_points = 1;
+  // Rotation epoch of the server secret that evaluated these points. Compare
+  // against GetRegisteredSetResponse.key_epoch: if they differ, the two were
+  // produced under different keys and will not intersect — refetch rather
+  // than concluding no contact is registered. The secret rotates on a fixed
+  // schedule (default 7 days), and every replica derives the same key for a
+  // given epoch, so a mismatch only arises when a client straddles a boundary.
+  uint64 key_epoch = 2;
 }
 
 message GetBloomFilterRequest {}
@@ -29,4 +36,7 @@ message GetRegisteredSetRequest {}
 
 message GetRegisteredSetResponse {
   repeated bytes set_elements = 1;
+  // Rotation epoch of the server secret these elements were computed under.
+  // See OprfDiscoverResponse.key_epoch.
+  uint64 key_epoch = 2;
 }
