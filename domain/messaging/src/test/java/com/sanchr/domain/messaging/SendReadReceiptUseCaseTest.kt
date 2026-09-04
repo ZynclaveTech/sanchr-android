@@ -57,6 +57,7 @@ class SendReadReceiptUseCaseTest {
             signalSessionManager,
             messagingClient,
             deliveryTokenStore,
+            userPreferences,
             dispatchers,
         )
 

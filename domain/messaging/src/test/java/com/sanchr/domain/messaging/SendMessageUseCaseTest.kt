@@ -6,6 +6,7 @@ import com.sanchr.core.crypto.DeviceEncryptedMessage
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SealedDeviceMessage
@@ -25,6 +26,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.signal.libsignal.protocol.UntrustedIdentityException
 
@@ -34,6 +36,10 @@ class SendMessageUseCaseTest {
     private val signalSessionManager = mockk<SignalSessionManager>()
     private val messagingClient = mockk<MessagingServiceClient>()
     private val deliveryTokenStore = mockk<DeliveryTokenStore>(relaxed = true)
+    private val userPreferences =
+        mockk<UserPreferences>().also {
+            every { it.disappearingDefaultSeconds } returns flowOf(0)
+        }
     private val dispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher = Dispatchers.Unconfined
@@ -50,6 +56,7 @@ class SendMessageUseCaseTest {
             signalSessionManager,
             messagingClient,
             deliveryTokenStore,
+            userPreferences,
             dispatchers,
         )
 
@@ -139,6 +146,123 @@ class SendMessageUseCaseTest {
             coVerify(exactly = 0) {
                 messagingClient.sendMessage(any())
             }
+        }
+
+    @Test
+    fun `the conversation's own timer governs, over the account default`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { messageRepository.conversationDisappearingSeconds("conv-1") } returns 30L
+            every { userPreferences.disappearingDefaultSeconds } returns flowOf(86_400)
+
+            val before = System.currentTimeMillis()
+            useCase("conv-1", "hi")
+            val after = System.currentTimeMillis()
+
+            val deadlines = mutableListOf<Long?>()
+            coVerify {
+                messageRepository.enqueueOutboundMessage(
+                    conversationId = "conv-1",
+                    content = "hi",
+                    contentType = any(),
+                    expiresAtMillis = captureNullable(deadlines),
+                )
+            }
+            val deadline = deadlines.single()
+            assertTrue(
+                deadline != null && deadline in (before + 30_000)..(after + 30_000),
+                "deadline $deadline outside the 30s window",
+            )
+        }
+
+    @Test
+    fun `the account default applies when the conversation sets no timer`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { messageRepository.conversationDisappearingSeconds("conv-1") } returns null
+            every { userPreferences.disappearingDefaultSeconds } returns flowOf(30)
+
+            val before = System.currentTimeMillis()
+            useCase("conv-1", "hi")
+            val after = System.currentTimeMillis()
+
+            val deadlines = mutableListOf<Long?>()
+            coVerify {
+                messageRepository.enqueueOutboundMessage(
+                    conversationId = "conv-1",
+                    content = "hi",
+                    contentType = any(),
+                    expiresAtMillis = captureNullable(deadlines),
+                )
+            }
+            val deadline = deadlines.single()
+            assertTrue(
+                deadline != null && deadline in (before + 30_000)..(after + 30_000),
+                "deadline $deadline outside the 30s window",
+            )
+        }
+
+    @Test
+    fun `no timer anywhere means the row gets no deadline`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { messageRepository.conversationDisappearingSeconds("conv-1") } returns null
+            every { userPreferences.disappearingDefaultSeconds } returns flowOf(0)
+
+            useCase("conv-1", "hi")
+
+            coVerify {
+                messageRepository.enqueueOutboundMessage(
+                    conversationId = "conv-1",
+                    content = "hi",
+                    contentType = any(),
+                    expiresAtMillis = isNull(),
+                )
+            }
+        }
+
+    @Test
+    fun `a row with a deadline ships a positive timer inside the envelope`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { deliveryTokenStore.acquire() } returns byteArrayOf(9)
+            val plaintextSlot = slot<ByteArray>()
+            coEvery {
+                signalSessionManager.encryptForAllDevices(capture(plaintextSlot), "peer-uuid")
+            } returns listOf(DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1), messageType = 3, registrationId = 42))
+            coEvery { messagingClient.sendSealedMessage(any()) } returns SendSealedMessageResponse(serverTimestamp = 5_000L)
+
+            useCase.attemptSend(entity.copy(expiresAt = System.currentTimeMillis() + 30_000L))
+
+            val payload = InnerPayload.decode(plaintextSlot.captured)
+            assertTrue(payload != null)
+            // Derived from the row's remaining lifetime, so a retry hours
+            // later does not restart the recipient's clock.
+            val shipped = payload.expiresAfterSecs
+            assertTrue(
+                shipped != null && shipped in 1L..30L,
+                "expected a positive timer no greater than the original 30s, was $shipped",
+            )
+        }
+
+    @Test
+    fun `a row that outlived its timer while queued still ships a positive one`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { deliveryTokenStore.acquire() } returns byteArrayOf(9)
+            val plaintextSlot = slot<ByteArray>()
+            coEvery {
+                signalSessionManager.encryptForAllDevices(capture(plaintextSlot), "peer-uuid")
+            } returns listOf(DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1), messageType = 3, registrationId = 42))
+            coEvery { messagingClient.sendSealedMessage(any()) } returns SendSealedMessageResponse(serverTimestamp = 5_000L)
+
+            useCase.attemptSend(entity.copy(expiresAt = System.currentTimeMillis() - 60_000L))
+
+            val payload = InnerPayload.decode(plaintextSlot.captured)
+            assertTrue(payload != null)
+            // Zero would read as "no timer" on the wire, making a late send
+            // MORE durable than a prompt one.
+            assertEquals(1L, payload.expiresAfterSecs)
         }
 
     @Test

@@ -8,6 +8,7 @@ import com.sanchr.core.crypto.EncryptFanOutEmptyException
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -15,6 +16,7 @@ import com.sanchr.proto.messaging.SealedDeviceMessage
 import com.sanchr.proto.messaging.SendSealedMessageRequest
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
 import org.signal.libsignal.protocol.UntrustedIdentityException
@@ -60,6 +62,7 @@ class SendMessageUseCase
         private val signalSessionManager: SignalSessionManager,
         private val messagingClient: MessagingServiceClient,
         private val deliveryTokenStore: DeliveryTokenStore,
+        private val userPreferences: UserPreferences,
         private val dispatcherProvider: DispatcherProvider,
     ) {
         /**
@@ -75,11 +78,16 @@ class SendMessageUseCase
             withContext(dispatcherProvider.io) {
                 runCatchingResult {
                     require(content.isNotBlank()) { "Message content must not be blank" }
+                    val disappearingSeconds = resolveDisappearingSeconds(conversationId)
                     val entity =
                         messageRepository.enqueueOutboundMessage(
                             conversationId = conversationId,
                             content = content,
                             contentType = contentType,
+                            expiresAtMillis =
+                                disappearingSeconds?.let {
+                                    System.currentTimeMillis() + it * MILLIS_PER_SECOND
+                                },
                         )
                     attemptSendOrThrow(entity)
                 }
@@ -255,6 +263,15 @@ class SendMessageUseCase
                         content = entity.contentBody.toByteArray(Charsets.UTF_8),
                         senderUserId = selfUserId,
                         senderDeviceId = senderDeviceId ?: 0,
+                        // Derived from the row's own deadline rather than
+                        // re-resolved here, for two reasons: a retry hours
+                        // later must not restart the clock, and changing the
+                        // account default mid-queue must not retime a message
+                        // already shown to the sender as expiring. The
+                        // recipient anchors this to the server timestamp of
+                        // whichever attempt lands, so the absolute deadlines
+                        // stay aligned across retries.
+                        expiresAfterSecs = entity.expiresAt?.let { remainingSecondsUntil(it) },
                     )
                 val plaintext = payload.encode()
                 encryptAndWrapDeviceMessages(
@@ -385,7 +402,34 @@ class SendMessageUseCase
             throw TooManyDeviceMessagesException(entity.conversationId, deviceMessages.size)
         }
 
+        /**
+         * The timer that governs this conversation: its own if it sets one,
+         * otherwise the account-wide default. Mirrors iOS in preferring the
+         * conversation row; the fallback exists because Android surfaces only
+         * a global default today (there is no per-conversation timer UI yet),
+         * so without it the shipped setting would still govern nothing.
+         *
+         * Returns null for "no timer" so callers cannot confuse it with 0.
+         */
+        private suspend fun resolveDisappearingSeconds(conversationId: String): Long? =
+            messageRepository.conversationDisappearingSeconds(conversationId)
+                ?: userPreferences.disappearingDefaultSeconds
+                    .first()
+                    .toLong()
+                    .takeIf { it > 0 }
+
+        /**
+         * Seconds left until [deadlineMillis], floored at one second. A
+         * message that outlived its own timer while queued still ships with a
+         * positive value: zero would read as "no timer" to the recipient (the
+         * wire field's absent value), which would make a late send *more*
+         * durable than a prompt one.
+         */
+        private fun remainingSecondsUntil(deadlineMillis: Long): Long =
+            ((deadlineMillis - System.currentTimeMillis()).coerceAtLeast(MILLIS_PER_SECOND)) / MILLIS_PER_SECOND
+
         private companion object {
+            private const val MILLIS_PER_SECOND = 1_000L
             private const val TAG = "SendMessageUseCase"
 
             /**

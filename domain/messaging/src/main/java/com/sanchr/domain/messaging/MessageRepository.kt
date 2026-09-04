@@ -31,7 +31,21 @@ interface MessageRepository {
         conversationId: String,
         content: String,
         contentType: String = "text",
+        /**
+         * Epoch millis at which the sender's own copy self-destructs, or null
+         * for no timer. Resolved by [SendMessageUseCase]; the recipient's copy
+         * is governed by the timer stamped into the envelope, not by this.
+         */
+        expiresAtMillis: Long? = null,
     ): MessageEntity
+
+    /**
+     * This conversation's own disappearing-message timer in seconds, or null
+     * when it sets none (in which case callers fall back to the account-wide
+     * default). Mirrors iOS, which reads the timer from the conversation row
+     * rather than from a global preference.
+     */
+    suspend fun conversationDisappearingSeconds(conversationId: String): Long?
 
     /**
      * Atomically bumps the `attempts` counter, stamps `last_attempt_at`,
