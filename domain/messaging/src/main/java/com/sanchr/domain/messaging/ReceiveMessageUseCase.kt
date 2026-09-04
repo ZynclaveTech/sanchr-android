@@ -266,6 +266,14 @@ class ReceiveMessageUseCase
                         // server-rejected) ack staging entirely.
                         flushAckImmediately = false,
                         stageAck = false,
+                        // Anchor the deadline to the server timestamp rather
+                        // than local arrival, matching iOS: a device that was
+                        // offline for a week must not grant itself a fresh
+                        // full lifetime on the messages it finally syncs.
+                        expiresAtMillis =
+                            routed.expiresAfterSecs?.let {
+                                success.serverTimestamp + it * MILLIS_PER_SECOND
+                            },
                     )
                     messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
                 }
@@ -406,6 +414,7 @@ class ReceiveMessageUseCase
         private companion object {
             private const val TAG = "ReceiveMessage"
             private const val RECEIPT_CONTENT_TYPE = "receipt/v1"
+            private const val MILLIS_PER_SECOND = 1_000L
 
             @Suppress("unused")
             private val FallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

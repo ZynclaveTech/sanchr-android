@@ -93,6 +93,19 @@ class UserPreferences
             dataStore.edit { it[Keys.READ_RECEIPTS_ENABLED] = enabled }
         }
 
+        /**
+         * Default disappearing-message timer for conversations that set none
+         * of their own, in seconds; `0` means off. Canonical unit is seconds
+         * because that is what travels on the wire as
+         * `InnerPayload.expiresAfterSecs` — the UI's "24h"-style labels are a
+         * presentation concern and are mapped at the settings layer.
+         */
+        val disappearingDefaultSeconds: Flow<Int> = dataStore.data.map { it[Keys.DISAPPEARING_DEFAULT_DURATION] ?: 0 }
+
+        suspend fun setDisappearingDefaultSeconds(seconds: Int) {
+            dataStore.edit { it[Keys.DISAPPEARING_DEFAULT_DURATION] = seconds.coerceAtLeast(0) }
+        }
+
         val typingIndicatorsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.TYPING_INDICATORS_ENABLED] ?: true }
 
         suspend fun setTypingIndicatorsEnabled(enabled: Boolean) {

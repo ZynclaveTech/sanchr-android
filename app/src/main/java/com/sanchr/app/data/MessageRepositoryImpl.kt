@@ -53,10 +53,18 @@ class MessageRepositoryImpl
                 entities.map { it.toDomain() }
             }
 
+        override suspend fun conversationDisappearingSeconds(conversationId: String): Long? =
+            conversationDao
+                .getConversationById(conversationId)
+                ?.disappearingDurationMs
+                ?.takeIf { it > 0 }
+                ?.div(MILLIS_PER_SECOND)
+
         override suspend fun enqueueOutboundMessage(
             conversationId: String,
             content: String,
             contentType: String,
+            expiresAtMillis: Long?,
         ): MessageEntity {
             val currentUserId = sessionManager.getUserId().orEmpty()
             require(currentUserId.isNotBlank()) { "Missing current user id" }
@@ -70,6 +78,7 @@ class MessageRepositoryImpl
                     contentBody = content,
                     status = MessageStatus.QUEUED.name,
                     timestamp = System.currentTimeMillis(),
+                    expiresAt = expiresAtMillis,
                 )
             messageDao.insertMessage(entity)
             return entity
@@ -229,6 +238,7 @@ class MessageRepositoryImpl
             timestamp: Long,
             flushAckImmediately: Boolean,
             stageAck: Boolean,
+            expiresAtMillis: Long?,
         ) {
             val entity =
                 MessageEntity(
@@ -239,6 +249,7 @@ class MessageRepositoryImpl
                     contentBody = content,
                     status = MessageStatus.DELIVERED.name,
                     timestamp = timestamp,
+                    expiresAt = expiresAtMillis,
                 )
             messageDao.insertMessage(entity)
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
@@ -464,3 +475,6 @@ class MessageRepositoryImpl
                 createdAt = createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
             )
     }
+
+/** Conversation timers are stored in millis; the wire carries seconds. */
+private const val MILLIS_PER_SECOND = 1_000L

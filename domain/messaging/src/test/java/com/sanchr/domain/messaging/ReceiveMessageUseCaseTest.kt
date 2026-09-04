@@ -353,6 +353,78 @@ class ReceiveMessageUseCaseTest {
 
     // ── Task 3: applying an inbound sealed read receipt ──
 
+    @Test
+    fun `a sender's disappearing timer becomes a deadline anchored to the server timestamp`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "burn after reading".toByteArray(),
+                    expiresAfterSecs = 3_600L,
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            // 42 (server timestamp) + 3600s, NOT "now + 3600s". A device that
+            // syncs a week late must inherit the remaining lifetime, not a
+            // fresh one — the property that makes the timer meaningful.
+            coVerify {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    senderId = "alice-uuid",
+                    content = "burn after reading",
+                    contentType = "text",
+                    timestamp = 42L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                    expiresAtMillis = 42L + 3_600_000L,
+                )
+            }
+        }
+
+    @Test
+    fun `a message with no timer is persisted with no deadline`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "keep me".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    senderId = "alice-uuid",
+                    content = "keep me",
+                    contentType = "text",
+                    timestamp = 42L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                    expiresAtMillis = null,
+                )
+            }
+        }
+
     private fun receiptPlaintext(
         messageId: String,
         status: String,

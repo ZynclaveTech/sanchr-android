@@ -47,6 +47,51 @@ class SealedEnvelopeRouterTest {
     }
 
     @Test
+    fun `a disappearing timer on the payload reaches UserMessage`() {
+        val payload =
+            InnerPayload(
+                conversationId = "c-1",
+                messageId = "m-1",
+                contentType = "text",
+                content = "hello".toByteArray(),
+                expiresAfterSecs = 86_400L,
+            )
+
+        val routed = SealedEnvelopeRouter.route(payload.encode(), fallbackContentType = "ignored")
+
+        assertTrue(routed is RoutedPayload.UserMessage)
+        assertEquals(86_400L, routed.expiresAfterSecs)
+    }
+
+    @Test
+    fun `a zero or negative timer is treated as no timer, not an expired one`() {
+        listOf(0L, -1L).forEach { wireValue ->
+            val payload =
+                InnerPayload(
+                    conversationId = "c-1",
+                    contentType = "text",
+                    content = "hello".toByteArray(),
+                    expiresAfterSecs = wireValue,
+                )
+
+            val routed = SealedEnvelopeRouter.route(payload.encode(), fallbackContentType = "ignored")
+
+            assertTrue(routed is RoutedPayload.UserMessage)
+            // Anything else would turn a sender with the feature off into a
+            // deadline already in the past, deleting the message on arrival.
+            assertNull(routed.expiresAfterSecs, "wire value $wireValue must mean no timer")
+        }
+    }
+
+    @Test
+    fun `legacy bare text carries no timer`() {
+        val routed = SealedEnvelopeRouter.route("plain".toByteArray(), fallbackContentType = "text")
+
+        assertTrue(routed is RoutedPayload.UserMessage)
+        assertNull(routed.expiresAfterSecs)
+    }
+
+    @Test
     fun `an inner payload with an unrecognised content type still routes to UserMessage, not dropped`() {
         val payload =
             InnerPayload(

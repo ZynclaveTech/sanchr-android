@@ -10,6 +10,7 @@ import com.sanchr.proto.settings.SettingsServiceClient
 import com.sanchr.sync.backup.ChatBackupManager
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -18,6 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -34,7 +36,10 @@ import kotlinx.coroutines.test.setMain
 class SettingsViewModelDeleteAccountTest {
     private val testDispatcher = StandardTestDispatcher()
 
-    private val userPreferences = mockk<UserPreferences>(relaxed = true)
+    private val userPreferences =
+        mockk<UserPreferences>(relaxed = true).also {
+            every { it.disappearingDefaultSeconds } returns flowOf(0)
+        }
     private val recoveryKeyManager = mockk<RecoveryKeyManager>(relaxed = true)
     private val notificationServiceClient = mockk<NotificationServiceClient>(relaxed = true)
     private val pushTokenManager = mockk<PushTokenManager>(relaxed = true)
