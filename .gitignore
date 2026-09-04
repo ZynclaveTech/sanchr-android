@@ -35,3 +35,4 @@ keystore/*
 !ci-assets/dummy-upload.jks
 
 .kotlin/
+.backend-protos/

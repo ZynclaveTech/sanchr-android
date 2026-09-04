@@ -51,6 +51,10 @@ jobs:
         with:
           repository: ZynclaveTech/sanchr-backend
           ref: ${{ github.event.inputs.backend_ref || 'feat/persistent-refresh-tokens' }}
+          # Private repo: the default GITHUB_TOKEN cannot read it. Same secret
+          # as android-ci's drift gate. This job has never succeeded, and this
+          # checkout is why.
+          token: ${{ secrets.BACKEND_READ_TOKEN }}
           path: sanchr-backend
 
       - name: Provision google-services.json

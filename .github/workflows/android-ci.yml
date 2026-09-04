@@ -13,6 +13,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  SANCHR_PROTO_SRC: ${{ github.workspace }}/.backend-protos/crates/sanchr-proto/proto
+  BACKEND_READ_TOKEN: ${{ secrets.BACKEND_READ_TOKEN }}
+
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
   # Unit tests + linting + coverage. Fast path — gates merges.
@@ -29,6 +33,26 @@ jobs:
         uses: ./.github/actions/google-services
         with:
           json: ${{ secrets.GOOGLE_SERVICES_JSON }}
+
+      # The proto drift gate (:proto:syncProtos, run by generateProto* and
+      # check) diffs our .proto files against the backend's canonical copy.
+      # Locally that is a sibling checkout; here it is a sparse checkout of
+      # backend main, pointed at via SANCHR_PROTO_SRC. Without this the gate
+      # fails every job with "canonical proto dir not found".
+      # Both repos are private, so the default GITHUB_TOKEN cannot read the
+      # backend; this needs a fine-grained PAT with Contents: read on
+      # sanchr-backend, stored as BACKEND_READ_TOKEN. Without it the step is
+      # skipped and the gate emits a warning instead of failing.
+      - name: Checkout backend protos (drift gate)
+        if: ${{ env.BACKEND_READ_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ZynclaveTech/sanchr-backend
+          ref: main
+          token: ${{ env.BACKEND_READ_TOKEN }}
+          path: .backend-protos
+          sparse-checkout: crates/sanchr-proto/proto
+          sparse-checkout-cone-mode: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -87,6 +111,26 @@ jobs:
         with:
           json: ${{ secrets.GOOGLE_SERVICES_JSON }}
 
+      # The proto drift gate (:proto:syncProtos, run by generateProto* and
+      # check) diffs our .proto files against the backend's canonical copy.
+      # Locally that is a sibling checkout; here it is a sparse checkout of
+      # backend main, pointed at via SANCHR_PROTO_SRC. Without this the gate
+      # fails every job with "canonical proto dir not found".
+      # Both repos are private, so the default GITHUB_TOKEN cannot read the
+      # backend; this needs a fine-grained PAT with Contents: read on
+      # sanchr-backend, stored as BACKEND_READ_TOKEN. Without it the step is
+      # skipped and the gate emits a warning instead of failing.
+      - name: Checkout backend protos (drift gate)
+        if: ${{ env.BACKEND_READ_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ZynclaveTech/sanchr-backend
+          ref: main
+          token: ${{ env.BACKEND_READ_TOKEN }}
+          path: .backend-protos
+          sparse-checkout: crates/sanchr-proto/proto
+          sparse-checkout-cone-mode: false
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -144,6 +188,15 @@ jobs:
       fail-fast: false
       matrix:
         api-level: [28, 34]
+        # The AOSP `default` image at API 34 (x86_64) has a KeyMint that
+        # rejects setUnlockedDeviceRequired(true) with SYSTEM_ERROR, so the
+        # app dies in Application.onCreate ("Keystore key generation failed")
+        # before any test starts. google_apis images ship a working KeyMint.
+        include:
+          - api-level: 28
+            target: default
+          - api-level: 34
+            target: google_apis
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -152,6 +205,26 @@ jobs:
         uses: ./.github/actions/google-services
         with:
           json: ${{ secrets.GOOGLE_SERVICES_JSON }}
+
+      # The proto drift gate (:proto:syncProtos, run by generateProto* and
+      # check) diffs our .proto files against the backend's canonical copy.
+      # Locally that is a sibling checkout; here it is a sparse checkout of
+      # backend main, pointed at via SANCHR_PROTO_SRC. Without this the gate
+      # fails every job with "canonical proto dir not found".
+      # Both repos are private, so the default GITHUB_TOKEN cannot read the
+      # backend; this needs a fine-grained PAT with Contents: read on
+      # sanchr-backend, stored as BACKEND_READ_TOKEN. Without it the step is
+      # skipped and the gate emits a warning instead of failing.
+      - name: Checkout backend protos (drift gate)
+        if: ${{ env.BACKEND_READ_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ZynclaveTech/sanchr-backend
+          ref: main
+          token: ${{ env.BACKEND_READ_TOKEN }}
+          path: .backend-protos
+          sparse-checkout: crates/sanchr-proto/proto
+          sparse-checkout-cone-mode: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -175,13 +248,14 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ matrix.api-level }}
+          key: avd-${{ matrix.api-level }}-${{ matrix.target }}
 
       - name: Create AVD (cache miss)
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
           arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
@@ -192,6 +266,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
           arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
