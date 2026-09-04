@@ -27,12 +27,12 @@ class OprfException(
 @Singleton
 class OprfClient
     @Inject
-    constructor() {
+    constructor() : Oprf {
         init {
             OprfNativeLoader.load()
         }
 
-        fun blind(phoneE164: String): OprfBlinding {
+        override fun blind(phoneE164: String): OprfBlinding {
             val out = OprfNative.blind(phoneE164) ?: throw OprfException("blinding failed")
             if (out.size != BLIND_OUTPUT_SIZE) {
                 throw OprfException("blind returned ${out.size} bytes, expected $BLIND_OUTPUT_SIZE")
@@ -43,7 +43,7 @@ class OprfClient
             )
         }
 
-        fun unblind(
+        override fun unblind(
             scalar: ByteArray,
             evaluated: ByteArray,
         ): ByteArray {

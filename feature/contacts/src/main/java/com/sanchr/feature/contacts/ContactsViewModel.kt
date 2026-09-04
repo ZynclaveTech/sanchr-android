@@ -9,9 +9,7 @@ import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.GetContactsRequest
-import com.sanchr.proto.contacts.SyncContactsRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.security.MessageDigest
 import javax.inject.Inject
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -228,19 +226,20 @@ class ContactsViewModel
             viewModelScope.launch {
                 _syncState.value = ContactSyncUiState(isSyncing = true, progress = 0.1f)
                 try {
-                    val phoneHashes = readAndHashDeviceContacts(contentResolver)
+                    val numbers = readDeviceContactNumbers(contentResolver)
                     _syncState.update { it.copy(progress = 0.5f) }
 
-                    val response =
-                        contactServiceClient.syncContacts(
-                            SyncContactsRequest(phoneHashes = phoneHashes),
-                        )
+                    // Privacy-preserving discovery: the repository blinds
+                    // every number, learns which are registered without the
+                    // server seeing the address book, and resolves only that
+                    // intersection. Nothing is hashed or uploaded here.
+                    val matchedCount = contactRepository.discoverAndSyncContacts(numbers)
 
                     _syncState.value =
                         ContactSyncUiState(
                             isSyncing = false,
                             syncComplete = true,
-                            matchedCount = response.matchedContacts.size,
+                            matchedCount = matchedCount,
                             progress = 1f,
                         )
 
@@ -257,7 +256,8 @@ class ContactsViewModel
             }
         }
 
-        private fun readAndHashDeviceContacts(contentResolver: ContentResolver): List<String> {
+        /** Raw address-book numbers as stored. Normalisation and hashing happen in the repository, after discovery. */
+        private fun readDeviceContactNumbers(contentResolver: ContentResolver): List<String> {
             val phoneNumbers = mutableSetOf<String>()
             val cursor =
                 contentResolver.query(
@@ -271,18 +271,10 @@ class ContactsViewModel
                 val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
                 while (it.moveToNext()) {
                     val number = it.getString(numberIndex)
-                    if (!number.isNullOrBlank()) {
-                        // Normalize: remove spaces, dashes, parens
-                        val normalized = number.replace(Regex("[\\s\\-()]+"), "")
-                        phoneNumbers.add(normalized)
-                    }
+                    if (!number.isNullOrBlank()) phoneNumbers.add(number)
                 }
             }
-            val digest = MessageDigest.getInstance("SHA-256")
-            return phoneNumbers.map { number ->
-                val hash = digest.digest(number.toByteArray(Charsets.UTF_8))
-                hash.joinToString("") { "%02x".format(it) }
-            }
+            return phoneNumbers.toList()
         }
     }
 
