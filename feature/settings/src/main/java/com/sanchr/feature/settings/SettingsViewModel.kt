@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -188,6 +189,30 @@ class SettingsViewModel
             loadSettingsFromBackend()
             loadStorageUsage()
             observeDebouncedSync()
+            restoreDisappearingDefault()
+        }
+
+        /**
+         * Seeds the in-memory selection from the persisted value so the radio
+         * button reflects what the send path will actually apply. Without it
+         * the screen always reopened on "Off" while messages kept expiring on
+         * the stored timer.
+         */
+        private fun restoreDisappearingDefault() {
+            viewModelScope.launch {
+                try {
+                    _disappearingMessagesDefault.value =
+                        disappearingLabelOf(userPreferences.disappearingDefaultSeconds.first())
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Unsupervised coroutine: a DataStore read failure, or a
+                    // flow that completes without emitting (first() then throws
+                    // NoSuchElementException), would otherwise take down the
+                    // process. Falling back to the "off" default only mis-shows
+                    // a radio button; the send path reads the store itself.
+                }
+            }
         }
 
         private fun loadSettingsFromBackend() {
@@ -343,6 +368,12 @@ class SettingsViewModel
 
         fun setDisappearingMessagesDefault(duration: String) {
             _disappearingMessagesDefault.value = duration
+            // Persist as seconds. Without this the choice lived only in this
+            // MutableStateFlow: it was lost on restart and, more importantly,
+            // the send path had nothing to read, so no message ever expired.
+            viewModelScope.launch {
+                userPreferences.setDisappearingDefaultSeconds(disappearingSecondsOf(duration))
+            }
         }
 
         // --- Security ---
@@ -640,6 +671,31 @@ sealed interface SettingsEvent {
         val message: String,
     ) : SettingsEvent
 }
+
+/**
+ * The Privacy screen's duration labels and their wire values in seconds.
+ * `0` is "off". Kept in one place so the label→seconds and seconds→label
+ * directions cannot drift apart.
+ */
+private val DISAPPEARING_DURATION_SECONDS =
+    linkedMapOf(
+        "off" to 0,
+        "30s" to 30,
+        "5m" to 5 * 60,
+        "1h" to 60 * 60,
+        "24h" to 24 * 60 * 60,
+        "7d" to 7 * 24 * 60 * 60,
+    )
+
+internal fun disappearingSecondsOf(label: String): Int = DISAPPEARING_DURATION_SECONDS[label] ?: 0
+
+/**
+ * Inverse of [disappearingSecondsOf]. An unrecognised stored value (e.g. one
+ * written by a future build with more options) falls back to "off" rather
+ * than silently selecting the wrong radio button.
+ */
+internal fun disappearingLabelOf(seconds: Int): String =
+    DISAPPEARING_DURATION_SECONDS.entries.firstOrNull { it.value == seconds }?.key ?: "off"
 
 private data class PrefsGroup(
     val themeMode: String,
