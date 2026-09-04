@@ -119,6 +119,7 @@ dependencies {
     testImplementation(libs.room.runtime)
     testImplementation(libs.room.ktx)
     testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.serialization.json)
 
     // androidTest — real SQLCipher-backed DB round-trip tests on device/emulator.
     androidTestImplementation(libs.androidx.test.ext.junit)

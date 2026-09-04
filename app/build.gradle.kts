@@ -202,6 +202,7 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
     androidTestImplementation(libs.junit.ext)
+    androidTestImplementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)

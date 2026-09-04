@@ -1,0 +1,60 @@
+{
+  "notes": [
+    "hash_to_point = RistrettoPoint::from_uniform_bytes(SHA-512(utf8(phone))). No DST, not RFC 9380.",
+    "server secret k = Scalar::from_bytes_mod_order_wide(HKDF-SHA512(ikm=root, info=\"sanchr-oprf-epoch-v1\" || epoch_le64)).",
+    "blinded = compress(r * H(phone)); evaluated = compress(k * decompress(blinded)); unblinded = compress(r^-1 * decompress(evaluated)).",
+    "set_element = compress(k * H(phone)); the protocol holds iff unblinded == set_element.",
+    "All *_hex fields are 32 bytes. On the wire they are raw protobuf bytes, never hex."
+  ],
+  "root_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+  "server_secrets": [
+    {
+      "epoch": 0,
+      "secret_hex": "1b7aa3b2619a9a807fc228d0f3ae5a826cee1d2d8c5acb967b9704f54c7e8d04"
+    },
+    {
+      "epoch": 7,
+      "secret_hex": "2d0081d4d67fbdfa7c3d3b188a40b2b118dc82f2c0f12f22fcd0e4f682971105"
+    }
+  ],
+  "suite": "sanchr-oprf-ristretto255-sha512-v1",
+  "vectors": [
+    {
+      "blinded_hex": "d63791bec7ff86b9aa6b00a3f0152a4b0deea7573019d188ba795f4ae5369d05",
+      "blinding_scalar_hex": "08319265522819b253f48435f5fdda458663f5ea9afbb3ed00aecbf2292d770f",
+      "evaluated_hex": "3e77fefb4801bc568e25bf3d060d8664ddca7f509dd230f1dbaa86e4c1fd0079",
+      "hash_to_point_hex": "fc632f6bfe108001d4dfaa1c1ecb53f3dd1c4826bf2b113c1ad18e5e12f1091d",
+      "phone": "+14155551234",
+      "set_element_hex": "64a4eca54f81dd26e121388db17de7343f98a3b13432db926ac56c2c3206410a",
+      "unblinded_hex": "64a4eca54f81dd26e121388db17de7343f98a3b13432db926ac56c2c3206410a"
+    },
+    {
+      "blinded_hex": "e8b270a8265e08d3711c74f0a13199833045363d5ae3b2341e5817da17801573",
+      "blinding_scalar_hex": "acd81a75cf2545ea81c8ce28ad9685cc61b4c792644581bc774bfdbd9b25fe01",
+      "evaluated_hex": "aa4771a337d46b1be882278412becc9b2c27c25796d378fc37049dc5a82e4a70",
+      "hash_to_point_hex": "1e6ca136eb41fd0f45ee6fb427ee5747f587d8a2db6759e0b07a8632af720152",
+      "phone": "+442071234567",
+      "set_element_hex": "ea9ccf18c1b6237090cb798ad89a293904197c8dbcd4077dc8cd8aa18aa8ae16",
+      "unblinded_hex": "ea9ccf18c1b6237090cb798ad89a293904197c8dbcd4077dc8cd8aa18aa8ae16"
+    },
+    {
+      "blinded_hex": "3a3a7e1c8068a393ce58be5cc5e45673f25833964b6317f1745442e07c423b0a",
+      "blinding_scalar_hex": "8f0e0c05a95c34f33b034d66768463845ef7784e0d005cb1127b86e07f436f06",
+      "evaluated_hex": "921101b05250000854b30ab205999abddce56c6747ac7386c131ff0b0024b05d",
+      "hash_to_point_hex": "30501fc45bc5b2c9a9bf6d4d037e4f4ffbf3cd34b1396a8de3b079ab507dd33e",
+      "phone": "+919876543210",
+      "set_element_hex": "92cafe3e99ac2f488f51dc1c932c3d4887e4b6aea6af4ec21ef79911454a830c",
+      "unblinded_hex": "92cafe3e99ac2f488f51dc1c932c3d4887e4b6aea6af4ec21ef79911454a830c"
+    },
+    {
+      "blinded_hex": "ce17b1ce59c99b5cd7b9dea4ca52afd59083e84353bec3b81aa8ce5aa7e4235b",
+      "blinding_scalar_hex": "9db1bb92156f6d2d638a2bbc377b742d6124d3e2a43a9b5e6212291fc2efaf00",
+      "evaluated_hex": "c0516abe74e6402de9585645f1b33e454fdbb2f0b5abc76f8fe449f817ff7865",
+      "hash_to_point_hex": "f63ee5b0b5f2f61d45ae3c4f018a45dc9a5476083d0fcfc7b246dcab468ec015",
+      "phone": "+12025550100",
+      "set_element_hex": "6e2440600906cc8b4580b32fcf7b40e309235c41133e5c0605eca280903d9e62",
+      "unblinded_hex": "6e2440600906cc8b4580b32fcf7b40e309235c41133e5c0605eca280903d9e62"
+    }
+  ],
+  "vectors_epoch": 7
+}
