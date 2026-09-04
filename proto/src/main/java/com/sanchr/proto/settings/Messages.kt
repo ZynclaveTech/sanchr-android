@@ -23,7 +23,11 @@ data class UserSettings(
     @SerialName("read_receipts_enabled") val readReceiptsEnabled: Boolean = true,
     @SerialName("typing_indicators_enabled") val typingIndicatorsEnabled: Boolean = true,
     @SerialName("online_status_visible") val onlineStatusVisible: Boolean = true,
-    @SerialName("profile_photo_visible") val profilePhotoVisible: Boolean = true,
+    // settings.proto declares `string profile_photo_visibility = 4`, and iOS
+    // sends "everyone" / "contacts" / "nobody". This was a Boolean under the
+    // name `profile_photo_visible`: wrong type and wrong field, so it could
+    // never have round-tripped once settings sync is wired up.
+    @SerialName("profile_photo_visibility") val profilePhotoVisibility: String = "everyone",
     @SerialName("about_visible") val aboutVisible: Boolean = true,
     @SerialName("sanchr_mode_enabled") val sanchrModeEnabled: Boolean = false,
     @SerialName("auto_download_media") val autoDownloadMedia: Boolean = true,

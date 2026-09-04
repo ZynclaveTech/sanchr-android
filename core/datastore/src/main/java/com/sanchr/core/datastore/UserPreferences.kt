@@ -41,6 +41,10 @@ class UserPreferences
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
             val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
             val TYPING_INDICATORS_ENABLED = booleanPreferencesKey("typing_indicators_enabled")
+
+            // "everyone", "contacts", "nobody" — the vocabulary in
+            // settings.proto's profile_photo_visibility, shared with iOS.
+            val PROFILE_PHOTO_VISIBILITY = stringPreferencesKey("profile_photo_visibility")
             val DISAPPEARING_DEFAULT_DURATION = intPreferencesKey("disappearing_default_duration_seconds")
             val FONT_SIZE_SCALE = intPreferencesKey("font_size_scale") // percentage: 80, 100, 120
             val MEDIA_AUTO_DOWNLOAD = stringPreferencesKey("media_auto_download") // "wifi", "always", "never"
@@ -101,6 +105,18 @@ class UserPreferences
          * presentation concern and are mapped at the settings layer.
          */
         val disappearingDefaultSeconds: Flow<Int> = dataStore.data.map { it[Keys.DISAPPEARING_DEFAULT_DURATION] ?: 0 }
+
+        /**
+         * Who may see the account's profile photo: "everyone", "contacts" or
+         * "nobody". A tri-state, not a boolean — collapsing it loses the
+         * "contacts" case, which is the whole point of the setting.
+         */
+        val profilePhotoVisibility: Flow<String> =
+            dataStore.data.map { it[Keys.PROFILE_PHOTO_VISIBILITY] ?: PROFILE_PHOTO_VISIBILITY_DEFAULT }
+
+        suspend fun setProfilePhotoVisibility(visibility: String) {
+            dataStore.edit { it[Keys.PROFILE_PHOTO_VISIBILITY] = visibility }
+        }
 
         suspend fun setDisappearingDefaultSeconds(seconds: Int) {
             dataStore.edit { it[Keys.DISAPPEARING_DEFAULT_DURATION] = seconds.coerceAtLeast(0) }
@@ -189,5 +205,10 @@ class UserPreferences
          */
         suspend fun clear() {
             dataStore.edit { it.clear() }
+        }
+
+        companion object {
+            /** Matches iOS's default and settings.proto's implicit empty-string case. */
+            const val PROFILE_PHOTO_VISIBILITY_DEFAULT = "everyone"
         }
     }

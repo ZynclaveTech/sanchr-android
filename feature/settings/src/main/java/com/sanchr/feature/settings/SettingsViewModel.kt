@@ -53,7 +53,7 @@ data class SettingsUiState(
     val readReceiptsEnabled: Boolean = true,
     val typingIndicatorsEnabled: Boolean = true,
     val onlineStatusVisible: Boolean = true,
-    val profilePhotoVisible: Boolean = true,
+    val profilePhotoVisibility: String = "everyone",
     val biometricEnabled: Boolean = false,
     val screenLockEnabled: Boolean = false,
     val screenLockTimeout: String = "immediately",
@@ -104,6 +104,7 @@ class SettingsViewModel
         private val _accountDeletion = MutableStateFlow<AccountDeletionState>(AccountDeletionState.Idle)
         val accountDeletion: StateFlow<AccountDeletionState> = _accountDeletion.asStateFlow()
         private val _disappearingMessagesDefault = MutableStateFlow("off")
+        private val _profilePhotoVisibility = MutableStateFlow("everyone")
         private val _lowDataMode = MutableStateFlow(false)
 
         private val _pendingSync = MutableStateFlow(0L)
@@ -138,8 +139,10 @@ class SettingsViewModel
                     combine(_backupConfiguration, _backupBusy) { backupConfiguration, backupBusy ->
                         BackupUiGroup(backupConfiguration, backupBusy)
                     },
-                ) { basic, backup ->
+                    _profilePhotoVisibility,
+                ) { basic, backup, photoVisibility ->
                     ExtrasGroup(
+                        profilePhotoVisibility = photoVisibility,
                         screenLockEnabled = basic.screenLockEnabled,
                         screenshotProtection = basic.screenshotProtection,
                         enterSendsMessage = basic.enterSendsMessage,
@@ -162,7 +165,7 @@ class SettingsViewModel
                     readReceiptsEnabled = prefs.readReceiptsEnabled,
                     typingIndicatorsEnabled = remote?.typingIndicatorsEnabled ?: true,
                     onlineStatusVisible = remote?.onlineStatusVisible ?: true,
-                    profilePhotoVisible = remote?.profilePhotoVisible ?: true,
+                    profilePhotoVisibility = extras.profilePhotoVisibility,
                     biometricEnabled = prefs.biometricEnabled,
                     screenLockEnabled = extras.screenLockEnabled,
                     screenshotProtection = extras.screenshotProtection,
@@ -203,6 +206,7 @@ class SettingsViewModel
                 try {
                     _disappearingMessagesDefault.value =
                         disappearingLabelOf(userPreferences.disappearingDefaultSeconds.first())
+                    _profilePhotoVisibility.value = userPreferences.profilePhotoVisibility.first()
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -361,8 +365,19 @@ class SettingsViewModel
             }
         }
 
-        fun setProfilePhotoVisible(visible: Boolean) {
-            _remoteSettings.update { it?.copy(profilePhotoVisible = visible) }
+        /**
+         * Persists locally first, like every sibling privacy toggle. The
+         * previous version only did `_remoteSettings.update { it?.copy(...) }`
+         * — and `_remoteSettings` is null whenever the backend load fails
+         * (SettingsService is an unwired stub today), so the `?.copy` was a
+         * no-op and the choice went nowhere at all.
+         */
+        fun setProfilePhotoVisibility(visibility: String) {
+            _profilePhotoVisibility.value = visibility
+            viewModelScope.launch {
+                userPreferences.setProfilePhotoVisibility(visibility)
+            }
+            _remoteSettings.update { it?.copy(profilePhotoVisibility = visibility) }
             triggerDebouncedSync()
         }
 
@@ -706,6 +721,7 @@ private data class PrefsGroup(
 )
 
 private data class ExtrasGroup(
+    val profilePhotoVisibility: String,
     val screenLockEnabled: Boolean,
     val screenshotProtection: Boolean,
     val enterSendsMessage: Boolean,
