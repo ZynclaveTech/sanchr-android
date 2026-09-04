@@ -13,6 +13,7 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 \
 ```
 
 Regenerate **together with** the golden vectors copied into
-`src/test/resources/oprf_vectors.json` and `src/androidTest/assets/oprf_vectors.json`
-— the binary and the vectors describe the same protocol version, and
-`OprfNativeTest` will fail on-device if they disagree.
+`core/crypto/src/test/resources/oprf_vectors.json` (host JVM test) and
+`app/src/androidTest/assets/oprf_vectors.json` (on-device smoke test) — the
+binary and the vectors describe the same protocol version, and
+`OprfNativeSmokeTest` will fail on-device if they disagree.

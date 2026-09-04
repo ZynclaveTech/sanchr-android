@@ -19,8 +19,9 @@ import org.junit.Assume.assumeTrue
  * property or the default sibling-checkout path. It is skipped — visibly, as
  * a JUnit assumption — when neither exists, so CI without a Rust toolchain
  * stays green while a developer with one gets a real proof of the marshalling
- * before anything is pushed. [OprfNativeTest] in `androidTest` runs the same
- * checks on the vendored `.so` on-device.
+ * before anything is pushed. `OprfNativeSmokeTest` in the app module's
+ * androidTest runs the same checks on the vendored `.so` on-device — it lives
+ * there, not here, because CI only executes the app's `@SmokeTest` suite.
  */
 class OprfNativeHostTest {
     private val vectors: List<OprfVector> by lazy {
