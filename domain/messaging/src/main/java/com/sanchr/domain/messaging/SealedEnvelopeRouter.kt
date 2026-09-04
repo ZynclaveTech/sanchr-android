@@ -22,6 +22,13 @@ sealed interface RoutedPayload {
         val contentType: String,
         val conversationId: String = "",
         val messageId: String? = null,
+        /**
+         * The sender's disappearing-message timer, in seconds, or null when
+         * the sender set none. Travels inside the envelope rather than the
+         * request so the server never learns it. Null for a legacy bare-text
+         * plaintext, which has nowhere to carry it.
+         */
+        val expiresAfterSecs: Long? = null,
     ) : RoutedPayload
 
     /**
@@ -89,6 +96,11 @@ object SealedEnvelopeRouter {
                 contentType = payload.contentType,
                 conversationId = payload.conversationId,
                 messageId = payload.messageId,
+                // Treat a non-positive timer as "no timer": the wire field is
+                // a plain int, so 0 is what a sender with the feature off
+                // emits, and a negative value is nonsense we must not turn
+                // into an already-past deadline.
+                expiresAfterSecs = payload.expiresAfterSecs?.takeIf { it > 0 },
             )
         }
     }

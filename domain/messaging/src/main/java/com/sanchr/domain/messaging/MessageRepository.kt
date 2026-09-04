@@ -219,6 +219,13 @@ interface MessageRepository {
         timestamp: Long,
         flushAckImmediately: Boolean = true,
         stageAck: Boolean = true,
+        /**
+         * Epoch millis at which this message self-destructs, or null when the
+         * sender set no timer. Already resolved by the caller against the
+         * server timestamp — see [ReceiveMessageUseCase] for why the deadline
+         * is not anchored to local arrival time.
+         */
+        expiresAtMillis: Long? = null,
     )
 
     /**

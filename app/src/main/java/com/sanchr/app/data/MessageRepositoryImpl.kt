@@ -229,6 +229,7 @@ class MessageRepositoryImpl
             timestamp: Long,
             flushAckImmediately: Boolean,
             stageAck: Boolean,
+            expiresAtMillis: Long?,
         ) {
             val entity =
                 MessageEntity(
@@ -239,6 +240,7 @@ class MessageRepositoryImpl
                     contentBody = content,
                     status = MessageStatus.DELIVERED.name,
                     timestamp = timestamp,
+                    expiresAt = expiresAtMillis,
                 )
             messageDao.insertMessage(entity)
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
