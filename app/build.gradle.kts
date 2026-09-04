@@ -117,6 +117,12 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        // Matches :domain:messaging and :feature:chats. Without it, any
+        // android.util.Log call on a tested path throws "not mocked".
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

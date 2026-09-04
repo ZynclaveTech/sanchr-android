@@ -425,6 +425,101 @@ class ReceiveMessageUseCaseTest {
             }
         }
 
+    @Test
+    fun `a blocked sender's message is dropped before it is written`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "let me back in".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "blocked-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+            coEvery { messageRepository.isSenderBlocked("blocked-uuid") } returns true
+
+            val result = useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            assertTrue(result is EnvelopeDecryptResult.Success)
+            // No row means no transcript entry, no conversation-list preview,
+            // no unread bump, and no notification (which is raised by
+            // observing inserted rows).
+            coVerify(exactly = 0) {
+                messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `a blocked sender's envelope is still acked so it is not redelivered forever`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "let me back in".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "blocked-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+            coEvery { messageRepository.isSenderBlocked("blocked-uuid") } returns true
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            // The block is ours, not the server's: it will keep redelivering
+            // until acked, and the queue would never drain.
+            coVerify(exactly = 1) {
+                messageRepository.ackEnvelope(
+                    conversationId = "env-conv",
+                    messageId = "env-msg",
+                    flushAckImmediately = any(),
+                )
+            }
+        }
+
+    @Test
+    fun `an unblocked sender is unaffected`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "hello".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+            coEvery { messageRepository.isSenderBlocked("alice-uuid") } returns false
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify(exactly = 1) {
+                messageRepository.insertDecryptedMessage(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    senderId = "alice-uuid",
+                    content = "hello",
+                    contentType = "text",
+                    timestamp = 42L,
+                    flushAckImmediately = false,
+                    stageAck = false,
+                    expiresAtMillis = null,
+                )
+            }
+        }
+
     private fun receiptPlaintext(
         messageId: String,
         status: String,

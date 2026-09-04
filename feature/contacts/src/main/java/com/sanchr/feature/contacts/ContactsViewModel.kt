@@ -5,12 +5,11 @@ import android.provider.ContactsContract
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sanchr.proto.contacts.BlockContactRequest
+import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.GetContactsRequest
 import com.sanchr.proto.contacts.SyncContactsRequest
-import com.sanchr.proto.contacts.UnblockContactRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -56,6 +55,7 @@ class ContactsViewModel
     @Inject
     constructor(
         private val contactServiceClient: ContactServiceClient,
+        private val contactRepository: ContactRepository,
     ) : ViewModel() {
         companion object {
             private const val TAG = "ContactsViewModel"
@@ -180,21 +180,26 @@ class ContactsViewModel
             }
         }
 
+        /**
+         * Blocking goes through [ContactRepository] so it is written to the
+         * contacts table, which is what `ReceiveMessageUseCase` reads to drop
+         * a blocked sender's messages. The previous path called the contact
+         * RPC directly and, on success, only mapped over an in-memory list —
+         * so nothing was ever persisted and nothing was ever enforced.
+         *
+         * The repository treats the server sync as best-effort, so a block
+         * takes effect on this device even while ContactService is unwired.
+         */
         fun blockContact(userId: String) {
             viewModelScope.launch {
                 try {
-                    val response =
-                        contactServiceClient.blockContact(
-                            BlockContactRequest(userId = userId),
-                        )
-                    if (response.success) {
-                        _allContacts.update { contacts ->
-                            contacts.map {
-                                if (it.userId == userId) it.copy(isBlocked = true) else it
-                            }
+                    contactRepository.setBlocked(userId, blocked = true)
+                    _allContacts.update { contacts ->
+                        contacts.map {
+                            if (it.userId == userId) it.copy(isBlocked = true) else it
                         }
-                        _events.emit(ContactsEvent.ContactBlocked)
                     }
+                    _events.emit(ContactsEvent.ContactBlocked)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to block contact", e)
                     _events.emit(ContactsEvent.Error("Failed to block contact"))
@@ -205,18 +210,13 @@ class ContactsViewModel
         fun unblockContact(userId: String) {
             viewModelScope.launch {
                 try {
-                    val response =
-                        contactServiceClient.unblockContact(
-                            UnblockContactRequest(userId = userId),
-                        )
-                    if (response.success) {
-                        _allContacts.update { contacts ->
-                            contacts.map {
-                                if (it.userId == userId) it.copy(isBlocked = false) else it
-                            }
+                    contactRepository.setBlocked(userId, blocked = false)
+                    _allContacts.update { contacts ->
+                        contacts.map {
+                            if (it.userId == userId) it.copy(isBlocked = false) else it
                         }
-                        _events.emit(ContactsEvent.ContactUnblocked)
                     }
+                    _events.emit(ContactsEvent.ContactUnblocked)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to unblock contact", e)
                     _events.emit(ContactsEvent.Error("Failed to unblock contact"))

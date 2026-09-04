@@ -247,36 +247,53 @@ class ReceiveMessageUseCase
                     }
                     messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
                 }
-                is RoutedPayload.UserMessage -> {
-                    // The row is keyed on the payload's own ids so that a
-                    // resend of the same logical message (e.g. after a local
-                    // DB write failed post-send) replaces the same row
-                    // instead of duplicating it — see InnerPayload.messageId.
-                    // A blank/absent payload id falls back to the envelope's.
-                    messageRepository.get().insertDecryptedMessage(
-                        conversationId = resolveId("conversation_id", routed.conversationId, ctx.conversationId),
-                        messageId = resolveId("message_id", routed.messageId, ctx.messageId),
-                        senderId = success.senderUserId,
-                        content = routed.content,
-                        contentType = routed.contentType,
-                        timestamp = success.serverTimestamp,
-                        // The real ack is staged below, keyed by the envelope's
-                        // own ids — not by whatever this call just used, so
-                        // suppress this call's own (possibly payload-keyed,
-                        // server-rejected) ack staging entirely.
-                        flushAckImmediately = false,
-                        stageAck = false,
-                        // Anchor the deadline to the server timestamp rather
-                        // than local arrival, matching iOS: a device that was
-                        // offline for a week must not grant itself a fresh
-                        // full lifetime on the messages it finally syncs.
-                        expiresAtMillis =
-                            routed.expiresAfterSecs?.let {
-                                success.serverTimestamp + it * MILLIS_PER_SECOND
-                            },
-                    )
-                    messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
-                }
+                is RoutedPayload.UserMessage ->
+                    if (messageRepository.get().isSenderBlocked(success.senderUserId)) {
+                        // The sender is only knowable here, after decryption:
+                        // a sealed envelope carries no sender the server can
+                        // read, so the server-side block cannot apply to 1:1
+                        // chats and this is the last place that can.
+                        //
+                        // Dropped before it is written, so a blocked contact
+                        // leaves no trace in the transcript, the conversation
+                        // list, or an unread count — and no notification, which
+                        // is raised by observing inserted rows.
+                        //
+                        // Still acked: the block is ours, not the server's, so
+                        // without an ack the envelope is redelivered forever and
+                        // the queue never drains.
+                        Log.d(TAG, "message from blocked sender suppressed; envelope acked")
+                        messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
+                    } else {
+                        // The row is keyed on the payload's own ids so that a
+                        // resend of the same logical message (e.g. after a local
+                        // DB write failed post-send) replaces the same row
+                        // instead of duplicating it — see InnerPayload.messageId.
+                        // A blank/absent payload id falls back to the envelope's.
+                        messageRepository.get().insertDecryptedMessage(
+                            conversationId = resolveId("conversation_id", routed.conversationId, ctx.conversationId),
+                            messageId = resolveId("message_id", routed.messageId, ctx.messageId),
+                            senderId = success.senderUserId,
+                            content = routed.content,
+                            contentType = routed.contentType,
+                            timestamp = success.serverTimestamp,
+                            // The real ack is staged below, keyed by the envelope's
+                            // own ids — not by whatever this call just used, so
+                            // suppress this call's own (possibly payload-keyed,
+                            // server-rejected) ack staging entirely.
+                            flushAckImmediately = false,
+                            stageAck = false,
+                            // Anchor the deadline to the server timestamp rather
+                            // than local arrival, matching iOS: a device that was
+                            // offline for a week must not grant itself a fresh
+                            // full lifetime on the messages it finally syncs.
+                            expiresAtMillis =
+                                routed.expiresAfterSecs?.let {
+                                    success.serverTimestamp + it * MILLIS_PER_SECOND
+                                },
+                        )
+                        messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
+                    }
                 RoutedPayload.Ignored -> {
                     // No rule produces this today (see RoutedPayload.Ignored);
                     // logged rather than silently swallowed so a future

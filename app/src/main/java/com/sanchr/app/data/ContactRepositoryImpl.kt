@@ -1,5 +1,6 @@
 package com.sanchr.app.data
 
+import android.util.Log
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.model.User
@@ -12,6 +13,7 @@ import com.sanchr.proto.contacts.UnblockContactRequest
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
@@ -58,15 +60,34 @@ class ContactRepositoryImpl
             }
         }
 
+        /**
+         * The local write is authoritative; the server call is best-effort.
+         *
+         * The server enforces blocking keyed on the sender, which it cannot
+         * read from a sealed envelope — so for 1:1 chats the block is applied
+         * on this device by `ReceiveMessageUseCase` regardless of what the
+         * server knows. Letting an RPC failure propagate would therefore fail
+         * the *only* enforcement that actually works, which is backwards.
+         *
+         * A failed sync leaves the server unaware, which costs nothing for
+         * sealed 1:1 traffic and self-corrects whenever the call next
+         * succeeds.
+         */
         override suspend fun setBlocked(
             userId: String,
             blocked: Boolean,
         ) {
             contactDao.setBlocked(userId, blocked)
-            if (blocked) {
-                contactClient.blockContact(BlockContactRequest(userId = userId))
-            } else {
-                contactClient.unblockContact(UnblockContactRequest(userId = userId))
+            try {
+                if (blocked) {
+                    contactClient.blockContact(BlockContactRequest(userId = userId))
+                } else {
+                    contactClient.unblockContact(UnblockContactRequest(userId = userId))
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                Log.w(TAG, "block state not synced to the server; enforced locally", error)
             }
         }
 
@@ -146,4 +167,8 @@ class ContactRepositoryImpl
                 publicKeyFingerprint = null,
                 createdAt = Instant.fromEpochMilliseconds(lastSyncedAt ?: 0L),
             )
+
+        private companion object {
+            private const val TAG = "ContactRepository"
+        }
     }

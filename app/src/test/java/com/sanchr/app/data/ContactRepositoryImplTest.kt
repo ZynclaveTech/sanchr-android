@@ -162,7 +162,70 @@ class ContactRepositoryImplTest {
             }
         }
 
+    @Test
+    fun `blocking is written locally even when the server call fails`() =
+        runTest {
+            val dao = RecordingContactDao()
+            val repo = ContactRepositoryImpl(contactClient = BlockRejectingClient(), contactDao = dao)
+
+            repo.setBlocked("peer-uuid", blocked = true)
+
+            // The local row is what ReceiveMessageUseCase reads to drop a
+            // blocked sender, and for sealed 1:1 traffic the server cannot
+            // enforce the block at all — so a failed sync must not undo or
+            // prevent the only enforcement that works.
+            assertEquals(listOf("peer-uuid" to true), dao.blockWrites)
+        }
+
+    @Test
+    fun `a failed block sync does not surface as an error to the caller`() =
+        runTest {
+            val repo = ContactRepositoryImpl(contactClient = BlockRejectingClient(), contactDao = RecordingContactDao())
+
+            // Does not throw.
+            repo.setBlocked("peer-uuid", blocked = true)
+            repo.setBlocked("peer-uuid", blocked = false)
+        }
+
+    @Test
+    fun `unblocking is written locally too`() =
+        runTest {
+            val dao = RecordingContactDao()
+            val repo = ContactRepositoryImpl(contactClient = BlockRejectingClient(), contactDao = dao)
+
+            repo.setBlocked("peer-uuid", blocked = false)
+
+            assertEquals(listOf("peer-uuid" to false), dao.blockWrites)
+        }
+
     // ── Test doubles ──────────────────────────────────────────────────────
+
+    /** Records every local block-state write. */
+    private class RecordingContactDao : NoOpContactDao() {
+        val blockWrites = mutableListOf<Pair<String, Boolean>>()
+
+        override suspend fun setBlocked(
+            contactId: String,
+            isBlocked: Boolean,
+        ) {
+            blockWrites += contactId to isBlocked
+        }
+    }
+
+    /** Stands in for the unwired ContactService: both block RPCs fail. */
+    private class BlockRejectingClient : ContactServiceClient {
+        override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse = error("not used in test")
+
+        override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse = error("not used in test")
+
+        override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse =
+            throw NotImplementedError("ContactService not wired yet")
+
+        override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse =
+            throw NotImplementedError("ContactService not wired yet")
+
+        override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse = error("not used in test")
+    }
 
     /**
      * Captures every SyncContacts request and returns a canned response.
@@ -206,7 +269,9 @@ class ContactRepositoryImplTest {
      * ContactDao is only referenced for the other repo methods. lookupByPhone
      * never touches it, so every method here errors loudly if called.
      */
-    private class NoOpContactDao : ContactDao {
+    private open class NoOpContactDao : ContactDao {
+        override suspend fun isBlocked(contactId: String): Boolean? = null
+
         override fun observeContacts(): Flow<List<ContactEntity>> = emptyFlow()
 
         override fun observeRegisteredContacts(): Flow<List<ContactEntity>> = emptyFlow()

@@ -1,5 +1,6 @@
 package com.sanchr.app.data
 
+import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
@@ -36,6 +37,7 @@ class MessageRepositoryImpl
         private val messageDao: MessageDao,
         private val conversationDao: ConversationDao,
         private val pendingMessageAckDao: PendingMessageAckDao,
+        private val contactDao: ContactDao,
         private val sessionManager: SessionManager,
     ) : MessageRepository {
         override fun observeConversations(): Flow<List<Conversation>> =
@@ -52,6 +54,8 @@ class MessageRepositoryImpl
             messageDao.observeMessages(conversationId).map { entities ->
                 entities.map { it.toDomain() }
             }
+
+        override suspend fun isSenderBlocked(senderId: String): Boolean = contactDao.isBlocked(senderId) == true
 
         override suspend fun conversationDisappearingSeconds(conversationId: String): Long? =
             conversationDao

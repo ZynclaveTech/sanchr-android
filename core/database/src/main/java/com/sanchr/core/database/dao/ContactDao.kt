@@ -62,6 +62,14 @@ interface ContactDao {
     @Update
     suspend fun updateContact(contact: ContactEntity)
 
+    /**
+     * Whether this contact is blocked; null when no such row exists (an
+     * unknown sender, who is by definition not blocked). Keyed on `id` to
+     * match [setBlocked], which writes on the same column.
+     */
+    @Query("SELECT is_blocked FROM contacts WHERE id = :contactId")
+    suspend fun isBlocked(contactId: String): Boolean?
+
     @Query("UPDATE contacts SET is_blocked = :isBlocked WHERE id = :contactId")
     suspend fun setBlocked(
         contactId: String,

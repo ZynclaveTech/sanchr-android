@@ -48,6 +48,19 @@ interface MessageRepository {
     suspend fun conversationDisappearingSeconds(conversationId: String): Long?
 
     /**
+     * Whether messages from [senderId] must be dropped.
+     *
+     * The server enforces blocking keyed on the sender, which it knows only
+     * for the standard path. A sealed message carries no sender the server
+     * can read — that is the point of sealed sending — so for 1:1 chats,
+     * which use it whenever available, the client is the only place left
+     * that can apply the block.
+     *
+     * An unknown sender is not blocked.
+     */
+    suspend fun isSenderBlocked(senderId: String): Boolean
+
+    /**
      * Atomically bumps the `attempts` counter, stamps `last_attempt_at`,
      * and sets the status to [newStatus]. Returns the row's `attempts`
      * value *after* the increment so callers can decide whether to
