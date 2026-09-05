@@ -1,39 +1,42 @@
 package com.sanchr.proto.media
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
+/** Mirrors `sanchr.media.MediaPurpose`: controls the object's ACL and storage path. */
+enum class MediaPurpose {
+    /** E2EE message attachment — private, presigned access only. */
+    ATTACHMENT,
 
-@Serializable
+    /** Profile avatar — public-read via the CDN. */
+    AVATAR,
+}
+
 data class GetUploadUrlRequest(
-    @SerialName("file_name") val fileName: String = "",
-    @SerialName("content_type") val contentType: String = "",
-    @SerialName("size_bytes") val sizeBytes: Long = 0L,
-    val purpose: String = "",
+    val fileSize: Long,
+    /** MIME type of the bytes that will be PUT, e.g. `image/jpeg`. */
+    val contentType: String,
+    /** Hex SHA-256 of the bytes that will be PUT (the *encrypted* blob for attachments); the server dedups on it. */
+    val sha256Hex: String = "",
+    val purpose: MediaPurpose = MediaPurpose.ATTACHMENT,
 )
 
-@Serializable
 data class GetDownloadUrlRequest(
-    @SerialName("media_id") val mediaId: String = "",
+    val mediaId: String,
 )
 
-@Serializable
 data class PresignedUrlResponse(
-    val url: String = "",
-    @SerialName("media_id") val mediaId: String = "",
-    @SerialName("expires_at") val expiresAt: Long = 0L,
-    val headers: Map<String, String> = emptyMap(),
+    /** Presigned PUT (upload) or GET (download) URL. */
+    val url: String,
+    val mediaId: String,
+    /** Seconds until [url] stops working. */
+    val expiresInSecs: Long,
+    /** Permanent CDN URL for display; empty when no CDN is configured, and may be a relative path. */
+    val displayUrl: String,
 )
 
-@Serializable
 data class ConfirmUploadRequest(
-    @SerialName("media_id") val mediaId: String = "",
-    @SerialName("size_bytes") val sizeBytes: Long = 0L,
-    @SerialName("checksum_sha256") val checksumSha256: String = "",
+    val mediaId: String,
+    val fileSize: Long,
 )
 
-@Serializable
 data class ConfirmUploadResponse(
-    val success: Boolean = false,
-    @SerialName("media_url") val mediaUrl: String = "",
-    @SerialName("thumbnail_url") val thumbnailUrl: String = "",
+    val mediaId: String,
 )

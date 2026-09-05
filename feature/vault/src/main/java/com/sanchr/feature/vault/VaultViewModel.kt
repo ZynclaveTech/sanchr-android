@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.proto.media.GetUploadUrlRequest
+import com.sanchr.proto.media.MediaPurpose
 import com.sanchr.proto.media.MediaServiceClient
 import com.sanchr.proto.vault.DeleteVaultItemRequest
 import com.sanchr.proto.vault.GetVaultItemsRequest
@@ -220,10 +221,9 @@ class VaultViewModel
                     val presigned =
                         mediaServiceClient.getUploadUrl(
                             GetUploadUrlRequest(
-                                fileName = fileName,
+                                fileSize = sizeBytes,
                                 contentType = contentType,
-                                sizeBytes = sizeBytes,
-                                purpose = "vault",
+                                purpose = MediaPurpose.ATTACHMENT,
                             ),
                         )
                     _uploadProgress.value = 0.3f
