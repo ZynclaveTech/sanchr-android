@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.Configuration
 import androidx.work.ListenableWorker
+import androidx.work.WorkManager
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.sanchr.sync.MessageDrainWorker
 import com.sanchr.sync.SendRetryWorker
@@ -70,5 +71,42 @@ class HiltWorkersSmokeTest {
             }
 
         assertEquals("workers the app's factory could not build:\n${failures.joinToString("\n")}", 0, failures.size)
+    }
+
+    /**
+     * The factory WorkManager is *actually running with*, not the one the
+     * Application would hand over if asked.
+     *
+     * The test above asks `SanchrApp` for its configuration directly, so it
+     * passes whenever the object graph is sound — even when WorkManager was
+     * already initialized with a different configuration and never consults
+     * that object again. That is precisely what happened: an App Startup
+     * initializer named WorkManagerInitializer as a dependency, App Startup
+     * ran it from a ContentProvider before Application.onCreate, and
+     * WorkManager was pinned to its default configuration with the default
+     * factory. Every @HiltWorker then failed to construct on device while
+     * this file stayed green.
+     */
+    @Test
+    fun workManagerIsRunningWithTheHiltFactoryNotTheDefaultOne() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val installed = WorkManager.getInstance(context).configuration.workerFactory
+
+        val failures =
+            workers.mapNotNull { cls ->
+                runCatching {
+                    TestListenableWorkerBuilder
+                        .from(context, cls)
+                        .setWorkerFactory(installed)
+                        .build()
+                }.exceptionOrNull()?.let { "${cls.simpleName}: $it" }
+            }
+
+        assertEquals(
+            "WorkManager is running with a factory that cannot build these workers, " +
+                "so they never run on a real device:\n${failures.joinToString("\n")}",
+            0,
+            failures.size,
+        )
     }
 }

@@ -114,15 +114,6 @@
             </intent-filter>
         </receiver>
 
-        <!--
-            App Startup: SyncInitializer schedules periodic background sync
-            automatically when the application process starts. The provider
-            merges with any other Initializers declared in library modules.
-
-            Because SanchrApp implements Configuration.Provider for custom
-            WorkManager initialization via HiltWorkerFactory, the default
-            WorkManagerInitializer is removed to prevent double-init.
-        -->
         <!-- Read-only, per-URI grants for decrypted vault items handed to a viewer. -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -139,11 +130,18 @@
             android:authorities="${applicationId}.androidx-startup"
             android:exported="false"
             tools:node="merge">
-            <meta-data
-                android:name="com.sanchr.sync.SyncInitializer"
-                android:value="androidx.startup" />
-            <!-- Remove default WorkManager initializer since SanchrApp provides
-                 a custom Configuration via Configuration.Provider -->
+            <!--
+                Remove the default WorkManager initializer: SanchrApp supplies
+                the Configuration carrying HiltWorkerFactory, and on-demand
+                initialization asks for it at the first getInstance() call.
+
+                Periodic work is NOT scheduled from an App Startup initializer.
+                Initializers run from a ContentProvider, before
+                Application.onCreate, so Hilt has not injected the factory yet;
+                an initializer that touched WorkManager there would pin the
+                default configuration and every @HiltWorker would fail to
+                construct for the life of the process.
+            -->
             <meta-data
                 android:name="androidx.work.WorkManagerInitializer"
                 android:value="androidx.startup"
