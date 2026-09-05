@@ -43,9 +43,34 @@ data class VaultStats(
     val fileCount: Int = 0,
 )
 
+/** How the vault list is ordered, the same six orders iOS `VaultViewModel.SortOrder` offers. */
+enum class VaultSort(
+    val label: String,
+) {
+    NEWEST("Newest first"),
+    OLDEST("Oldest first"),
+    NAME_ASCENDING("Name (A → Z)"),
+    NAME_DESCENDING("Name (Z → A)"),
+    SIZE_LARGEST("Size (largest)"),
+    SIZE_SMALLEST("Size (smallest)"),
+    ;
+
+    /** Applies this order. Names compare case-insensitively, as iOS's localized standard compare does. */
+    fun sort(items: List<VaultItem>): List<VaultItem> =
+        when (this) {
+            NEWEST -> items.sortedByDescending { it.createdAt }
+            OLDEST -> items.sortedBy { it.createdAt }
+            NAME_ASCENDING -> items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+            NAME_DESCENDING -> items.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name })
+            SIZE_LARGEST -> items.sortedByDescending { it.sizeBytes }
+            SIZE_SMALLEST -> items.sortedBy { it.sizeBytes }
+        }
+}
+
 data class VaultUiState(
     val items: List<VaultItem> = emptyList(),
     val filter: VaultFilter = VaultFilter.ALL,
+    val sort: VaultSort = VaultSort.NEWEST,
     val stats: VaultStats = VaultStats(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -77,6 +102,7 @@ class VaultViewModel
         private val _filter = MutableStateFlow(VaultFilter.ALL)
         private val _isLoading = MutableStateFlow(true)
         private val _isRefreshing = MutableStateFlow(false)
+        private val _sort = MutableStateFlow(VaultSort.NEWEST)
         private val _isUploading = MutableStateFlow(false)
         private val _errorMessage = MutableStateFlow<String?>(null)
         private val _nextCursor = MutableStateFlow("")
@@ -87,10 +113,16 @@ class VaultViewModel
         val events = _events.asSharedFlow()
 
         val uiState: StateFlow<VaultUiState> =
-            combine(_allItems, _filter, _isLoading, _isRefreshing, _isUploading) { items, filter, loading, refreshing, uploading ->
+            combine(
+                combine(_allItems, _filter, _sort) { items, filter, sort -> Triple(items, filter, sort) },
+                _isLoading,
+                _isRefreshing,
+                _isUploading,
+            ) { (items, filter, sort), loading, refreshing, uploading ->
                 VaultUiState(
-                    items = items.filter(filter::accepts),
+                    items = sort.sort(items.filter(filter::accepts)),
                     filter = filter,
+                    sort = sort,
                     stats =
                         VaultStats(
                             photoCount = items.count { it.type == VaultItemType.PHOTO },
@@ -115,6 +147,10 @@ class VaultViewModel
 
         fun setFilter(filter: VaultFilter) {
             _filter.value = filter
+        }
+
+        fun setSort(sort: VaultSort) {
+            _sort.value = sort
         }
 
         fun refresh() {
