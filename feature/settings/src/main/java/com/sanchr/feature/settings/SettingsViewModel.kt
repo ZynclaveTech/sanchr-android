@@ -358,6 +358,14 @@ class SettingsViewModel
             }
         }
 
+        /** Local-only, like iOS's app-storage flag; nothing to sync. */
+        val linkPreviewsEnabled: StateFlow<Boolean> =
+            userPreferences.linkPreviewsEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+        fun setLinkPreviewsEnabled(enabled: Boolean) {
+            viewModelScope.launch { userPreferences.setLinkPreviewsEnabled(enabled) }
+        }
+
         fun setOnlineStatusVisible(visible: Boolean) {
             viewModelScope.launch {
                 userPreferences.setOnlineStatusVisible(visible)
