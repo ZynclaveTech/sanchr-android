@@ -34,6 +34,13 @@ interface VaultRepository {
 
     suspend fun deleteItem(itemId: String)
 
+    /**
+     * Fetches and decrypts [item]'s payload. Throws when this device no
+     * longer holds the item's key (it is sealed) or the ciphertext fails
+     * authentication.
+     */
+    suspend fun download(item: VaultItem): ByteArray
+
     companion object {
         const val DEFAULT_PAGE_SIZE = 30
     }

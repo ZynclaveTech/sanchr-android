@@ -41,6 +41,8 @@ class AvatarUploaderTest {
         var contentType: String? = null
         var headers: Map<String, String> = emptyMap()
 
+        override suspend fun get(url: String): ByteArray = error("not used")
+
         override suspend fun put(
             url: String,
             bytes: ByteArray,

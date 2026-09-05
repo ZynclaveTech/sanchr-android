@@ -80,6 +80,8 @@ class VaultViewModel
         private val _isUploading = MutableStateFlow(false)
         private val _errorMessage = MutableStateFlow<String?>(null)
         private val _nextCursor = MutableStateFlow("")
+        private val _openingId = MutableStateFlow<String?>(null)
+        val openingId: StateFlow<String?> = _openingId
 
         private val _events = MutableSharedFlow<VaultEvent>()
         val events = _events.asSharedFlow()
@@ -166,6 +168,24 @@ class VaultViewModel
             }
         }
 
+        /** Downloads and decrypts [item]; the screen presents the bytes. */
+        fun openItem(item: VaultItem) {
+            if (_openingId.value != null) return
+            _openingId.value = item.id
+            viewModelScope.launch {
+                try {
+                    _events.emit(VaultEvent.Opened(item, vaultRepository.download(item)))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to open vault item", e)
+                    _events.emit(VaultEvent.Error("Could not open item"))
+                } finally {
+                    _openingId.value = null
+                }
+            }
+        }
+
         fun deleteItem(itemId: String) {
             viewModelScope.launch {
                 try {
@@ -186,6 +206,12 @@ sealed interface VaultEvent {
     data object ItemAdded : VaultEvent
 
     data object ItemDeleted : VaultEvent
+
+    /** The decrypted payload of [item], ready to present. */
+    class Opened(
+        val item: VaultItem,
+        val bytes: ByteArray,
+    ) : VaultEvent
 
     data class Error(
         val message: String,

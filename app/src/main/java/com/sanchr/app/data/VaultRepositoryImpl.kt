@@ -13,6 +13,7 @@ import com.sanchr.core.network.media.BlobStore
 import com.sanchr.domain.vault.VaultPage
 import com.sanchr.domain.vault.VaultRepository
 import com.sanchr.proto.media.ConfirmUploadRequest
+import com.sanchr.proto.media.GetDownloadUrlRequest
 import com.sanchr.proto.media.GetUploadUrlRequest
 import com.sanchr.proto.media.MediaPurpose
 import com.sanchr.proto.media.MediaServiceClient
@@ -140,6 +141,19 @@ class VaultRepositoryImpl
         override suspend fun deleteItem(itemId: String) {
             vaultClient.deleteVaultItem(DeleteVaultItemRequest(itemId))
             accessKeyStore.delete(itemId)
+        }
+
+        override suspend fun download(item: VaultItem): ByteArray {
+            val key = accessKeyStore.getAndTouch(item.id) ?: throw VaultException("vault item ${item.id} is sealed on this device")
+            val presigned = mediaClient.getDownloadUrl(GetDownloadUrlRequest(item.mediaId))
+            val ciphertext = blobStore.get(presigned.url)
+            return try {
+                MediaEncryptor.openCombined(ciphertext, key)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw VaultException("vault item ${item.id} failed to decrypt", e)
+            }
         }
 
         private fun ProtoVaultItem.toDomain(metadata: VaultItemMetadata): VaultItem =

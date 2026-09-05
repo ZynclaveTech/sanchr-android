@@ -1,5 +1,8 @@
 package com.sanchr.feature.vault
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -44,6 +47,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -61,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -71,6 +77,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.model.VaultItem
 import com.sanchr.core.model.VaultItemType
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,6 +92,22 @@ fun VaultScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val pickFile = rememberVaultFilePicker(onPicked = viewModel::addToVault)
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is VaultEvent.Opened -> {
+                    if (!presentDecryptedItem(context, event.item, event.bytes)) {
+                        snackbarHostState.showSnackbar("No app can open ${event.item.mimeType}")
+                    }
+                }
+                is VaultEvent.Error -> snackbarHostState.showSnackbar(event.message)
+                VaultEvent.ItemAdded -> snackbarHostState.showSnackbar("Added to vault")
+                VaultEvent.ItemDeleted -> snackbarHostState.showSnackbar("Removed from vault")
+            }
+        }
+    }
 
     // Pagination: load more when near end
     val shouldLoadMore by remember {
@@ -115,6 +138,7 @@ fun VaultScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { pickFile.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
@@ -224,6 +248,7 @@ fun VaultScreen(
                         ) { item ->
                             VaultItemCard(
                                 item = item,
+                                onOpen = { viewModel.openItem(item) },
                                 onDelete = { viewModel.deleteItem(item.id) },
                                 modifier =
                                     Modifier.padding(
@@ -374,10 +399,11 @@ private fun FilterChipsRow(
 @Composable
 private fun VaultItemCard(
     item: VaultItem,
+    onOpen: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SanchrCard(modifier = modifier) {
+    SanchrCard(modifier = modifier, onClick = onOpen) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier =
@@ -584,5 +610,35 @@ private fun rememberVaultFilePicker(onPicked: (PickedFile) -> Unit): ManagedActi
                 }
             if (picked != null) onPicked(picked)
         }
+    }
+}
+
+/**
+ * Writes the decrypted bytes to this app's private cache and hands them to
+ * a viewer through the app's FileProvider (read-only, this one URI). The
+ * plaintext exists on disk only in the sandbox, only while viewed.
+ *
+ * @return false when no installed app handles the item's type.
+ */
+private suspend fun presentDecryptedItem(
+    context: Context,
+    item: VaultItem,
+    bytes: ByteArray,
+): Boolean {
+    val file =
+        withContext(Dispatchers.IO) {
+            val dir = File(context.cacheDir, "vault").apply { mkdirs() }
+            File(dir, "${item.id}-${File(item.name).name}").apply { writeBytes(bytes) }
+        }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent =
+        Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, item.mimeType)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    return try {
+        context.startActivity(intent)
+        true
+    } catch (e: ActivityNotFoundException) {
+        false
     }
 }
