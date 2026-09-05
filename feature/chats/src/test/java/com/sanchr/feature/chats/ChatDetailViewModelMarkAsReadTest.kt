@@ -89,7 +89,11 @@ class ChatDetailViewModelMarkAsReadTest {
             sessionManager = sessionManager,
             realtimeManager = realtimeManager,
             notificationHandler = notificationHandler,
-            userPreferences = mockk { every { linkPreviewsEnabled } returns flowOf(true) },
+            userPreferences =
+                mockk {
+                    every { linkPreviewsEnabled } returns flowOf(true)
+                    every { screenshotProtectionEnabled } returns flowOf(true)
+                },
             linkPreviewFetcher = mockk(relaxed = true),
         )
 

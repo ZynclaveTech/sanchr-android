@@ -80,4 +80,17 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_9_to_10_adds_identity_verified_at() {
+        helper.createDatabase("migration-test-10", 9).close()
+        helper.runMigrationsAndValidate("migration-test-10", 10, true, DatabaseModule.migration9To10).use { db ->
+            db.query("PRAGMA table_info(`signal_identities`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(columns == listOf("address", "identity_key", "trust_level", "first_seen_at", "verified_at")) {
+                    "unexpected signal_identities columns: $columns"
+                }
+            }
+        }
+    }
 }

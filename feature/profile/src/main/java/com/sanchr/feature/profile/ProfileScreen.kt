@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -81,6 +82,8 @@ fun ProfileScreen(
     onNavigateBack: () -> Unit,
     onOpenConversation: (conversationId: String) -> Unit,
     onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
+    /** Opens this contact's safety number, labelled with their display name. */
+    onVerifySafetyNumber: (displayName: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
@@ -330,6 +333,13 @@ fun ProfileScreen(
                         label = "Video",
                         onClick = { onStartCall(userId, uiState.displayName, true) },
                     )
+                }
+
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
+                TextButton(onClick = { onVerifySafetyNumber(uiState.displayName) }) {
+                    Icon(imageVector = Icons.Filled.Verified, contentDescription = null)
+                    Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
+                    Text("Verify security code")
                 }
 
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))

@@ -268,6 +268,10 @@ class SanchrIdentityKeyStore
                     identityKey = newBytes,
                     trustLevel = TRUST_LEVEL_TRUSTED,
                     firstSeenAt = existing?.firstSeenAt ?: System.currentTimeMillis(),
+                    // A manual verification vouches for one specific key. When
+                    // the key changes the old comparison proves nothing, so the
+                    // badge is dropped and the user has to compare again.
+                    verifiedAt = if (changed) null else existing?.verifiedAt,
                 ),
             )
 
@@ -303,6 +307,30 @@ class SanchrIdentityKeyStore
             identityDao.deleteAllBlocking()
             accountDao.deleteAllBlocking()
         }
+
+        // ------------------------------------------------------------------
+        // Manual safety-number verification
+        // ------------------------------------------------------------------
+
+        /**
+         * Records that the local user compared safety numbers with [address]
+         * and they matched. No-op when the identity is unknown, so a caller
+         * cannot mark a contact verified before a session exists.
+         */
+        fun markVerified(
+            address: SignalProtocolAddress,
+            atMillis: Long = System.currentTimeMillis(),
+        ) {
+            identityDao.setVerifiedAtBlocking(address.toRoomKey(), atMillis)
+        }
+
+        /** Revokes a manual verification, e.g. after a scan that did not match. */
+        fun clearVerified(address: SignalProtocolAddress) {
+            identityDao.setVerifiedAtBlocking(address.toRoomKey(), null)
+        }
+
+        /** When [address] was verified, or null if it never was. */
+        fun verifiedAtMillis(address: SignalProtocolAddress): Long? = identityDao.getBlocking(address.toRoomKey())?.verifiedAt
 
         private companion object {
             const val TRUST_LEVEL_TRUSTED = 1

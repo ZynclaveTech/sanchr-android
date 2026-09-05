@@ -62,7 +62,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -319,6 +319,18 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * Adds the manual safety-number verification timestamp. Nullable, so every
+     * pre-existing identity starts out unverified rather than silently
+     * inheriting a verification the user never performed.
+     */
+    internal val migration9To10 =
+        object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `signal_identities` ADD COLUMN `verified_at` INTEGER DEFAULT NULL")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -351,6 +363,7 @@ object DatabaseModule {
                     migration6To7,
                     migration7To8,
                     migration8To9,
+                    migration9To10,
                 ).build()
         }
     }

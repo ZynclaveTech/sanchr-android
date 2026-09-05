@@ -20,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +35,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.sanchr.core.designsystem.component.SanchrButton
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -46,7 +47,9 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 fun EncryptionKeysScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: EncryptionKeysViewModel = hiltViewModel(),
 ) {
+    val fingerprintBlocks by viewModel.fingerprintBlocks.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
             SanchrTopBar(
@@ -99,29 +102,19 @@ fun EncryptionKeysScreen(
 
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
-                    // 12-block hex grid (4 rows x 3 columns)
-                    val fingerprintBlocks =
-                        listOf(
-                            "05ae72",
-                            "b31c0f",
-                            "d894a2",
-                            "71fe6b",
-                            "39c5d8",
-                            "a20e47",
-                            "f8b163",
-                            "6d2c95",
-                            "1e74ba",
-                            "c309f6",
-                            "87d41a",
-                            "5b0e2c",
+                    if (fingerprintBlocks.isEmpty()) {
+                        Text(
+                            text = "Your key isn't available yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-
+                    }
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
                         verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
                     ) {
-                        fingerprintBlocks.forEachIndexed { index, block ->
+                        fingerprintBlocks.forEach { block ->
                             Box(
                                 modifier =
                                     Modifier
@@ -147,55 +140,31 @@ fun EncryptionKeysScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
 
-            // QR Code section
-            Text(
-                text = "Safety Number QR Code",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-
-            Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-
+            // Per-contact verification lives in each conversation. A safety
+            // number is computed from two identity keys, so this account-level
+            // screen has no second key to pair with and cannot show one. It
+            // used to draw a QR icon over a grey square above a button that did
+            // nothing; pointing at the screen that does the work is the honest
+            // replacement.
             SanchrCard {
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .padding(SanchrTheme.spacing.default),
-                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // QR code placeholder
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(160.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.QrCode,
-                            contentDescription = "Safety number QR code",
-                            modifier = Modifier.size(80.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-
                     Text(
-                        text = "Scan this code with a contact to verify your safety number",
+                        text = "Verify a contact",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
+                    Text(
+                        text =
+                            "Security codes are shared between two people. Open a contact's profile and " +
+                                "tap Verify security code to compare or scan theirs.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-
-                    Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-
-                    SanchrButton(
-                        text = "Scan QR Code",
-                        onClick = { /* open scanner */ },
                     )
                 }
             }

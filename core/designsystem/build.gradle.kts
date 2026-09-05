@@ -37,12 +37,24 @@ dependencies {
     api(libs.compose.foundation)
     api(libs.compose.animation)
 
+    // The safety-number scanner: CameraX drives the preview and the analysis
+    // loop, zxing decodes each frame. Both live here so any screen that needs
+    // to read a QR gets the same camera lifecycle handling.
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.androidx.core.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)
+    // The binary QR round-trip encodes to a real android.graphics.Bitmap.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
 
     // Compose UI tests for ComponentBehaviorTest (H3.4).
     androidTestImplementation(platform(libs.compose.bom))
