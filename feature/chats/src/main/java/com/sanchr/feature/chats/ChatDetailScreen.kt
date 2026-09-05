@@ -10,6 +10,7 @@ import android.provider.ContactsContract
 import android.provider.OpenableColumns
 import android.view.WindowManager
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
@@ -114,6 +115,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
@@ -1500,7 +1502,11 @@ private fun ViewOnceBubble(
                     Icon(Icons.Filled.LocalFireDepartment, contentDescription = null, tint = SanchrIndigo500)
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Photo", style = MaterialTheme.typography.bodyMedium, color = SanchrGray900)
+                        Text(
+                            text = if (message.isVideoAttachment) "Video" else "Photo",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = SanchrGray900,
+                        )
                         Text(text = "View once", style = MaterialTheme.typography.labelSmall, color = SanchrGray400)
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = SanchrGray400)
@@ -1545,15 +1551,17 @@ private fun ViewOnceViewer(
             modifier = Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onClose),
             contentAlignment = Alignment.Center,
         ) {
+            val local = file
             when {
-                file != null ->
+                local != null && message.isVideoAttachment -> ViewOnceVideo(file = local)
+                local != null ->
                     AsyncImage(
-                        model = file,
+                        model = local,
                         contentDescription = "View-once photo",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
-                failed -> Text(text = "Photo unavailable", color = SanchrWhite)
+                failed -> Text(text = if (message.isVideoAttachment) "Video unavailable" else "Photo unavailable", color = SanchrWhite)
                 else -> CircularProgressIndicator(color = SanchrWhite)
             }
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
@@ -1797,4 +1805,27 @@ private fun LinkPreviewCard(
             }
         }
     }
+}
+
+/**
+ * Plays view-once video inside the secure dialog. The framework's own
+ * `VideoView` is used rather than a player library: the file is already
+ * decrypted in our private cache, it never leaves the app, and adding a
+ * dependency to play one clip would not earn its keep.
+ */
+@Composable
+private fun ViewOnceVideo(file: File) {
+    AndroidView(
+        factory = { context ->
+            VideoView(context).apply {
+                setVideoPath(file.absolutePath)
+                setOnPreparedListener { player ->
+                    player.isLooping = false
+                    start()
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        onRelease = { it.stopPlayback() },
+    )
 }

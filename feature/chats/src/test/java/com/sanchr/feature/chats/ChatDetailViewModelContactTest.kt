@@ -227,6 +227,7 @@ class ChatDetailViewModelContactTest {
 
             val rows = vm.uiState.value.messages
             assertEquals(true, rows[0].isViewOnce)
+            assertEquals(false, rows[0].isVideoAttachment, "an image/* attachment is not video")
             assertEquals("system", rows[1].contentType)
             assertEquals("Viewed", rows[1].text)
         }
@@ -346,5 +347,32 @@ class ChatDetailViewModelContactTest {
             vm.sendContact(ContactCard(name = "Ada", phoneNumber = "+15550100"))
             advanceUntilIdle()
             coVerify { sendMessageUseCase("conv-1", any(), "contact", null) }
+        }
+
+    @Test
+    fun `a view-once video is flagged as video so the placeholder and viewer play it`() =
+        runTest(testDispatcher) {
+            val clip = MediaAttachment(url = "sanchr-media://v", mimeType = "video/mp4", isViewOnce = true)
+            every { messageRepository.observeMessages(any()) } returns
+                flowOf(
+                    listOf(
+                        Message(
+                            id = "m1",
+                            conversationId = "conv-1",
+                            senderId = "peer",
+                            content = MessageContent.Image(url = clip.url, thumbnailUrl = null, width = 1, height = 1, attachment = clip),
+                            status = MessageStatus.DELIVERED,
+                            timestamp = Instant.fromEpochMilliseconds(1_000),
+                        ),
+                    ),
+                )
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            val row =
+                vm.uiState.value.messages
+                    .single()
+            assertEquals(true, row.isViewOnce)
+            assertEquals(true, row.isVideoAttachment)
         }
 }
