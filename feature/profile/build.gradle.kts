@@ -41,6 +41,7 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.network)
     implementation(projects.proto)
+    implementation(projects.domain.contacts)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

@@ -36,6 +36,7 @@ dependencies {
     implementation(projects.core.crypto)
     implementation(projects.core.notifications)
     implementation(projects.proto)
+    implementation(projects.domain.contacts)
     implementation(projects.sync)
     implementation(projects.domain.messaging)
 

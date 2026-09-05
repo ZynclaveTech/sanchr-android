@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Chat
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,9 +41,13 @@ import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -314,6 +320,14 @@ fun ProfileScreen(
                         onClick = { onStartCall(userId) },
                     )
                 }
+
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
+                BlockControl(
+                    displayName = uiState.displayName,
+                    isBlocked = uiState.isBlocked,
+                    onSetBlocked = viewModel::setBlocked,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
             }
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
@@ -421,5 +435,40 @@ private fun rememberAvatarPicker(
                 }
             if (picked != null) onPicked(picked.first, picked.second)
         }
+    }
+}
+
+/** Block / Unblock for someone else's profile; blocking asks first, unblocking does not. */
+@Composable
+private fun BlockControl(
+    displayName: String,
+    isBlocked: Boolean,
+    onSetBlocked: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var confirmBlock by remember { mutableStateOf(false) }
+    if (confirmBlock) {
+        AlertDialog(
+            onDismissRequest = { confirmBlock = false },
+            title = { Text("Block ${displayName.ifBlank { "this contact" }}?") },
+            text = { Text("They won't be able to message or call you. They won't be told.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmBlock = false
+                        onSetBlocked(true)
+                    },
+                ) { Text("Block", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmBlock = false }) { Text("Cancel") } },
+        )
+    }
+    TextButton(
+        onClick = { if (isBlocked) onSetBlocked(false) else confirmBlock = true },
+        modifier = modifier,
+    ) {
+        Icon(imageVector = Icons.Filled.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+        Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
+        Text(text = if (isBlocked) "Unblock" else "Block", color = MaterialTheme.colorScheme.error)
     }
 }

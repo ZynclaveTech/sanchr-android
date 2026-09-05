@@ -5,6 +5,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import com.sanchr.feature.settings.AppearanceScreen
+import com.sanchr.feature.settings.BlockedContactsScreen
 import com.sanchr.feature.settings.ChatSettingsScreen
 import com.sanchr.feature.settings.EncryptionKeysScreen
 import com.sanchr.feature.settings.HelpCenterScreen
@@ -25,6 +26,7 @@ const val SETTINGS_STORAGE_ROUTE = "settings/storage"
 const val SETTINGS_CHAT_ROUTE = "settings/chat"
 const val SETTINGS_ENCRYPTION_KEYS_ROUTE = "settings/encryption-keys"
 const val SETTINGS_HELP_ROUTE = "settings/help"
+const val SETTINGS_BLOCKED_ROUTE = "settings/blocked"
 const val SETTINGS_REGISTRATION_LOCK_ROUTE = "settings/registration-lock"
 
 fun NavGraphBuilder.settingsGraph(navController: NavController) {
@@ -52,7 +54,14 @@ fun NavGraphBuilder.settingsGraph(navController: NavController) {
         }
 
         composable(SETTINGS_PRIVACY_ROUTE) {
-            PrivacyScreen(onNavigateBack = { navController.popBackStack() })
+            PrivacyScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToBlockedContacts = { navController.navigate(SETTINGS_BLOCKED_ROUTE) },
+            )
+        }
+
+        composable(SETTINGS_BLOCKED_ROUTE) {
+            BlockedContactsScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         composable(SETTINGS_SECURITY_ROUTE) {
