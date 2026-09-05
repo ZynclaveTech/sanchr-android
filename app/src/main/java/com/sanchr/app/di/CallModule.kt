@@ -3,7 +3,9 @@ package com.sanchr.app.di
 import com.sanchr.core.callengine.CallManager
 import com.sanchr.core.common.calls.CallPeerNames
 import com.sanchr.core.common.calls.IncomingCallEvents
+import com.sanchr.core.common.calls.StreamWaker
 import com.sanchr.domain.messaging.ContactProfileResolver
+import com.sanchr.sync.realtime.RealtimeManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,6 +23,10 @@ object CallModule {
     @Provides
     @Singleton
     fun provideIncomingCallEvents(callManager: CallManager): IncomingCallEvents = callManager
+
+    @Provides
+    @Singleton
+    fun provideStreamWaker(realtimeManager: RealtimeManager): StreamWaker = realtimeManager
 
     @Provides
     @Singleton
