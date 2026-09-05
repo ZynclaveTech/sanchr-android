@@ -295,4 +295,45 @@ class RealtimeManagerTest {
 
             assertEquals(0, activeCollectors.get(), "the surviving pending stop should still fire")
         }
+
+    // --- Call wake: the stream opens from the background and closes after the window --------
+
+    @Test
+    fun `a call wake opens the stream in the background and closes it after the ring window`() =
+        runTest {
+            val manager = buildManager()
+            manager.wakeForCall("call-1")
+            runCurrent()
+            assertEquals(1, activeCollectors.get(), "call wake must open the stream")
+
+            advanceTimeBy(RealtimeManager.CALL_WAKE_WINDOW_MS - 1_000)
+            runCurrent()
+            assertEquals(1, activeCollectors.get(), "still open inside the window")
+
+            advanceTimeBy(2_000)
+            runCurrent()
+            assertEquals(0, activeCollectors.get(), "closed once the window is over")
+        }
+
+    @Test
+    fun `a foreground during the window keeps the stream, and backgrounding inside the window does not close it`() =
+        runTest {
+            val manager = buildManager()
+            manager.wakeForCall("call-1")
+            runCurrent()
+            manager.enterForeground()
+            runCurrent()
+            advanceTimeBy(RealtimeManager.CALL_WAKE_WINDOW_MS + 1_000)
+            runCurrent()
+            assertEquals(1, activeCollectors.get(), "foreground owns the stream now")
+
+            val second = buildManager()
+            second.enterForeground()
+            runCurrent()
+            second.wakeForCall("call-2")
+            second.enterBackground()
+            advanceTimeBy(5_000)
+            runCurrent()
+            assertEquals(2, activeCollectors.get(), "the wake window outlives a background transition")
+        }
 }

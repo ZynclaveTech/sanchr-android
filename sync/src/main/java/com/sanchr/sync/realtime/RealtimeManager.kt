@@ -8,6 +8,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.sanchr.core.common.calls.CallLifecycleSignal
 import com.sanchr.core.common.calls.IncomingCallEvents
 import com.sanchr.core.common.calls.IncomingCallOffer
+import com.sanchr.core.common.calls.StreamWaker
 import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
@@ -57,11 +58,18 @@ class RealtimeManager
         // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
         // ReceiveMessageUseCase.receive does it.
         @ApplicationScope private val appScope: CoroutineScope,
-    ) : DefaultLifecycleObserver {
+    ) : DefaultLifecycleObserver,
+        StreamWaker {
         companion object {
             private const val TAG = "RealtimeManager"
             private const val BACKGROUND_DRAIN_DELAY_MS = 200L
+
+            /** How long a call wake keeps the stream open in the background: the server's ring timeout. */
+            const val CALL_WAKE_WINDOW_MS = 60_000L
         }
+
+        private var inForeground = false
+        private var wakeStopJob: Job? = null
 
         private val outboundEvents = Channel<ClientEvent>(capacity = Channel.BUFFERED)
         private val _typingCache = MutableStateFlow<Map<String, TypingIndicator>>(emptyMap())
@@ -90,19 +98,53 @@ class RealtimeManager
         fun enterForeground() {
             if (sessionManager.getAccessToken().isNullOrEmpty()) return
             synchronized(lock) {
+                inForeground = true
                 pendingStopJob?.cancel()
                 pendingStopJob = null
+                wakeStopJob?.cancel()
+                wakeStopJob = null
                 ensureStreamStartedLocked()
             }
         }
 
+        /**
+         * A call push arrived while backgrounded. The offer itself is only
+         * delivered on the message stream (queued server-side until we
+         * reconnect), so open the stream now and keep it up for the ring
+         * window, then close it again unless the app came to the foreground
+         * in the meantime.
+         */
+        override fun wakeForCall(callId: String) {
+            if (sessionManager.getAccessToken().isNullOrEmpty()) return
+            synchronized(lock) {
+                pendingStopJob?.cancel()
+                pendingStopJob = null
+                ensureStreamStartedLocked()
+                wakeStopJob?.cancel()
+                wakeStopJob =
+                    appScope.launch {
+                        delay(CALL_WAKE_WINDOW_MS)
+                        synchronized(lock) {
+                            if (wakeStopJob === coroutineContext[Job] && !inForeground) {
+                                Log.d(TAG, "call wake window for $callId over; closing stream")
+                                stopStreamLocked()
+                            }
+                            if (wakeStopJob === coroutineContext[Job]) wakeStopJob = null
+                        }
+                    }
+            }
+        }
+
         fun enterBackground() {
+            synchronized(lock) { inForeground = false }
             if (sessionManager.getAccessToken().isNullOrEmpty()) {
                 stopStream()
                 return
             }
 
             synchronized(lock) {
+                // A live call wake keeps the stream up for its window.
+                if (wakeStopJob?.isActive == true) return
                 pendingStopJob?.cancel()
                 val job =
                     appScope.launch(start = CoroutineStart.LAZY) {

@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * FCM push entry point.
@@ -30,7 +31,7 @@ import kotlinx.coroutines.launch
 class SanchrPushService : FirebaseMessagingService() {
     @Inject lateinit var tokenManager: PushTokenManager
 
-    @Inject lateinit var drainScheduler: MessageDrainScheduler
+    @Inject lateinit var pushRouter: PushRouter
 
     /**
      * Service-scoped coroutine scope. [SupervisorJob] isolates failures and
@@ -49,22 +50,13 @@ class SanchrPushService : FirebaseMessagingService() {
         super.onMessageReceived(message)
 
         val payload = PushPayload.fromData(message.data)
-        if (payload == null || payload.type != PushPayload.TYPE_WAKE) {
-            android.util.Log.w(
-                TAG,
-                "ignoring FCM push with unexpected type=${payload?.type ?: "<none>"}",
-            )
-            return
-        }
-        drainScheduler.enqueueDrain()
+        // A call wake must ring while the push's foreground-start allowance is
+        // live; runBlocking keeps it inside onMessageReceived.
+        runBlocking { pushRouter.route(payload) }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
-    }
-
-    private companion object {
-        const val TAG = "SanchrPushService"
     }
 }
