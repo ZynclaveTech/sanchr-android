@@ -259,4 +259,54 @@ class ChatDetailViewModelContactTest {
             advanceUntilIdle()
             coVerify { messageRepository.deleteMessage("m1", forEveryone = false) }
         }
+
+    @Test
+    fun `search debounces, keeps only the latest query's results, and steps with wrap-around`() =
+        runTest(testDispatcher) {
+            every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+            coEvery { messageRepository.searchMessages("conv-1", "hel") } returns listOf("m3", "m1")
+            coEvery { messageRepository.searchMessages("conv-1", "hello") } returns listOf("m3")
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            vm.openSearch()
+            vm.onSearchQueryChanged("hel")
+            vm.onSearchQueryChanged("hello")
+            advanceUntilIdle()
+            coVerify(exactly = 0) { messageRepository.searchMessages("conv-1", "hel") }
+            assertEquals(
+                listOf("m3"),
+                vm.uiState.value.search
+                    ?.resultIds,
+            )
+
+            vm.onSearchQueryChanged("hel")
+            advanceUntilIdle()
+            assertEquals(
+                "m3",
+                vm.uiState.value.search
+                    ?.currentId,
+            )
+            vm.nextSearchResult()
+            assertEquals(
+                "m1",
+                vm.uiState.value.search
+                    ?.currentId,
+            )
+            vm.nextSearchResult()
+            assertEquals(
+                "m3",
+                vm.uiState.value.search
+                    ?.currentId,
+            )
+            vm.previousSearchResult()
+            assertEquals(
+                "m1",
+                vm.uiState.value.search
+                    ?.currentId,
+            )
+
+            vm.closeSearch()
+            assertEquals(null, vm.uiState.value.search)
+        }
 }

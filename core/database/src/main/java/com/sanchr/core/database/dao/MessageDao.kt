@@ -36,6 +36,25 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): MessageEntity?
 
+    /**
+     * Ids of this conversation's text messages containing [needle], newest
+     * first (iOS `searchMessages`: a LIKE over the body, capped at 50).
+     * [needle] is matched as a substring; callers escape `%` and `_`.
+     */
+    @Query(
+        """
+        SELECT id FROM messages
+        WHERE conversation_id = :conversationId AND is_deleted = 0 AND content_type = 'text'
+          AND content_body LIKE '%' || :needle || '%' ESCAPE '\'
+        ORDER BY timestamp DESC
+        LIMIT 50
+        """,
+    )
+    suspend fun searchTextMessageIds(
+        conversationId: String,
+        needle: String,
+    ): List<String>
+
     /** The newest non-deleted message of every conversation (ties on timestamp may yield more than one row per chat). */
     @Query(
         """

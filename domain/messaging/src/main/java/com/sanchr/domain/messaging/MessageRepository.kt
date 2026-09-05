@@ -195,6 +195,12 @@ interface MessageRepository {
      */
     suspend fun tombstoneViewOnce(messageId: String)
 
+    /** Ids of text messages in [conversationId] containing [query] (case-insensitive substring), newest first, at most 50. */
+    suspend fun searchMessages(
+        conversationId: String,
+        query: String,
+    ): List<String>
+
     /** Fetches older messages for pagination. */
     suspend fun loadMoreMessages(
         conversationId: String,
