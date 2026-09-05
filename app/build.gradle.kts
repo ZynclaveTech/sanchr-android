@@ -201,6 +201,7 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
+    testImplementation(libs.json)
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.espresso.core)

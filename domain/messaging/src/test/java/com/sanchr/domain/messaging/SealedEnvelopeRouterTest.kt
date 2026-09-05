@@ -137,4 +137,20 @@ class SealedEnvelopeRouterTest {
         assertEquals("", routed.conversationId)
         assertNull(routed.messageId)
     }
+
+    @Test
+    fun `the sender's profile key on the payload reaches UserMessage`() {
+        val key = ByteArray(32) { 7 }
+        val payload = InnerPayload(conversationId = "c-1", content = "hi".toByteArray(), senderProfileKey = key)
+        val routed = SealedEnvelopeRouter.route(payload.encode(), fallbackContentType = "text")
+        assertTrue(routed is RoutedPayload.UserMessage)
+        assertTrue(key.contentEquals(routed.senderProfileKey))
+    }
+
+    @Test
+    fun `legacy bare text carries no profile key`() {
+        val routed = SealedEnvelopeRouter.route("plain".toByteArray(), fallbackContentType = "text")
+        assertTrue(routed is RoutedPayload.UserMessage)
+        assertNull(routed.senderProfileKey)
+    }
 }

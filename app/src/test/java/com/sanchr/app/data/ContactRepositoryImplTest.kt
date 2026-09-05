@@ -1,8 +1,11 @@
 package com.sanchr.app.data
 
 import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.entity.ContactEntity
+import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.BlockContactResponse
@@ -21,6 +24,8 @@ import io.mockk.mockk
 import java.security.MessageDigest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -96,7 +101,11 @@ class ContactRepositoryImplTest {
             assertNotNull(user)
             requireNotNull(user)
             assertEquals("user-42", user.id)
-            assertEquals("Ada Lovelace", user.displayName)
+            // The server's display_name is plaintext it should not have and is
+            // never shown (ContactDisplayName); a lookup by number shows the
+            // number until the peer's Profile Key arrives with their first
+            // message.
+            assertEquals("+15550001234", user.displayName)
             assertEquals("https://cdn/avatar.png", user.avatarUrl)
             // Server omitted phone_number (privacy on the lookup path) — the
             // repo falls back to the caller's E.164.
@@ -200,9 +209,11 @@ class ContactRepositoryImplTest {
         dao: ContactDao,
         discovery: DiscoveryRepository = this.discovery,
         own: String? = "+15550000000",
+        profiles: ContactProfileDao = NoOpContactProfileDao(),
     ) = ContactRepositoryImpl(
         contactClient = client,
         contactDao = dao,
+        contactProfileDao = profiles,
         discoveryRepository = discovery,
         sessionManager = mockk<SessionManager> { every { getStoredPhoneE164() } returns own },
     )
@@ -219,7 +230,9 @@ class ContactRepositoryImplTest {
             val discovery = FakeDiscovery(registered = setOf("+15550001234"))
 
             repo(client, NoOpContactDao(), discovery)
-                .discoverAndSyncContacts(listOf("(555) 000-1234", "(555) 000-5678", "+44 20 7123 4567"))
+                .discoverAndSyncContacts(
+                    listOf(DeviceContact("(555) 000-1234"), DeviceContact("(555) 000-5678"), DeviceContact("+44 20 7123 4567")),
+                )
 
             assertEquals(
                 "every normalised candidate is blinded and queried",
@@ -241,7 +254,7 @@ class ContactRepositoryImplTest {
                 }
 
             try {
-                repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf("(555) 000-1234"))
+                repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf(DeviceContact("(555) 000-1234")))
                 fail("expected the discovery failure to propagate")
             } catch (e: IllegalStateException) {
                 assertEquals("UNAVAILABLE", e.message)
@@ -255,7 +268,7 @@ class ContactRepositoryImplTest {
             val client = RecordingSyncContactsClient(response = SyncContactsResponse())
             val discovery = FakeDiscovery(registered = emptySet())
 
-            val count = repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf("(555) 000-1234"))
+            val count = repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf(DeviceContact("(555) 000-1234")))
 
             assertEquals(0, count)
             assertTrue(client.capturedRequests.isEmpty())
@@ -276,11 +289,48 @@ class ContactRepositoryImplTest {
                 )
             val dao = InsertRecordingContactDao()
 
-            val count = repo(client, dao, FakeDiscovery(setOf("+15550001234"))).discoverAndSyncContacts(listOf("555-000-1234"))
+            val count =
+                repo(client, dao, FakeDiscovery(setOf("+15550001234")))
+                    .discoverAndSyncContacts(listOf(DeviceContact("555-000-1234", name = "Ada from work")))
 
             assertEquals(1, count)
             assertEquals(listOf("u-1"), dao.inserted.map { it.userId })
             assertTrue(dao.inserted.single().isRegistered)
+            // The address-book name is what we store; the server's plaintext
+            // "Ada" is never persisted.
+            assertEquals("Ada from work", dao.inserted.single().displayName)
+        }
+
+    @Test
+    fun `a background re-sync keeps the address-book name and local flags`() =
+        runTest {
+            val client =
+                RecordingSyncContactsClient(
+                    response =
+                        SyncContactsResponse(
+                            matchedContacts = listOf(MatchedContact(userId = "u-1", displayName = "Ada", phoneNumber = "+15550001234")),
+                        ),
+                )
+            val dao =
+                object : InsertRecordingContactDao() {
+                    override suspend fun getAllContacts(): List<ContactEntity> =
+                        listOf(
+                            ContactEntity(
+                                id = "u-1",
+                                userId = "u-1",
+                                phoneNumber = "+15550001234",
+                                displayName = "Ada from work",
+                                isRegistered = true,
+                                isFavorite = true,
+                            ),
+                        )
+                }
+
+            repo(client, dao).syncContacts()
+
+            val stored = dao.inserted.single()
+            assertEquals("Ada from work", stored.displayName)
+            assertTrue(stored.isFavorite)
         }
 
     @Test
@@ -336,7 +386,7 @@ class ContactRepositoryImplTest {
         }
     }
 
-    private class InsertRecordingContactDao : NoOpContactDao() {
+    private open class InsertRecordingContactDao : NoOpContactDao() {
         val inserted = mutableListOf<ContactEntity>()
 
         override suspend fun insertContacts(contacts: List<ContactEntity>) {
@@ -413,6 +463,32 @@ class ContactRepositoryImplTest {
      * ContactDao is only referenced for the other repo methods. lookupByPhone
      * never touches it, so every method here errors loudly if called.
      */
+    private class FixedContactProfileDao(
+        private val profiles: List<ContactProfileEntity>,
+    ) : NoOpContactProfileDao() {
+        override fun observeAll(): Flow<List<ContactProfileEntity>> = flowOf(profiles)
+    }
+
+    private open class NoOpContactProfileDao : ContactProfileDao {
+        override suspend fun getByUserId(userId: String): ContactProfileEntity? = null
+
+        override fun observeAll(): Flow<List<ContactProfileEntity>> = flowOf(emptyList())
+
+        override suspend fun allUserIds(): List<String> = emptyList()
+
+        override suspend fun upsert(profile: ContactProfileEntity) = Unit
+
+        override suspend fun delete(userId: String) = Unit
+
+        override suspend fun deleteAll() = Unit
+    }
+
+    private class FixedContactDao(
+        private val contacts: List<ContactEntity>,
+    ) : NoOpContactDao() {
+        override fun observeContacts(): Flow<List<ContactEntity>> = flowOf(contacts)
+    }
+
     private open class NoOpContactDao : ContactDao {
         override suspend fun isBlocked(contactId: String): Boolean? = null
 
@@ -448,4 +524,47 @@ class ContactRepositoryImplTest {
 
         override suspend fun deleteAllContacts() = Unit
     }
+
+    // ── Display-name precedence ─────────────────────────────────────────
+
+    @Test
+    fun `a contact's name is the address-book name, then the number, then the tilde profile name`() =
+        runTest {
+            val contacts =
+                listOf(
+                    ContactEntity(id = "u1", userId = "u1", phoneNumber = "+15550001", displayName = "Mum"),
+                    ContactEntity(id = "u2", userId = "u2", phoneNumber = "+15550002", displayName = ""),
+                    ContactEntity(id = "u3", userId = "u3", phoneNumber = "", displayName = ""),
+                )
+            val profiles =
+                listOf(
+                    ContactProfileEntity(userId = "u1", displayName = "Alice", updatedAt = 1L),
+                    ContactProfileEntity(userId = "u2", displayName = "Bob", updatedAt = 1L),
+                    ContactProfileEntity(userId = "u3", displayName = "Carol", bio = "hey", updatedAt = 1L),
+                )
+
+            val users =
+                repo(
+                    client = RecordingSyncContactsClient(SyncContactsResponse()),
+                    dao = FixedContactDao(contacts),
+                    profiles = FixedContactProfileDao(profiles),
+                ).observeAllContacts().first()
+
+            assertEquals(listOf("Mum", "+15550002", "~Carol"), users.map { it.displayName })
+            assertEquals("hey", users[2].bio)
+        }
+
+    @Test
+    fun `the server's placeholder name is never shown, even with no profile yet`() =
+        runTest {
+            val contacts = listOf(ContactEntity(id = "u1", userId = "u1", phoneNumber = "+15550001", displayName = "Sanchr User"))
+
+            val users =
+                repo(
+                    client = RecordingSyncContactsClient(SyncContactsResponse()),
+                    dao = FixedContactDao(contacts),
+                ).observeAllContacts().first()
+
+            assertEquals("+15550001", users.single().displayName)
+        }
 }

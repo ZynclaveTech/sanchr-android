@@ -3,11 +3,13 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
 import dagger.Lazy
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +40,9 @@ class ReceiveMessageUseCaseTest {
             override val signalDispatcher: CoroutineDispatcher = Dispatchers.Unconfined
         }
 
+    private val profileResolver = mockk<ContactProfileResolver>(relaxed = true)
+    private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "self-uuid" }
+
     private val useCase =
         ReceiveMessageUseCase(
             sealedSenderCipher,
@@ -45,6 +50,8 @@ class ReceiveMessageUseCaseTest {
             quarantineUseCase,
             messageRepositoryLazy,
             dispatchers,
+            profileResolver,
+            sessionManager,
         )
 
     private val bytes = byteArrayOf(10, 20, 30)

@@ -23,6 +23,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // MigrationTest loads the exported schemas from the test APK's assets;
+    // without this every migration test dies with "Cannot find the schema
+    // file in the assets folder" before it can validate anything.
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 }
 
 room {

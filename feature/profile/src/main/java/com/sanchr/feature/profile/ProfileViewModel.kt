@@ -4,11 +4,11 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.proto.media.GetUploadUrlRequest
 import com.sanchr.proto.media.MediaServiceClient
 import com.sanchr.proto.settings.GetSettingsRequest
 import com.sanchr.proto.settings.SettingsServiceClient
-import com.sanchr.proto.settings.UpdateProfileRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -41,6 +41,7 @@ class ProfileViewModel
         savedStateHandle: SavedStateHandle,
         private val settingsServiceClient: SettingsServiceClient,
         private val mediaServiceClient: MediaServiceClient,
+        private val profileUpdater: EncryptedProfileUpdater,
     ) : ViewModel() {
         companion object {
             private const val TAG = "ProfileViewModel"
@@ -121,13 +122,13 @@ class ProfileViewModel
             viewModelScope.launch {
                 _uiState.update { it.copy(isSaving = true) }
                 try {
+                    // Encrypted under our Profile Key; the server never sees
+                    // the name or bio in the clear. See EncryptedProfileUpdater.
                     val response =
-                        settingsServiceClient.updateProfile(
-                            UpdateProfileRequest(
-                                displayName = current.editDisplayName,
-                                bio = current.editBio,
-                                avatarUrl = current.avatarUrl,
-                            ),
+                        profileUpdater.update(
+                            displayName = current.editDisplayName,
+                            bio = current.editBio,
+                            avatarUrl = current.avatarUrl,
                         )
                     if (response.success) {
                         _uiState.update {
@@ -181,12 +182,10 @@ class ProfileViewModel
             viewModelScope.launch {
                 try {
                     val current = _uiState.value
-                    settingsServiceClient.updateProfile(
-                        UpdateProfileRequest(
-                            displayName = current.displayName,
-                            bio = current.bio,
-                            avatarUrl = avatarUrl,
-                        ),
+                    profileUpdater.update(
+                        displayName = current.displayName,
+                        bio = current.bio,
+                        avatarUrl = avatarUrl,
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to update avatar on backend", e)

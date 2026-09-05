@@ -28,12 +28,14 @@ interface ContactRepository {
     /**
      * Full privacy-preserving discovery over the device address book.
      *
-     * Normalises [deviceNumbers] to E.164 using the signed-in user's own
-     * country, asks [DiscoveryRepository] which are registered (the server
-     * sees blinded points only), and resolves **just that intersection** to
-     * user records via `SyncContacts`. The server necessarily learns the
-     * intersection — it has to, to return the accounts — but never the
-     * address book.
+     * Normalises each [DeviceContact.rawNumber] to E.164 using the signed-in
+     * user's own country, asks [DiscoveryRepository] which are registered
+     * (the server sees blinded points only), and resolves **just that
+     * intersection** to user records via `SyncContacts`. The server
+     * necessarily learns the intersection — it has to, to return the
+     * accounts — but never the address book. The address-book name is kept
+     * locally as what we call the contact; the server's `display_name` is
+     * never stored.
      *
      * Fails closed: a discovery error propagates. There is deliberately no
      * fallback to uploading hashes of everything, which is the leak this
@@ -41,7 +43,7 @@ interface ContactRepository {
      *
      * @return the number of registered contacts found.
      */
-    suspend fun discoverAndSyncContacts(deviceNumbers: List<String>): Int
+    suspend fun discoverAndSyncContacts(deviceContacts: List<DeviceContact>): Int
 
     /** Blocks or unblocks a contact. */
     suspend fun setBlocked(

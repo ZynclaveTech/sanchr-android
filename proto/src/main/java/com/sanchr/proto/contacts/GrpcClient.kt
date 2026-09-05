@@ -76,6 +76,10 @@ internal fun Contacts.SyncContactsResponse.toModel(): SyncContactsResponse =
                     displayName = m.displayName,
                     avatarUrl = m.avatarUrl,
                     phoneNumber = m.phoneNumber,
+                    statusText = m.statusText,
+                    encryptedDisplayName = m.encryptedDisplayName.toByteArray(),
+                    encryptedBio = m.encryptedBio.toByteArray(),
+                    encryptedAvatarUrl = m.encryptedAvatarUrl.toByteArray(),
                 )
             },
     )
@@ -89,6 +93,10 @@ internal fun Contacts.Contact.toModel(): Contact =
         displayName = displayName,
         avatarUrl = avatarUrl,
         isBlocked = isBlocked,
+        statusText = statusText,
+        encryptedDisplayName = encryptedDisplayName.toByteArray(),
+        encryptedBio = encryptedBio.toByteArray(),
+        encryptedAvatarUrl = encryptedAvatarUrl.toByteArray(),
     )
 
 internal fun BlockContactRequest.toProto(): Contacts.BlockContactRequest =

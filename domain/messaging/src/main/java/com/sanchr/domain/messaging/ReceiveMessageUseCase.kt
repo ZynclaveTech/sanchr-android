@@ -3,7 +3,9 @@ package com.sanchr.domain.messaging
 import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
+import com.sanchr.core.crypto.profile.ProfileCrypto
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
 import dagger.Lazy
 import java.util.UUID
@@ -95,6 +97,8 @@ class ReceiveMessageUseCase
         private val quarantineUseCase: QuarantineEnvelopeUseCase,
         private val messageRepository: Lazy<MessageRepository>,
         private val dispatchers: DispatcherProvider,
+        private val profileResolver: ContactProfileResolver,
+        private val sessionManager: SessionManager,
     ) {
         /**
          * Scope for fire-and-forget session rebuilds. A SupervisorJob is used
@@ -103,6 +107,14 @@ class ReceiveMessageUseCase
          * overridden constructor below.
          */
         private val sessionRecoveryScope: CoroutineScope =
+            CoroutineScope(SupervisorJob() + dispatchers.io)
+
+        /**
+         * Scope for profile resolution after a new Profile Key arrives: an
+         * RPC plus decryption that must not hold up, or be able to fail, the
+         * receive path.
+         */
+        private val profileResolveScope: CoroutineScope =
             CoroutineScope(SupervisorJob() + dispatchers.io)
 
         /**
@@ -239,7 +251,9 @@ class ReceiveMessageUseCase
             ctx: IncomingEnvelopeContext,
             flushAckImmediately: Boolean,
         ) {
-            when (val routed = SealedEnvelopeRouter.route(success.plaintext, fallbackContentType = ctx.contentType)) {
+            val routed = SealedEnvelopeRouter.route(success.plaintext, fallbackContentType = ctx.contentType)
+            harvestProfileKey(routed, success.senderUserId)
+            when (routed) {
                 is RoutedPayload.Control -> {
                     Log.d(TAG, "control payload (${routed.contentType}) received; not persisted as a message")
                     if (routed.contentType == RECEIPT_CONTENT_TYPE) {
@@ -299,6 +313,57 @@ class ReceiveMessageUseCase
                     // logged rather than silently swallowed so a future
                     // regression here is visible.
                     Log.d(TAG, "payload routed to Ignored; not persisted, not acked")
+                }
+            }
+        }
+
+        /**
+         * Every sealed payload a peer sends carries their Profile Key
+         * (`sender_profile_key`); a `profile-key/v1` control carries it as its
+         * raw 32-byte content. Record it and, when it is new to us, resolve
+         * their profile off the receive path ([ContactProfileResolver]).
+         *
+         * Nothing here may fail the receive: the message must persist even
+         * if the key store or the resolver is broken. Payloads from our own
+         * other devices carry our own key and are skipped.
+         */
+        private fun harvestProfileKey(
+            routed: RoutedPayload,
+            senderUserId: String,
+        ) {
+            val key =
+                when (routed) {
+                    is RoutedPayload.UserMessage -> routed.senderProfileKey
+                    is RoutedPayload.Control ->
+                        if (routed.contentType == PROFILE_KEY_CONTENT_TYPE) {
+                            routed.payload.content.takeIf { it.size == ProfileCrypto.KEY_SIZE }
+                                ?: routed.payload.senderProfileKey
+                        } else {
+                            routed.payload.senderProfileKey
+                        }
+                    RoutedPayload.Ignored -> null
+                } ?: return
+            if (key.size != ProfileCrypto.KEY_SIZE) {
+                Log.d(TAG, "ignoring a ${key.size}-byte profile key from $senderUserId")
+                return
+            }
+            if (senderUserId == sessionManager.getUserId()) return
+            val changed =
+                try {
+                    profileResolver.recordProfileKey(senderUserId, key)
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not record profile key for $senderUserId", e)
+                    return
+                }
+            if (changed) {
+                profileResolveScope.launch {
+                    try {
+                        profileResolver.refresh(senderUserId)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "profile resolution failed for $senderUserId", e)
+                    }
                 }
             }
         }
@@ -431,6 +496,7 @@ class ReceiveMessageUseCase
         private companion object {
             private const val TAG = "ReceiveMessage"
             private const val RECEIPT_CONTENT_TYPE = "receipt/v1"
+            private const val PROFILE_KEY_CONTENT_TYPE = "profile-key/v1"
             private const val MILLIS_PER_SECOND = 1_000L
 
             @Suppress("unused")

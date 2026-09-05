@@ -1,11 +1,15 @@
 package com.sanchr.app.smoke
 
+import android.Manifest
+import android.os.Build
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.platform.app.InstrumentationRegistry
 import com.sanchr.app.MainActivity
 import org.junit.Assert.assertNotNull
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -48,6 +52,24 @@ annotation class SmokeTest
 @SmokeTest
 @RunWith(AndroidJUnit4::class)
 class StartupSmokeTest {
+    /**
+     * `MainActivity.onCreate` requests `POST_NOTIFICATIONS` on API 33+. On a
+     * fresh CI emulator that puts the system `GrantPermissionsActivity` over
+     * the app ~100ms after it resumes, so the activity drops to PAUSED and
+     * `moveToState(RESUMED)` times out (API 34 job, run 33929615531). API 28
+     * never saw it: the permission does not exist there. Grant it up front,
+     * the way a user who already answered the prompt would have.
+     */
+    @Before
+    fun grantNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.grantRuntimePermission(
+            instrumentation.targetContext.packageName,
+            Manifest.permission.POST_NOTIFICATIONS,
+        )
+    }
+
     @Test
     fun mainActivityReachesResumedState() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

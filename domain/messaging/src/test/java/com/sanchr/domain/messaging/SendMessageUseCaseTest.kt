@@ -4,6 +4,7 @@ import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.common.Result
 import com.sanchr.core.crypto.DeviceEncryptedMessage
 import com.sanchr.core.crypto.SignalSessionManager
+import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
@@ -40,6 +41,8 @@ class SendMessageUseCaseTest {
         mockk<UserPreferences>().also {
             every { it.disappearingDefaultSeconds } returns flowOf(0)
         }
+    private val ownProfileKey = ByteArray(32) { 0x5A }
+    private val profileKeyStore = mockk<ProfileKeyStore> { every { ownProfileKey() } returns ownProfileKey }
     private val dispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher = Dispatchers.Unconfined
@@ -58,6 +61,7 @@ class SendMessageUseCaseTest {
             deliveryTokenStore,
             userPreferences,
             dispatchers,
+            profileKeyStore,
         )
 
     private val entity =
@@ -263,6 +267,26 @@ class SendMessageUseCaseTest {
             // Zero would read as "no timer" on the wire, making a late send
             // MORE durable than a prompt one.
             assertEquals(1L, payload.expiresAfterSecs)
+        }
+
+    @Test
+    fun `every sealed payload carries our Profile Key`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { deliveryTokenStore.acquire() } returns byteArrayOf(9)
+            val plaintextSlot = slot<ByteArray>()
+            coEvery {
+                signalSessionManager.encryptForAllDevices(capture(plaintextSlot), "peer-uuid")
+            } returns listOf(DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1), messageType = 3, registrationId = 42))
+            coEvery { messagingClient.sendSealedMessage(any()) } returns SendSealedMessageResponse(serverTimestamp = 5_000L)
+
+            useCase.attemptSend(entity)
+
+            val payload = InnerPayload.decode(plaintextSlot.captured)
+            assertTrue(payload != null)
+            // The key is how a peer ever reads our encrypted display name;
+            // riding every envelope is what makes its delivery self-healing.
+            assertTrue(ownProfileKey.contentEquals(payload.senderProfileKey), "sender_profile_key must be our key")
         }
 
     @Test

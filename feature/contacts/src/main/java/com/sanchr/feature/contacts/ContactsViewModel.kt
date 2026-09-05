@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.GetContactsRequest
@@ -226,14 +227,15 @@ class ContactsViewModel
             viewModelScope.launch {
                 _syncState.value = ContactSyncUiState(isSyncing = true, progress = 0.1f)
                 try {
-                    val numbers = readDeviceContactNumbers(contentResolver)
+                    val deviceContacts = readDeviceContacts(contentResolver)
                     _syncState.update { it.copy(progress = 0.5f) }
 
                     // Privacy-preserving discovery: the repository blinds
                     // every number, learns which are registered without the
                     // server seeing the address book, and resolves only that
-                    // intersection. Nothing is hashed or uploaded here.
-                    val matchedCount = contactRepository.discoverAndSyncContacts(numbers)
+                    // intersection. Nothing is hashed or uploaded here; the
+                    // names stay on this device.
+                    val matchedCount = contactRepository.discoverAndSyncContacts(deviceContacts)
 
                     _syncState.value =
                         ContactSyncUiState(
@@ -256,25 +258,35 @@ class ContactsViewModel
             }
         }
 
-        /** Raw address-book numbers as stored. Normalisation and hashing happen in the repository, after discovery. */
-        private fun readDeviceContactNumbers(contentResolver: ContentResolver): List<String> {
-            val phoneNumbers = mutableSetOf<String>()
+        /**
+         * Raw address-book numbers as stored, with the name of the entry each
+         * belongs to. Normalisation and hashing happen in the repository,
+         * after discovery; the name never leaves the device.
+         */
+        private fun readDeviceContacts(contentResolver: ContentResolver): List<DeviceContact> {
+            val seen = mutableSetOf<String>()
+            val contacts = mutableListOf<DeviceContact>()
             val cursor =
                 contentResolver.query(
                     ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                    arrayOf(
+                        ContactsContract.CommonDataKinds.Phone.NUMBER,
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ),
                     null,
                     null,
                     null,
                 )
             cursor?.use {
                 val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
                 while (it.moveToNext()) {
                     val number = it.getString(numberIndex)
-                    if (!number.isNullOrBlank()) phoneNumbers.add(number)
+                    if (number.isNullOrBlank() || !seen.add(number)) continue
+                    contacts += DeviceContact(rawNumber = number, name = it.getString(nameIndex)?.takeIf { n -> n.isNotBlank() })
                 }
             }
-            return phoneNumbers.toList()
+            return contacts
         }
     }
 

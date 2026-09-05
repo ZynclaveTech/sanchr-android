@@ -2,6 +2,7 @@ package com.sanchr.domain.messaging
 
 import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -95,6 +96,7 @@ class SendReadReceiptUseCase
         private val dispatcherProvider: DispatcherProvider,
         private val receiptClock: ReceiptClock,
         private val receiptJitter: ReceiptJitter,
+        private val profileKeyStore: ProfileKeyStore,
     ) {
         suspend operator fun invoke(
             conversationId: String,
@@ -140,6 +142,10 @@ class SendReadReceiptUseCase
                     messageId = null,
                     contentType = CONTENT_TYPE_RECEIPT,
                     content = receipt.toByteArray(),
+                    // Receipts are the most frequent sealed traffic, so they are
+                    // the most reliable carrier for our Profile Key (see
+                    // SendMessageUseCase).
+                    senderProfileKey = profileKeyStore.ownProfileKey(),
                 )
 
             val deviceMessages =
