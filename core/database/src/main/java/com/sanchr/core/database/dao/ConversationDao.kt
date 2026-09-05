@@ -46,6 +46,26 @@ interface ConversationDao {
     @Update
     suspend fun updateConversation(conversation: ConversationEntity)
 
+    /**
+     * Ids of DIRECT conversations whose participant list contains
+     * [quotedUserId]. `participant_ids` is a JSON array of strings, so the
+     * caller passes the id *with its JSON quotes* (`"\"<userId>\""`); the
+     * quotes keep a user id from matching as a substring of a longer one.
+     */
+    @Query(
+        """
+        SELECT id FROM conversations
+        WHERE type = 'DIRECT' AND participant_ids LIKE '%' || :quotedUserId || '%'
+        """,
+    )
+    suspend fun directConversationIdsWith(quotedUserId: String): List<String>
+
+    @Query("UPDATE conversations SET title = :title WHERE id = :conversationId")
+    suspend fun updateTitle(
+        conversationId: String,
+        title: String?,
+    )
+
     @Query("UPDATE conversations SET unread_count = 0 WHERE id = :conversationId")
     suspend fun markAsRead(conversationId: String)
 

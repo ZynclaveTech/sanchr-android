@@ -11,6 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
 import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.EnvelopeQueueDao
 import com.sanchr.core.database.dao.MessageDao
@@ -22,6 +23,7 @@ import com.sanchr.core.database.dao.SignalSessionDao
 import com.sanchr.core.database.dao.SignalSignedPreKeyDao
 import com.sanchr.core.database.entity.AccountEntity
 import com.sanchr.core.database.entity.ContactEntity
+import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.EnvelopeQueueEntity
 import com.sanchr.core.database.entity.MessageEntity
@@ -52,8 +54,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         SignalSignedPreKeyEntity::class,
         EnvelopeQueueEntity::class,
         QuarantinedEnvelopeEntity::class,
+        ContactProfileEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -79,6 +82,8 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun envelopeQueueDao(): EnvelopeQueueDao
 
     abstract fun quarantinedEnvelopeDao(): QuarantinedEnvelopeDao
+
+    abstract fun contactProfileDao(): ContactProfileDao
 }
 
 /**
@@ -121,7 +126,7 @@ object DatabaseModule {
         }
     }
 
-    private val migration1To2 =
+    internal val migration1To2 =
         object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
@@ -143,7 +148,7 @@ object DatabaseModule {
             }
         }
 
-    private val migration2To3 =
+    internal val migration2To3 =
         object : Migration(2, 3) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
@@ -194,7 +199,7 @@ object DatabaseModule {
             }
         }
 
-    private val migration3To4 =
+    internal val migration3To4 =
         object : Migration(3, 4) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
@@ -215,7 +220,7 @@ object DatabaseModule {
     // Adds send-retry bookkeeping to `messages`. The existing `status` TEXT column
     // already carries the state machine (now extended with QUEUED in core:model);
     // we only need `attempts` + `last_attempt_at` for backoff scheduling.
-    private val migration4To5 =
+    internal val migration4To5 =
         object : Migration(4, 5) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
@@ -236,7 +241,7 @@ object DatabaseModule {
     // rotation (which needs a safety-number screen, not a retry). M5 chat UI
     // keys off `failure_class` to render a distinct icon and off
     // `failure_reason` for the tooltip.
-    private val migration5To6 =
+    internal val migration5To6 =
         object : Migration(5, 6) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
@@ -244,6 +249,25 @@ object DatabaseModule {
                 )
                 database.execSQL(
                     "ALTER TABLE `messages` ADD COLUMN `failure_class` TEXT",
+                )
+            }
+        }
+
+    // Profile Key: a peer's decrypted profile, keyed by user id, for anyone
+    // who has messaged us — not only address-book contacts (whose
+    // `phone_number` is unique, so an unknown sender cannot get a contact
+    // row). See ContactProfileEntity.
+    internal val migration6To7 =
+        object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `contact_profiles` (" +
+                        "`user_id` TEXT NOT NULL, " +
+                        "`display_name` TEXT, " +
+                        "`bio` TEXT, " +
+                        "`avatar_url` TEXT, " +
+                        "`updated_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`user_id`))",
                 )
             }
         }
@@ -271,7 +295,7 @@ object DatabaseModule {
                     SanchrDatabase::class.java,
                     "sanchr-database",
                 ).openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
-                .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6)
+                .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7)
                 .build()
         }
     }
@@ -308,4 +332,7 @@ object DatabaseModule {
 
     @Provides
     fun provideQuarantinedEnvelopeDao(database: SanchrDatabase): QuarantinedEnvelopeDao = database.quarantinedEnvelopeDao()
+
+    @Provides
+    fun provideContactProfileDao(database: SanchrDatabase): ContactProfileDao = database.contactProfileDao()
 }
