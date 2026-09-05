@@ -34,6 +34,7 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.crypto)
     implementation(projects.core.datastore)
+    implementation(projects.core.network)
     implementation(projects.proto)
     // SendReadReceiptUseCase builds a Messaging.ReceiptUpdate (the generated
     // proto type) directly rather than a Kotlin DTO — see its class doc.

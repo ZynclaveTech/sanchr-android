@@ -1,19 +1,26 @@
 package com.sanchr.feature.chats
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
+import com.sanchr.domain.messaging.media.AttachmentDownloader
+import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,11 +36,17 @@ class ChatDetailViewModel
         savedStateHandle: SavedStateHandle,
         private val messageRepository: MessageRepository,
         private val sendMessageUseCase: SendMessageUseCase,
+        private val sendAttachmentUseCase: SendAttachmentUseCase,
+        private val attachmentDownloader: AttachmentDownloader,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
         private val notificationHandler: NotificationHandler,
     ) : ViewModel() {
+        private companion object {
+            const val TAG = "ChatDetailViewModel"
+        }
+
         private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
 
         private val _uiState =
@@ -200,6 +213,36 @@ class ChatDetailViewModel
             }
         }
 
+        /** Encrypts and sends a picked file as an attachment message. */
+        fun sendAttachment(prepared: AttachmentUploader.Prepared) {
+            if (_uiState.value.isSending) return
+            _uiState.update { it.copy(isSending = true) }
+            viewModelScope.launch {
+                when (val result = sendAttachmentUseCase(conversationId, prepared)) {
+                    is Result.Success -> _uiState.update { it.copy(isSending = false) }
+                    is Result.Error ->
+                        _uiState.update {
+                            it.copy(isSending = false, error = result.exception.message ?: "Failed to send attachment")
+                        }
+                    is Result.Loading -> Unit
+                }
+            }
+        }
+
+        /** The decrypted file for a message's attachment, downloading it if needed. */
+        suspend fun openAttachment(message: MessageUiModel): File? {
+            val attachment = message.attachment ?: return null
+            return try {
+                attachmentDownloader.open(message.id, attachment)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not open attachment for ${message.id}: ${e.message}")
+                _uiState.update { it.copy(error = e.message ?: "Could not open attachment") }
+                null
+            }
+        }
+
         fun loadMoreMessages() {
             val messages = _uiState.value.messages
             if (messages.isEmpty() || _uiState.value.isLoadingMore) return
@@ -238,6 +281,7 @@ class ChatDetailViewModel
                 contentType = content.contentTypeTag(),
                 failureKind = failureClass.toFailureKind(uiStatus),
                 failureReason = failureReason.takeIf { uiStatus == MessageStatus.FAILED },
+                attachment = content.attachmentOrNull(),
             )
         }
 
@@ -262,6 +306,14 @@ class ChatDetailViewModel
                 is MessageContent.Voice -> "[Voice message]"
                 is MessageContent.File -> fileName
                 is MessageContent.Location -> label ?: "[Location]"
+            }
+
+        private fun MessageContent.attachmentOrNull(): MediaAttachment? =
+            when (this) {
+                is MessageContent.Image -> attachment
+                is MessageContent.Voice -> attachment
+                is MessageContent.File -> attachment
+                is MessageContent.Text, is MessageContent.Location -> null
             }
 
         private fun MessageContent.contentTypeTag(): String =

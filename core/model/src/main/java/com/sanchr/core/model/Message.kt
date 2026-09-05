@@ -45,6 +45,8 @@ sealed interface MessageContent {
         val width: Int,
         val height: Int,
         val caption: String? = null,
+        /** The encrypted object behind [url]; null for legacy unencrypted links. */
+        val attachment: MediaAttachment? = null,
     ) : MessageContent
 
     @Serializable
@@ -52,6 +54,7 @@ sealed interface MessageContent {
         val url: String,
         val durationMs: Long,
         val waveform: List<Float> = emptyList(),
+        val attachment: MediaAttachment? = null,
     ) : MessageContent
 
     @Serializable
@@ -60,6 +63,7 @@ sealed interface MessageContent {
         val fileName: String,
         val mimeType: String,
         val sizeBytes: Long,
+        val attachment: MediaAttachment? = null,
     ) : MessageContent
 
     @Serializable

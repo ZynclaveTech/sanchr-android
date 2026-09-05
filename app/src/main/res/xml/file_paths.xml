@@ -2,4 +2,6 @@
 <paths>
     <!-- Decrypted vault items, written by VaultScreen for a one-off ACTION_VIEW. -->
     <cache-path name="vault" path="vault/" />
+    <!-- Decrypted chat attachments cached by AttachmentDownloader. -->
+    <cache-path name="attachments" path="attachments/" />
 </paths>

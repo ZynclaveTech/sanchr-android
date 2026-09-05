@@ -115,6 +115,63 @@ object MediaEncryptor {
     }
 
     /**
+     * iOS `MediaEncryptor` seals files over 1 MiB as a sequence of
+     * independently sealed 1 MiB chunks, each `nonce || ct || tag`,
+     * concatenated. [openCombined] cannot read that; this walks the
+     * chunks. Chunk boundaries are fixed by the plaintext chunk size, so
+     * only the final chunk may be shorter.
+     */
+    fun openChunked(
+        combined: ByteArray,
+        key: ByteArray,
+    ): ByteArray {
+        val out = java.io.ByteArrayOutputStream(combined.size)
+        var offset = 0
+        while (offset < combined.size) {
+            val end = minOf(offset + CHUNK_COMBINED_SIZE, combined.size)
+            out.write(openCombined(combined.copyOfRange(offset, end), key))
+            offset = end
+        }
+        return out.toByteArray()
+    }
+
+    /**
+     * Opens a blob written by either platform: a single sealed box, or the
+     * chunked layout iOS uses past 1 MiB. Single-shot is tried first, as
+     * iOS does, so the two never disagree about a blob.
+     */
+    fun openAny(
+        combined: ByteArray,
+        key: ByteArray,
+    ): ByteArray =
+        try {
+            openCombined(combined, key)
+        } catch (e: Exception) {
+            if (combined.size <= CHUNK_COMBINED_SIZE) throw e
+            openChunked(combined, key)
+        }
+
+    /** Seals like iOS would for the size: single box up to 1 MiB, chunked above. */
+    fun sealAny(
+        data: ByteArray,
+        key: ByteArray,
+    ): ByteArray {
+        if (data.size <= CHUNK_SIZE) return sealCombined(data, key)
+        val out = java.io.ByteArrayOutputStream(data.size + (data.size / CHUNK_SIZE + 1) * (GCM_NONCE_LENGTH + GCM_TAG_LENGTH / 8))
+        var offset = 0
+        while (offset < data.size) {
+            val end = minOf(offset + CHUNK_SIZE, data.size)
+            out.write(sealCombined(data.copyOfRange(offset, end), key))
+            offset = end
+        }
+        return out.toByteArray()
+    }
+
+    /** iOS `MediaEncryptor.chunkSize`. */
+    const val CHUNK_SIZE = 1_048_576
+    private const val CHUNK_COMBINED_SIZE = GCM_NONCE_LENGTH + CHUNK_SIZE + GCM_TAG_LENGTH / 8
+
+    /**
      * Encrypts a stream for large files. Writes nonce first, then encrypted data.
      * Also computes the SHA-256 digest of the plaintext for integrity verification.
      *

@@ -1,0 +1,77 @@
+package com.sanchr.domain.messaging.media
+
+import com.sanchr.core.crypto.MediaEncryptor
+import com.sanchr.core.model.MediaAttachment
+import com.sanchr.core.network.media.AvatarUploader
+import com.sanchr.core.network.media.BlobStore
+import com.sanchr.proto.media.ConfirmUploadRequest
+import com.sanchr.proto.media.GetUploadUrlRequest
+import com.sanchr.proto.media.MediaPurpose
+import com.sanchr.proto.media.MediaServiceClient
+import java.util.Base64
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Encrypts an attachment under a fresh random key and puts the ciphertext
+ * in object storage, the way iOS `MediaUploadManager` does: AES-GCM,
+ * `nonce || ct || tag` (chunked past 1 MiB), `GetUploadUrl(ATTACHMENT,
+ * sha256(ciphertext))`, PUT, `ConfirmUpload`. The key never leaves the
+ * device except inside the end-to-end encrypted message that references
+ * the upload.
+ */
+@Singleton
+class AttachmentUploader
+    @Inject
+    constructor(
+        private val mediaClient: MediaServiceClient,
+        private val blobStore: BlobStore,
+    ) {
+        class Prepared(
+            val bytes: ByteArray,
+            val mimeType: String,
+            val fileName: String?,
+            val caption: String? = null,
+            val width: Int? = null,
+            val height: Int? = null,
+            val durationSeconds: Double? = null,
+            val isVoiceMessage: Boolean? = null,
+        )
+
+        suspend fun upload(prepared: Prepared): MediaAttachment {
+            require(prepared.bytes.isNotEmpty()) { "attachment is empty" }
+            val key = MediaEncryptor.generateMediaKey()
+            val ciphertext = MediaEncryptor.sealAny(prepared.bytes, key)
+            val contentType = prepared.mimeType.ifBlank { OCTET_STREAM }
+            val presigned =
+                mediaClient.getUploadUrl(
+                    GetUploadUrlRequest(
+                        fileSize = ciphertext.size.toLong(),
+                        contentType = contentType,
+                        sha256Hex = AvatarUploader.sha256Hex(ciphertext),
+                        purpose = MediaPurpose.ATTACHMENT,
+                    ),
+                )
+            blobStore.put(presigned.url, ciphertext, contentType)
+            mediaClient.confirmUpload(ConfirmUploadRequest(mediaId = presigned.mediaId, fileSize = ciphertext.size.toLong()))
+            val nonce = ciphertext.copyOfRange(0, NONCE_SIZE)
+            return MediaAttachment(
+                url = MediaAttachment.mediaUrl(presigned.mediaId),
+                encryptionKey = Base64.getEncoder().encodeToString(key),
+                encryptionIV = Base64.getEncoder().encodeToString(nonce),
+                mimeType = contentType,
+                sizeBytes = prepared.bytes.size.toLong(),
+                caption = prepared.caption,
+                width = prepared.width,
+                height = prepared.height,
+                durationSeconds = prepared.durationSeconds,
+                filename = prepared.fileName,
+                isVoiceMessage = prepared.isVoiceMessage,
+            )
+        }
+
+        private companion object {
+            const val OCTET_STREAM = "application/octet-stream"
+            const val NONCE_SIZE = 12
+        }
+    }
