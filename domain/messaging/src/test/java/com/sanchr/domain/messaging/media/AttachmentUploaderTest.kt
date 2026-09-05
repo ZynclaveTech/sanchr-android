@@ -79,4 +79,24 @@ class AttachmentUploaderTest {
             assertContentEquals(uploaded.copyOfRange(0, 12), Base64.getDecoder().decode(attachment.encryptionIV))
             assertTrue(plaintext.contentEquals(MediaEncryptor.openAny(uploaded, key)))
         }
+
+    @Test
+    fun `a voice note carries the iOS voice fields`() =
+        runTest {
+            val attachment =
+                AttachmentUploader(Client(), Store()).upload(
+                    AttachmentUploader.Prepared(
+                        byteArrayOf(1, 2, 3),
+                        "audio/mp4",
+                        "voice-1.m4a",
+                        isVoiceMessage = true,
+                        audioDurationMs = 4200,
+                        audioWaveform = listOf(0.1f, 0.9f),
+                    ),
+                )
+            assertEquals(true, attachment.isVoiceMessage)
+            assertEquals(4200, attachment.audioDurationMs)
+            assertEquals(listOf(0.1f, 0.9f), attachment.audioWaveform)
+            assertEquals("voice-1.m4a", attachment.filename)
+        }
 }

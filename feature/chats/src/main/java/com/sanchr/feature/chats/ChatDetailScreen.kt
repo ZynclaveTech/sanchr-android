@@ -96,6 +96,9 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.feature.chats.voice.VoiceClip
+import com.sanchr.feature.chats.voice.VoicePlayback
+import com.sanchr.feature.chats.voice.VoiceRecordButton
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -204,6 +207,12 @@ fun ChatDetailScreen(
                     onValueChange = viewModel::onInputTextChanged,
                     onSend = viewModel::sendMessage,
                     onAttach = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                    onVoiceClip = { clip ->
+                        scope.launch {
+                            val prepared = withContext(Dispatchers.IO) { clip.toPrepared() }
+                            viewModel.sendAttachment(prepared)
+                        }
+                    },
                     isSending = uiState.isSending,
                 )
             }
@@ -301,6 +310,12 @@ fun ChatDetailScreen(
                     when {
                         message.contentType == "image" ->
                             ImageMessageBubble(
+                                message = message,
+                                openAttachment = viewModel::openAttachment,
+                            )
+
+                        message.contentType == "voice" && message.attachment != null ->
+                            VoiceMessageBubble(
                                 message = message,
                                 openAttachment = viewModel::openAttachment,
                             )
@@ -637,6 +652,7 @@ private fun MessageInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onAttach: () -> Unit,
+    onVoiceClip: (VoiceClip) -> Unit,
     isSending: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -706,6 +722,12 @@ private fun MessageInputBar(
                     contentDescription = "Attach file",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            if (value.isBlank()) {
+                // Nothing typed: the primary action is a voice note.
+                VoiceRecordButton(enabled = !isSending, onClip = onVoiceClip)
+                return@Row
             }
 
             // Send button
@@ -818,3 +840,61 @@ private fun presentAttachment(
         Toast.makeText(context, "No app can open $mimeType", Toast.LENGTH_SHORT).show()
     }
 }
+
+/** A voice note: play/pause with the sender's waveform, inside the usual bubble colours. */
+@Composable
+private fun VoiceMessageBubble(
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+    modifier: Modifier = Modifier,
+) {
+    val attachment = message.attachment ?: return
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Column(horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
+            Card(
+                shape = SanchrShapeTokens.CornerLarge,
+                colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100),
+            ) {
+                VoicePlayback(
+                    durationMs = attachment.audioDurationMs ?: 0,
+                    waveform = attachment.audioWaveform.orEmpty(),
+                    tint = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                    openFile = { openAttachment(message) },
+                    modifier = Modifier.padding(horizontal = SanchrTheme.spacing.sm, vertical = SanchrTheme.spacing.xs),
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+            ) {
+                Text(
+                    text = formatTimestamp(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SanchrGray400,
+                )
+                if (message.isFromMe) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    MessageStatusIcon(message)
+                }
+            }
+        }
+    }
+}
+
+/** The recorded clip as the uploader wants it: `audio/mp4`, iOS's voice fields, bytes read off the main thread. */
+private fun VoiceClip.toPrepared(): AttachmentUploader.Prepared {
+    val bytes = file.readBytes()
+    file.delete()
+    return AttachmentUploader.Prepared(
+        bytes = bytes,
+        mimeType = "audio/mp4",
+        fileName = file.name,
+        durationSeconds = durationMs / MILLIS_PER_SECOND_D,
+        isVoiceMessage = true,
+        audioDurationMs = durationMs,
+        audioWaveform = waveform,
+    )
+}
+
+private const val MILLIS_PER_SECOND_D = 1000.0
