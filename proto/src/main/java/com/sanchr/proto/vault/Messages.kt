@@ -1,75 +1,55 @@
 package com.sanchr.proto.vault
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
+/**
+ * Wire models for `sanchr.vault.VaultService` (vault.proto). The server
+ * never sees a filename, mime type, thumbnail or key: everything
+ * descriptive travels inside [encryptedMetadata], AES-GCM under the
+ * per-item access key the client derives and keeps.
+ */
+class CreateVaultItemRequest(
+    /** Client-generated UUIDv4; retries with the same id are idempotent server-side. */
+    val vaultItemId: String,
+    /** A media object already uploaded via MediaService (GetUploadUrl + ConfirmUpload) and owned by the caller. */
+    val mediaId: String,
+    /** Opaque AES-GCM ciphertext of the metadata envelope. Non-empty, at most 64 KiB. */
+    val encryptedMetadata: ByteArray,
+    /** Unix millis, or 0 for no expiry. A lifecycle hint, not enforced cryptographically. */
+    val expiresAt: Long = 0L,
+)
 
-@Serializable
+class VaultItem(
+    val vaultItemId: String,
+    val mediaId: String,
+    val encryptedMetadata: ByteArray,
+    /** Server-stamped unix millis. */
+    val createdAt: Long,
+    val expiresAt: Long,
+)
+
 data class GetVaultItemsRequest(
-    @SerialName("page_token") val pageToken: String = "",
-    @SerialName("page_size") val pageSize: Int = 50,
-    val category: String = "",
-)
-
-@Serializable
-data class GetVaultItemsResponse(
-    val items: List<VaultItem> = emptyList(),
-    @SerialName("next_page_token") val nextPageToken: String = "",
-)
-
-@Serializable
-data class CreateVaultItemRequest(
-    val title: String = "",
-    val category: String = "",
-    @SerialName("encrypted_content") val encryptedContent: ByteArray = ByteArray(0),
-    @SerialName("content_type") val contentType: String = "",
-    @SerialName("thumbnail_url") val thumbnailUrl: String = "",
-    val tags: List<String> = emptyList(),
+    /** 1..100; the server defaults anything else to 20. */
+    val limit: Int = DEFAULT_LIMIT,
+    /** A previous response's [GetVaultItemsResponse.nextCursor]. */
+    val pagingToken: String = "",
 ) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is CreateVaultItemRequest) return false
-        return title == other.title && encryptedContent.contentEquals(other.encryptedContent)
-    }
-
-    override fun hashCode(): Int {
-        var result = title.hashCode()
-        result = 31 * result + encryptedContent.contentHashCode()
-        return result
+    companion object {
+        const val DEFAULT_LIMIT = 20
+        const val MAX_LIMIT = 100
     }
 }
 
-@Serializable
-data class VaultItem(
-    val id: String = "",
-    val title: String = "",
-    val category: String = "",
-    @SerialName("content_type") val contentType: String = "",
-    @SerialName("thumbnail_url") val thumbnailUrl: String = "",
-    val tags: List<String> = emptyList(),
-    @SerialName("size_bytes") val sizeBytes: Long = 0L,
-    @SerialName("shared_with") val sharedWith: List<String> = emptyList(),
-    @SerialName("created_at") val createdAt: Long = 0L,
-    @SerialName("updated_at") val updatedAt: Long = 0L,
+class GetVaultItemsResponse(
+    val items: List<VaultItem>,
+    /** Empty when there is no further page. */
+    val nextCursor: String,
 )
 
-@Serializable
+data class GetVaultItemRequest(
+    val vaultItemId: String,
+)
+
 data class DeleteVaultItemRequest(
-    @SerialName("item_id") val itemId: String = "",
+    val vaultItemId: String,
 )
 
-@Serializable
-data class DeleteVaultItemResponse(
-    val success: Boolean = false,
-)
-
-@Serializable
-data class ShareVaultItemRequest(
-    @SerialName("item_id") val itemId: String = "",
-    @SerialName("recipient_user_ids") val recipientUserIds: List<String> = emptyList(),
-)
-
-@Serializable
-data class ShareVaultItemResponse(
-    val success: Boolean = false,
-    @SerialName("shared_count") val sharedCount: Int = 0,
-)
+data object DeleteVaultItemResponse

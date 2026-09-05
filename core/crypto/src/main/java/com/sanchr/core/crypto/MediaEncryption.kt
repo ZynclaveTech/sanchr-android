@@ -92,6 +92,29 @@ object MediaEncryptor {
     }
 
     /**
+     * `nonce || ciphertext || tag` in one buffer — CryptoKit's
+     * `AES.GCM.SealedBox.combined`, which is what iOS writes for vault
+     * payloads and metadata envelopes.
+     */
+    fun sealCombined(
+        data: ByteArray,
+        key: ByteArray,
+    ): ByteArray {
+        val r = encrypt(data, key)
+        return r.nonce + r.ciphertext + r.tag
+    }
+
+    /** Inverse of [sealCombined]. Throws on a short buffer or a failed authentication. */
+    fun openCombined(
+        combined: ByteArray,
+        key: ByteArray,
+    ): ByteArray {
+        require(combined.size >= GCM_NONCE_LENGTH + GCM_TAG_LENGTH / 8) { "combined ciphertext too short: ${combined.size}" }
+        val nonce = combined.copyOfRange(0, GCM_NONCE_LENGTH)
+        return decrypt(combined.copyOfRange(GCM_NONCE_LENGTH, combined.size), key, nonce)
+    }
+
+    /**
      * Encrypts a stream for large files. Writes nonce first, then encrypted data.
      * Also computes the SHA-256 digest of the plaintext for integrity verification.
      *
