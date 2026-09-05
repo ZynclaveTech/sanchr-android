@@ -11,6 +11,7 @@ import com.sanchr.feature.settings.EncryptionKeysScreen
 import com.sanchr.feature.settings.HelpCenterScreen
 import com.sanchr.feature.settings.NotificationsScreen
 import com.sanchr.feature.settings.PrivacyScreen
+import com.sanchr.feature.settings.RegistrationLockScreen
 import com.sanchr.feature.settings.SecurityScreen
 import com.sanchr.feature.settings.SettingsScreen
 import com.sanchr.feature.settings.StorageScreen
@@ -26,6 +27,7 @@ const val SETTINGS_CHAT_ROUTE = "settings/chat"
 const val SETTINGS_ENCRYPTION_KEYS_ROUTE = "settings/encryption-keys"
 const val SETTINGS_HELP_ROUTE = "settings/help"
 const val SETTINGS_BLOCKED_ROUTE = "settings/blocked"
+const val SETTINGS_REGISTRATION_LOCK_ROUTE = "settings/registration-lock"
 
 fun NavGraphBuilder.settingsGraph(navController: NavController) {
     navigation(startDestination = SETTINGS_MAIN_ROUTE, route = SETTINGS_TAB_ROUTE) {
@@ -63,7 +65,14 @@ fun NavGraphBuilder.settingsGraph(navController: NavController) {
         }
 
         composable(SETTINGS_SECURITY_ROUTE) {
-            SecurityScreen(onNavigateBack = { navController.popBackStack() })
+            SecurityScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToRegistrationLock = { navController.navigate(SETTINGS_REGISTRATION_LOCK_ROUTE) },
+            )
+        }
+
+        composable(SETTINGS_REGISTRATION_LOCK_ROUTE) {
+            RegistrationLockScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         composable(SETTINGS_STORAGE_ROUTE) {

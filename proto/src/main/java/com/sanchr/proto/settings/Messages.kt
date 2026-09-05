@@ -35,6 +35,8 @@ data class UserSettings(
     val theme: String = "system",
     val language: String = "en",
     @SerialName("font_size") val fontSize: String = "medium",
+    /** Server-owned: set through `SetRegistrationLock`, never through `UpdateSettings`. */
+    @SerialName("registration_lock_enabled") val registrationLockEnabled: Boolean = false,
 )
 
 @Serializable

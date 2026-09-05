@@ -37,7 +37,18 @@ sealed interface AuthState {
         val displayName: String,
         val otp: String = "",
         val isSubmitting: Boolean = false,
-    ) : AuthState
+        /** The server rejected the code because this number has Registration Lock; the PIN is needed too. */
+        val pinRequired: Boolean = false,
+        val pin: String = "",
+    ) : AuthState {
+        /** Verify is allowed once the code is complete and, for a locked number, the PIN is too. */
+        val canSubmit: Boolean
+            get() = otp.length == OTP_DIGITS && !isSubmitting && (!pinRequired || pin.length == OTP_DIGITS)
+
+        private companion object {
+            const val OTP_DIGITS = 6
+        }
+    }
 
     /**
      * Post-OTP bootstrap pipeline in flight. Carries the verified session
