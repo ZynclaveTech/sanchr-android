@@ -65,7 +65,11 @@ data class MessageUiModel(
     val quote: ReplyQuote? = null,
     /** Unopened view-once media: never rendered inline, opened in the secure viewer, then wiped. */
     val isViewOnce: Boolean = false,
-)
+) {
+    /** Whether the attachment is a video, which the placeholder and the secure viewer both need to know. */
+    val isVideoAttachment: Boolean
+        get() = attachment?.mimeType?.startsWith("video/", ignoreCase = true) == true
+}
 
 /** iOS `ReplyQuote`: who wrote the quoted message and one line of what they said. */
 data class ReplyQuote(
