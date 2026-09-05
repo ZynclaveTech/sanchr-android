@@ -104,7 +104,9 @@ jobs:
   assemble-release:
     name: assembleRelease (dummy-signed)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Same cold-cache profile as lint-test: R8 on a cold Gradle cache runs
+    # right up to 20 minutes and was being cancelled during the APK upload.
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
