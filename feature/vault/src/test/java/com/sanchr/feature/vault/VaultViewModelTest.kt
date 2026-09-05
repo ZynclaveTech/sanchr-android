@@ -160,4 +160,84 @@ class VaultViewModelTest {
             assertEquals(VaultEvent.Error("Could not open item"), events.last())
             eventJob.cancel()
         }
+
+    // --- Sorting: the six orders iOS offers, applied to the filtered list ---
+
+    @Test
+    fun `sorting orders the list and keeps the active filter`() =
+        runTest(dispatcher) {
+            fun photo(
+                id: String,
+                name: String,
+                size: Long,
+                created: Long,
+            ) = VaultItem(id, "m-$id", VaultItemType.PHOTO, name, "image/jpeg", size, null, Instant.fromEpochMilliseconds(created))
+            coEvery { repo.listItems(any(), any()) } returns
+                VaultPage(
+                    items =
+                        listOf(
+                            photo("a", "banana.jpg", size = 30, created = 100),
+                            photo("b", "Apple.jpg", size = 10, created = 300),
+                            photo("c", "cherry.jpg", size = 20, created = 200),
+                        ),
+                    nextCursor = "",
+                )
+            val vm = VaultViewModel(repo)
+            val collector = launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(
+                "newest first by default",
+                listOf("b", "c", "a"),
+                vm.uiState.value.items
+                    .map { it.id },
+            )
+
+            vm.setSort(VaultSort.OLDEST)
+            advanceUntilIdle()
+            assertEquals(
+                listOf("a", "c", "b"),
+                vm.uiState.value.items
+                    .map { it.id },
+            )
+
+            // Case-insensitive, as iOS's localized standard compare: Apple before banana.
+            vm.setSort(VaultSort.NAME_ASCENDING)
+            advanceUntilIdle()
+            assertEquals(
+                listOf("Apple.jpg", "banana.jpg", "cherry.jpg"),
+                vm.uiState.value.items
+                    .map { it.name },
+            )
+
+            vm.setSort(VaultSort.NAME_DESCENDING)
+            advanceUntilIdle()
+            assertEquals(
+                listOf("cherry.jpg", "banana.jpg", "Apple.jpg"),
+                vm.uiState.value.items
+                    .map { it.name },
+            )
+
+            vm.setSort(VaultSort.SIZE_LARGEST)
+            advanceUntilIdle()
+            assertEquals(
+                listOf(30L, 20L, 10L),
+                vm.uiState.value.items
+                    .map { it.sizeBytes },
+            )
+
+            vm.setSort(VaultSort.SIZE_SMALLEST)
+            advanceUntilIdle()
+            assertEquals(
+                listOf(10L, 20L, 30L),
+                vm.uiState.value.items
+                    .map { it.sizeBytes },
+            )
+
+            vm.setFilter(VaultFilter.FILES)
+            advanceUntilIdle()
+            assertEquals("a filter that matches nothing still yields nothing when sorted", emptyList<VaultItem>(), vm.uiState.value.items)
+            assertEquals("the chosen order survives a filter change", VaultSort.SIZE_SMALLEST, vm.uiState.value.sort)
+            collector.cancel()
+        }
 }
