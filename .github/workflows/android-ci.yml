@@ -24,7 +24,10 @@ jobs:
   lint-test:
     name: lint / unit tests / coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # ~5 min on a warm Gradle cache; ~20 min cold (any change to the version
+    # catalog invalidates the cache key), which is exactly when the job
+    # matters most. 20 was cancelling those runs mid-test.
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -283,7 +286,11 @@ jobs:
           arch: x86_64
           disk-size: 4096M
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # -no-snapshot-load: a cached AVD's `default_boot` snapshot loads
+          # into "adb: device offline" and the boot wait fails every retry
+          # (google_apis API 34, runs 33932010754 x2). A cold boot costs a
+          # minute or two and is deterministic.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-load
           disable-animations: true
           # Smoke scope only — the full interop test runs nightly.
           # `-Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.smoke.SmokeTest`
