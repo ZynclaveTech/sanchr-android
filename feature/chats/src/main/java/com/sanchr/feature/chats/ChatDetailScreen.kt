@@ -134,6 +134,9 @@ import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.network.link.LinkDetector
+import com.sanchr.core.network.link.LinkPreview
+import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.voice.VoiceClip
@@ -441,6 +444,7 @@ fun ChatDetailScreen(
                             viewModel = viewModel,
                             actions = actions,
                             onOpenViewOnce = { viewOnceOpen = it },
+                            loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
                         )
                     }
                 }
@@ -456,6 +460,7 @@ private fun MessageRow(
     viewModel: ChatDetailViewModel,
     actions: MessageActions,
     onOpenViewOnce: (MessageUiModel) -> Unit,
+    loadLinkPreview: (suspend (String) -> LinkPreview?)?,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -496,6 +501,7 @@ private fun MessageRow(
                 message = message,
                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
                 actions = actions,
+                loadLinkPreview = loadLinkPreview,
             )
     }
 }
@@ -602,6 +608,8 @@ private fun MessageBubble(
     actions: MessageActions,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    /** Null when the privacy setting is off: no link is ever fetched. */
+    loadLinkPreview: (suspend (String) -> LinkPreview?)? = null,
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
     var pickerOpen by remember(message.id) { mutableStateOf(false) }
@@ -675,6 +683,11 @@ private fun MessageBubble(
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
+                            if (loadLinkPreview != null && message.contentType == "text") {
+                                LinkDetector.firstUrl(message.text)?.let { url ->
+                                    LinkPreviewCard(url = url, isFromMe = message.isFromMe, load = loadLinkPreview)
+                                }
+                            }
                         }
                     }
                 }
@@ -1717,4 +1730,71 @@ private fun ChatSearchBar(
             }
         },
     )
+}
+
+/**
+ * The card under a text bubble for its first link (iOS `LinkPreviewCard`):
+ * picture when the page has one, title, and the site. Tapping opens the
+ * link in the browser. Nothing is fetched unless the privacy setting is on.
+ */
+@Composable
+private fun LinkPreviewCard(
+    url: String,
+    isFromMe: Boolean,
+    load: suspend (String) -> LinkPreview?,
+) {
+    val context = LocalContext.current
+    var preview by remember(url) { mutableStateOf<LinkPreview?>(null) }
+    var loading by remember(url) { mutableStateOf(true) }
+    LaunchedEffect(url) {
+        preview = load(url)
+        loading = false
+    }
+    val card = preview
+    if (card == null && !loading) return
+    val fg = if (isFromMe) SanchrWhite else SanchrGray900
+    Column(
+        modifier =
+            Modifier
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .width(220.dp)
+                .background(fg.copy(alpha = 0.1f), SanchrShapeTokens.CornerMedium)
+                .clickable(enabled = card != null) {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                },
+    ) {
+        card?.imageBytes?.let { bytes ->
+            AsyncImage(
+                model = bytes,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().height(120.dp).clip(SanchrShapeTokens.CornerMedium),
+            )
+        }
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            if (card == null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = fg)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = LinkPreviewFetcher.domainOf(url),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = fg.copy(alpha = 0.7f),
+                    )
+                }
+            } else {
+                card.title?.let { title ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = fg,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(text = card.domain, style = MaterialTheme.typography.labelSmall, color = fg.copy(alpha = 0.7f), maxLines = 1)
+            }
+        }
+    }
 }

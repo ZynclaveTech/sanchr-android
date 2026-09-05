@@ -26,6 +26,8 @@ data class ChatDetailUiState(
     val directPeerId: String? = null,
     /** In-chat search (iOS search bar): null when closed. */
     val search: ChatSearchState? = null,
+    /** Whether text bubbles fetch a card for their first link (privacy setting). */
+    val linkPreviewsEnabled: Boolean = true,
     /** Every conversation, for the forward picker. */
     val forwardTargets: List<Conversation> = emptyList(),
     /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */

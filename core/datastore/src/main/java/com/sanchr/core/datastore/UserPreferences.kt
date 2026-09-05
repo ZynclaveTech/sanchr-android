@@ -41,6 +41,7 @@ class UserPreferences
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
             val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
             val TYPING_INDICATORS_ENABLED = booleanPreferencesKey("typing_indicators_enabled")
+            val LINK_PREVIEWS_ENABLED = booleanPreferencesKey("link_previews_enabled")
 
             // "everyone", "contacts", "nobody" — the vocabulary in
             // settings.proto's profile_photo_visibility, shared with iOS.
@@ -135,6 +136,13 @@ class UserPreferences
 
         suspend fun setOnlineStatusVisible(visible: Boolean) {
             dataStore.edit { it[Keys.ONLINE_STATUS_VISIBLE] = visible }
+        }
+
+        /** Fetch a card for links in chats (iOS `sanchr.linkPreviews`, on by default). The site sees this device's address. */
+        val linkPreviewsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.LINK_PREVIEWS_ENABLED] ?: true }
+
+        suspend fun setLinkPreviewsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.LINK_PREVIEWS_ENABLED] = enabled }
         }
 
         // --- Security ---

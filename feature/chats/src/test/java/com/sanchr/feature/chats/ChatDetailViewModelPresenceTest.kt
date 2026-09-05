@@ -69,6 +69,8 @@ class ChatDetailViewModelPresenceTest {
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,
             notificationHandler = mockk<NotificationHandler>(relaxed = true),
+            userPreferences = mockk { every { linkPreviewsEnabled } returns flowOf(true) },
+            linkPreviewFetcher = mockk(relaxed = true),
         )
 
     @Test

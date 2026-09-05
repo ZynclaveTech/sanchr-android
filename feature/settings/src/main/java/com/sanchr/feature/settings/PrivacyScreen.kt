@@ -85,6 +85,14 @@ fun PrivacyScreen(
                 onCheckedChange = viewModel::setTypingIndicatorsEnabled,
             )
 
+            val linkPreviewsEnabled by viewModel.linkPreviewsEnabled.collectAsStateWithLifecycle()
+            SettingsToggleRow(
+                title = "Link Previews",
+                subtitle = "Show a preview of links in chats. The site can see your IP address",
+                checked = linkPreviewsEnabled,
+                onCheckedChange = viewModel::setLinkPreviewsEnabled,
+            )
+
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))
 
             // Profile Photo Visibility dropdown

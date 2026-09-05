@@ -6,12 +6,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
+import com.sanchr.core.network.link.LinkPreview
+import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.ConsumeViewOnceUseCase
 import com.sanchr.domain.messaging.ForwardMessageUseCase
@@ -59,6 +62,8 @@ class ChatDetailViewModel
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
         private val notificationHandler: NotificationHandler,
+        private val userPreferences: UserPreferences,
+        private val linkPreviewFetcher: LinkPreviewFetcher,
     ) : ViewModel() {
         private companion object {
             const val TAG = "ChatDetailViewModel"
@@ -87,6 +92,7 @@ class ChatDetailViewModel
             observeForwardTargets()
             observeTyping()
             observePresence()
+            observeLinkPreviewSetting()
             markAsRead()
             clearNotificationsForConversation()
         }
@@ -474,6 +480,15 @@ class ChatDetailViewModel
         fun dismissNotice() {
             _uiState.update { it.copy(notice = null) }
         }
+
+        private fun observeLinkPreviewSetting() {
+            viewModelScope.launch {
+                userPreferences.linkPreviewsEnabled.collect { enabled -> _uiState.update { it.copy(linkPreviewsEnabled = enabled) } }
+            }
+        }
+
+        /** The card for a link in a bubble; cached, and only called while the privacy setting is on. */
+        suspend fun linkPreview(url: String): LinkPreview? = linkPreviewFetcher.preview(url)
 
         fun setReply(message: MessageUiModel) {
             _uiState.update { it.copy(replyingTo = message) }
