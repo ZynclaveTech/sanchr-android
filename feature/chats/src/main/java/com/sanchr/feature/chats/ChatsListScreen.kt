@@ -236,6 +236,7 @@ fun ChatsListScreen(
                                 ConversationItem(
                                     conversation = conversation,
                                     currentUserId = state.currentUserId,
+                                    isTyping = conversation.id in state.typingConversationIds,
                                     onClick = { onConversationClick(conversation.id) },
                                 )
                             }
@@ -260,6 +261,7 @@ fun ChatsListScreen(
 private fun ConversationItem(
     conversation: Conversation,
     currentUserId: String,
+    isTyping: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -319,26 +321,35 @@ private fun ConversationItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val last = conversation.lastMessage
-                if (last != null && last.senderId == currentUserId) {
-                    Icon(
-                        imageVector = Icons.Filled.DoneAll,
-                        contentDescription = last.status.name.lowercase(),
-                        modifier = Modifier.size(14.dp),
-                        tint = if (last.status == MessageStatus.READ) SanchrIndigo500 else SanchrGray400,
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                val prefix = conversation.senderPrefix(currentUserId)
+            if (isTyping) {
                 Text(
-                    text = if (prefix != null) prefix + conversation.previewText() else conversation.previewText(),
+                    text = "typing…",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (conversation.unreadCount > 0) MaterialTheme.colorScheme.onSurface else SanchrGray500,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
+                    color = SanchrIndigo500,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val last = conversation.lastMessage
+                    if (last != null && last.senderId == currentUserId) {
+                        Icon(
+                            imageVector = Icons.Filled.DoneAll,
+                            contentDescription = last.status.name.lowercase(),
+                            modifier = Modifier.size(14.dp),
+                            tint = if (last.status == MessageStatus.READ) SanchrIndigo500 else SanchrGray400,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    val prefix = conversation.senderPrefix(currentUserId)
+                    Text(
+                        text = if (prefix != null) prefix + conversation.previewText() else conversation.previewText(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (conversation.unreadCount > 0) MaterialTheme.colorScheme.onSurface else SanchrGray500,
+                        fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
 
