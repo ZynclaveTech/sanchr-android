@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -152,13 +151,6 @@ fun LoginPhoneScreen(
             if (errorMessage != null) errorColor.copy(alpha = 0.35f) else lineColor
         }
     val logoShape = remember(cardCorner) { RoundedCornerShape(cardCorner) }
-    val securityShape = remember { RoundedCornerShape(24.dp) }
-    val securityIconShape = remember { RoundedCornerShape(14.dp) }
-    val securityBorder =
-        remember(darkTheme) {
-            SanchrIndigo500.copy(alpha = if (darkTheme) 0.15f else 0.12f)
-        }
-
     Scaffold(modifier = modifier) { innerPadding ->
         Column(
             modifier =
@@ -290,54 +282,6 @@ fun LoginPhoneScreen(
                         text = errorMessage,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Security card — iOS LoginView.swift:181-215.
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(securityShape)
-                        .background(surfaces.surface)
-                        .border(width = 1.dp, color = securityBorder, shape = securityShape)
-                        .padding(horizontal = 18.dp, vertical = 20.dp),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(52.dp)
-                            .clip(securityIconShape)
-                            .background(SanchrIndigo500.copy(alpha = 0.1f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = SanchrIndigo500,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = "End-to-End Encrypted",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    Text(
-                        text =
-                            "Your messages are secured with military-grade encryption. " +
-                                "Only you and your contacts can read them.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

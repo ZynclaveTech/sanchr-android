@@ -582,6 +582,9 @@ private fun MessageRow(
                 message = message,
                 openAttachment = viewModel::openAttachment,
                 onOpen = { onOpenMedia(message) },
+                // Cached media always shows: the policy only holds back a
+                // fetch that would actually spend data.
+                autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
             )
 
         message.contentType == "voice" && message.attachment != null ->
@@ -1073,6 +1076,7 @@ private fun ImageMessageBubble(
     openAttachment: suspend (MessageUiModel) -> File?,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
+    autoDownload: Boolean = true,
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
 
@@ -1094,6 +1098,7 @@ private fun ImageMessageBubble(
                 AttachmentImage(
                     message = message,
                     openAttachment = openAttachment,
+                    autoDownload = autoDownload,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -1290,10 +1295,20 @@ private fun AttachmentImage(
     message: MessageUiModel,
     openAttachment: suspend (MessageUiModel) -> File?,
     modifier: Modifier = Modifier,
+    /** False when Media auto-download says this fetch would cost data the user did not agree to spend. */
+    autoDownload: Boolean = true,
 ) {
     var file by remember(message.id) { mutableStateOf<File?>(null) }
     var failed by remember(message.id) { mutableStateOf(false) }
-    LaunchedEffect(message.id) {
+    // Held back rather than failed: the picture is there, the user just has
+    // not agreed to spend data on it yet, so tapping fetches it.
+    var deferred by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(message.id, autoDownload) {
+        if (!autoDownload && file == null) {
+            deferred = true
+            return@LaunchedEffect
+        }
+        deferred = false
         val f = openAttachment(message)
         if (f == null) failed = true else file = f
     }
@@ -1312,6 +1327,12 @@ private fun AttachmentImage(
                     contentDescription = message.text,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
+                )
+            deferred ->
+                Text(
+                    text = "Tap to download",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SanchrGray400,
                 )
             failed -> Text(text = "Image unavailable", style = MaterialTheme.typography.bodySmall, color = SanchrGray400)
             else -> {

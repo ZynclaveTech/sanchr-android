@@ -39,6 +39,21 @@ class ConnectivityMonitor
             }
 
         /**
+         * Whether the active network charges by the byte (mobile data, or a
+         * hotspot the user marked metered).
+         *
+         * Unknown counts as metered: guessing "free" wrongly spends someone's
+         * data, guessing "metered" wrongly only defers a download until they
+         * tap it.
+         */
+        val isMetered: Boolean
+            get() {
+                val network = connectivityManager.activeNetwork ?: return true
+                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return true
+                return !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            }
+
+        /**
          * A [Flow] that emits connectivity status changes. Uses [callbackFlow] to bridge
          * the callback-based [ConnectivityManager] API into a reactive stream.
          */

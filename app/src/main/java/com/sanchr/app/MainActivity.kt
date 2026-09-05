@@ -98,7 +98,13 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             val themeMode by userPreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
-            SanchrTheme(darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme())) {
+            // Settings offers Material You; the theme has always accepted the
+            // flag but nothing passed it, so the switch changed nothing.
+            val dynamicColor by userPreferences.dynamicColorEnabled.collectAsStateWithLifecycle(initialValue = false)
+            SanchrTheme(
+                darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme()),
+                dynamicColor = dynamicColor,
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     val screenLockEnabled by userPreferences.screenLockEnabled.collectAsStateWithLifecycle(initialValue = false)
                     val biometricEnabled by userPreferences.biometricEnabled.collectAsStateWithLifecycle(initialValue = false)

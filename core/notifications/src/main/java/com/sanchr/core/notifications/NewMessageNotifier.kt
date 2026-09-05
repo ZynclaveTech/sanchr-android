@@ -99,6 +99,11 @@ class NewMessageNotifier
                                 val showPreview =
                                     runCatching { userPreferences.showPreviewOnLockscreen.first() }
                                         .getOrDefault(false)
+                                // A read that fails falls back to the strictest
+                                // option: never show more than the user asked for.
+                                val previewSetting =
+                                    runCatching { userPreferences.notificationPreview.first() }
+                                        .getOrDefault(NotificationPreviewPolicy.NEVER)
                                 val nameCache = mutableMapOf<String, String?>()
                                 val mutedCache = mutableMapOf<String, Boolean>()
                                 var maxTimestamp = 0L
@@ -123,6 +128,7 @@ class NewMessageNotifier
                                             entity = entity,
                                             senderDisplayName = senderName,
                                             showPreviewOnLockscreen = showPreview,
+                                            messagePreviewSetting = previewSetting,
                                         )
                                     }
                                     if (entity.timestamp > maxTimestamp) {
