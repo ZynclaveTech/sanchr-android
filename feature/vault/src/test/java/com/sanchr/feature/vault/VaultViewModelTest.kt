@@ -5,6 +5,7 @@ import com.sanchr.core.model.VaultItemType
 import com.sanchr.domain.vault.VaultPage
 import com.sanchr.domain.vault.VaultRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -239,5 +240,80 @@ class VaultViewModelTest {
             assertEquals("a filter that matches nothing still yields nothing when sorted", emptyList<VaultItem>(), vm.uiState.value.items)
             assertEquals("the chosen order survives a filter change", VaultSort.SIZE_SMALLEST, vm.uiState.value.sort)
             collector.cancel()
+        }
+
+    // --- Multi-select: pick, select-all-visible, batch delete ---
+
+    @Test
+    fun `select mode picks items, select-all covers only the filtered view, and deleting clears the mode`() =
+        runTest(dispatcher) {
+            coEvery { repo.listItems(any(), any()) } returns
+                VaultPage(listOf(item("a", VaultItemType.PHOTO), item("b", VaultItemType.PHOTO), item("d", VaultItemType.DOCUMENT)), "")
+            coEvery { repo.deleteItem(any()) } returns Unit
+            val vm = VaultViewModel(repo)
+            val collector = launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+
+            vm.toggleSelection("a")
+            advanceUntilIdle()
+            assertFalse("tapping outside select mode does not select", vm.uiState.value.isSelectMode)
+
+            vm.enterSelectMode()
+            vm.toggleSelection("a")
+            vm.toggleSelection("b")
+            vm.toggleSelection("a")
+            advanceUntilIdle()
+            assertEquals(setOf("b"), vm.uiState.value.selectedIds)
+
+            vm.setFilter(VaultFilter.PHOTOS)
+            vm.selectAllVisible()
+            advanceUntilIdle()
+            assertEquals("select all takes the filtered view, not the whole vault", setOf("a", "b"), vm.uiState.value.selectedIds)
+
+            vm.deleteSelected()
+            advanceUntilIdle()
+            coVerify { repo.deleteItem("a") }
+            coVerify { repo.deleteItem("b") }
+            assertFalse("the mode ends once the batch is done", vm.uiState.value.isSelectMode)
+
+            vm.setFilter(VaultFilter.ALL)
+            advanceUntilIdle()
+            assertEquals(
+                listOf("d"),
+                vm.uiState.value.items
+                    .map { it.id },
+            )
+            collector.cancel()
+        }
+
+    @Test
+    fun `one failure does not stop the batch, and it is reported`() =
+        runTest(dispatcher) {
+            coEvery { repo.listItems(any(), any()) } returns
+                VaultPage(listOf(item("a", VaultItemType.PHOTO), item("b", VaultItemType.PHOTO)), "")
+            coEvery { repo.deleteItem("a") } throws IllegalStateException("server said no")
+            coEvery { repo.deleteItem("b") } returns Unit
+            val vm = VaultViewModel(repo)
+            val collector = launch { vm.uiState.collect {} }
+            val events = mutableListOf<VaultEvent>()
+            val eventCollector = launch { vm.events.collect { events += it } }
+            advanceUntilIdle()
+
+            vm.enterSelectMode()
+            vm.selectAllVisible()
+            advanceUntilIdle()
+            vm.deleteSelected()
+            advanceUntilIdle()
+
+            coVerify { repo.deleteItem("b") }
+            assertEquals(
+                "the one that failed is still there",
+                listOf("a"),
+                vm.uiState.value.items
+                    .map { it.id },
+            )
+            assertTrue("the failure is reported", events.filterIsInstance<VaultEvent.Error>().isNotEmpty())
+            collector.cancel()
+            eventCollector.cancel()
         }
 }

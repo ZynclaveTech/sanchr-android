@@ -8,7 +8,9 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,12 +32,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
@@ -132,40 +136,9 @@ fun VaultScreen(
     Scaffold(
         topBar = {
             SanchrTopBar(
-                title = "Vault",
-                actions = {
-                    var menuOpen by remember { mutableStateOf(false) }
-                    Box {
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "Menu",
-                            )
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            Text(
-                                text = "Sort by",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                            VaultSort.entries.forEach { order ->
-                                DropdownMenuItem(
-                                    text = { Text(order.label) },
-                                    trailingIcon = {
-                                        if (order == uiState.sort) {
-                                            Icon(imageVector = Icons.Filled.Check, contentDescription = "Selected")
-                                        }
-                                    },
-                                    onClick = {
-                                        menuOpen = false
-                                        viewModel.setSort(order)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                },
+                title = if (uiState.isSelectMode) selectionTitle(uiState.selectedIds.size) else "Vault",
+                onNavigateBack = if (uiState.isSelectMode) viewModel::exitSelectMode else null,
+                actions = { VaultToolbarMenu(uiState = uiState, viewModel = viewModel) },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -278,7 +251,12 @@ fun VaultScreen(
                         ) { item ->
                             VaultItemCard(
                                 item = item,
-                                onOpen = { viewModel.openItem(item) },
+                                isSelectMode = uiState.isSelectMode,
+                                isSelected = item.id in uiState.selectedIds,
+                                onOpen = {
+                                    if (uiState.isSelectMode) viewModel.toggleSelection(item.id) else viewModel.openItem(item)
+                                },
+                                onLongPress = { if (!uiState.isSelectMode) viewModel.enterSelectMode() },
                                 onDelete = { viewModel.deleteItem(item.id) },
                                 modifier =
                                     Modifier.padding(
@@ -427,13 +405,17 @@ private fun FilterChipsRow(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun VaultItemCard(
     item: VaultItem,
+    isSelectMode: Boolean,
+    isSelected: Boolean,
     onOpen: () -> Unit,
+    onLongPress: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SanchrCard(modifier = modifier, onClick = onOpen) {
+    SanchrCard(modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onLongPress)) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier =
@@ -532,17 +514,27 @@ private fun VaultItemCard(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(36.dp),
-                    ) {
+                    if (isSelectMode) {
                         Icon(
-                            imageVector = Icons.Filled.Delete,
-                            contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(20.dp),
+                            imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp),
                         )
+                    } else {
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = "Delete",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -670,5 +662,79 @@ private suspend fun presentDecryptedItem(
         true
     } catch (e: ActivityNotFoundException) {
         false
+    }
+}
+
+/** "3 items" / "1 item", for the title bar and the delete entry. */
+private fun selectionTitle(count: Int): String = if (count == 1) "1 item" else "$count items"
+
+/** The vault's overflow menu: Select and the sort orders, or the select-mode actions. */
+@Composable
+private fun VaultToolbarMenu(
+    uiState: VaultUiState,
+    viewModel: VaultViewModel,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { menuOpen = true }) {
+            Icon(
+                imageVector = Icons.Filled.MoreVert,
+                contentDescription = "Menu",
+            )
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            if (uiState.isSelectMode) {
+                DropdownMenuItem(
+                    text = { Text("Select all") },
+                    onClick = {
+                        menuOpen = false
+                        viewModel.selectAllVisible()
+                    },
+                )
+                if (uiState.selectedIds.isNotEmpty()) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Delete ${selectionTitle(uiState.selectedIds.size)}",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            viewModel.deleteSelected()
+                        },
+                    )
+                }
+                return@DropdownMenu
+            }
+            DropdownMenuItem(
+                text = { Text("Select") },
+                leadingIcon = { Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    viewModel.enterSelectMode()
+                },
+            )
+            Text(
+                text = "Sort by",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            VaultSort.entries.forEach { order ->
+                DropdownMenuItem(
+                    text = { Text(order.label) },
+                    trailingIcon = {
+                        if (order == uiState.sort) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = "Selected")
+                        }
+                    },
+                    onClick = {
+                        menuOpen = false
+                        viewModel.setSort(order)
+                    },
+                )
+            }
+        }
     }
 }
