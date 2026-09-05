@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
@@ -50,6 +51,7 @@ class ProfileViewModel
         private val profileUpdater: EncryptedProfileUpdater,
         private val contactRepository: ContactRepository,
         private val messageRepository: MessageRepository,
+        private val sessionManager: SessionManager,
     ) : ViewModel() {
         companion object {
             private const val TAG = "ProfileViewModel"
@@ -80,6 +82,8 @@ class ProfileViewModel
 
                     _uiState.update {
                         it.copy(
+                            // Our own profile is routed as "me"; the QR must carry the real id, as iOS reads it from the session.
+                            userId = if (isOwn) sessionManager.getUserId().orEmpty() else userId,
                             displayName = settings.displayName,
                             phoneNumber = settings.phoneNumber,
                             avatarUrl = settings.avatarUrl,

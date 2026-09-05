@@ -39,6 +39,7 @@ dependencies {
     implementation(projects.core.crypto)
     implementation(projects.core.designsystem)
     implementation(projects.core.model)
+    implementation(projects.core.datastore)
     implementation(projects.core.network)
     implementation(projects.proto)
     implementation(projects.domain.contacts)

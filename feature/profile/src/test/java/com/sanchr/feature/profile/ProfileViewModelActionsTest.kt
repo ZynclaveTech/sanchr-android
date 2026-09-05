@@ -3,6 +3,7 @@ package com.sanchr.feature.profile
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
@@ -10,6 +11,7 @@ import com.sanchr.proto.settings.SettingsServiceClient
 import com.sanchr.proto.settings.UserSettings
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import java.io.IOException
 import kotlin.test.AfterTest
@@ -31,6 +33,7 @@ class ProfileViewModelActionsTest {
     private val dispatcher = StandardTestDispatcher()
     private val settingsClient = mockk<SettingsServiceClient>()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "user-42" }
 
     @BeforeTest
     fun setUp() {
@@ -49,6 +52,7 @@ class ProfileViewModelActionsTest {
             mockk<EncryptedProfileUpdater>(relaxed = true),
             mockk<ContactRepository>(relaxed = true),
             messageRepository,
+            sessionManager,
         )
 
     @Test
@@ -97,5 +101,17 @@ class ProfileViewModelActionsTest {
             advanceUntilIdle()
 
             coVerify(exactly = 0) { messageRepository.ensureConversation(any()) }
+        }
+
+    @Test
+    fun `our own profile exposes the real user id, not the me route, so the QR is scannable`() =
+        runTest(dispatcher) {
+            val own = vm("me")
+            advanceUntilIdle()
+            assertEquals("user-42", own.uiState.value.userId)
+
+            val peer = vm("peer-1")
+            advanceUntilIdle()
+            assertEquals("peer-1", peer.uiState.value.userId)
         }
 }
