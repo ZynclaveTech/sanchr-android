@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,6 +50,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -60,8 +63,10 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -78,6 +83,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -96,8 +102,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -120,6 +128,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import com.sanchr.core.model.ContactCard
+import com.sanchr.core.model.Conversation
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.voice.VoiceClip
@@ -155,6 +164,25 @@ fun ChatDetailScreen(
         )
     val pickContact = rememberContactPicker(viewModel::sendContact)
     var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
+    var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
+    var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val actions =
+        remember(viewModel, clipboard) {
+            MessageActions(
+                onReply = viewModel::setReply,
+                onForward = { forwarding = it },
+                onCopy = { clipboard.setText(AnnotatedString(it.text)) },
+                onDelete = { deleting = it },
+            )
+        }
+    val noticeContext = LocalContext.current
+    uiState.notice?.let { notice ->
+        LaunchedEffect(notice) {
+            Toast.makeText(noticeContext, notice, Toast.LENGTH_SHORT).show()
+            viewModel.dismissNotice()
+        }
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -239,16 +267,16 @@ fun ChatDetailScreen(
                 }
 
                 // --- Message input bar ---
-                viewOnceOpen?.let { message ->
-                    ViewOnceViewer(
-                        message = message,
-                        openAttachment = viewModel::openAttachment,
-                        onClose = {
-                            viewOnceOpen = null
-                            viewModel.consumeViewOnce(message)
-                        },
-                    )
-                }
+                MessageDialogs(
+                    viewModel = viewModel,
+                    forwardTargets = uiState.forwardTargets,
+                    forwarding = forwarding,
+                    onForwardingDone = { forwarding = null },
+                    deleting = deleting,
+                    onDeletingDone = { deleting = null },
+                    viewOnceOpen = viewOnceOpen,
+                    onViewOnceClosed = { viewOnceOpen = null },
+                )
                 uiState.replyingTo?.let { replying ->
                     ReplyBanner(
                         authorName =
@@ -397,7 +425,7 @@ fun ChatDetailScreen(
                             MessageBubble(
                                 message = message,
                                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                onReply = { viewModel.setReply(message) },
+                                actions = actions,
                                 onClick = {
                                     scope.launch {
                                         val file = viewModel.openAttachment(message) ?: return@launch
@@ -410,7 +438,7 @@ fun ChatDetailScreen(
                             MessageBubble(
                                 message = message,
                                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                onReply = { viewModel.setReply(message) },
+                                actions = actions,
                             )
                     }
                 }
@@ -513,7 +541,7 @@ private fun ChatDetailTopBar(
 private fun MessageBubble(
     message: MessageUiModel,
     onToggleReaction: (String) -> Unit,
-    onReply: () -> Unit,
+    actions: MessageActions,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
@@ -548,10 +576,8 @@ private fun MessageBubble(
                 ReactionPicker(
                     open = pickerOpen,
                     onDismiss = { pickerOpen = false },
-                    onReply = {
-                        pickerOpen = false
-                        onReply()
-                    },
+                    message = message,
+                    actions = actions,
                 ) { emoji ->
                     pickerOpen = false
                     onToggleReaction(emoji)
@@ -621,18 +647,48 @@ private fun MessageBubble(
 /** iOS's quick reactions, shown on long-press above the bubble. */
 private val QUICK_REACTIONS = listOf("❤️", "👍", "😂", "😮", "😢", "🙏")
 
+/** The long-press actions, in iOS's order: the two that apply to everything, then Copy for text, then Delete last and alone. */
+private class MessageActions(
+    val onReply: (MessageUiModel) -> Unit,
+    val onForward: (MessageUiModel) -> Unit,
+    val onCopy: (MessageUiModel) -> Unit,
+    val onDelete: (MessageUiModel) -> Unit,
+)
+
 @Composable
 private fun ReactionPicker(
     open: Boolean,
     onDismiss: () -> Unit,
-    onReply: () -> Unit,
+    message: MessageUiModel,
+    actions: MessageActions,
     onPick: (String) -> Unit,
 ) {
+    fun run(action: (MessageUiModel) -> Unit) {
+        onDismiss()
+        action(message)
+    }
     DropdownMenu(expanded = open, onDismissRequest = onDismiss) {
         DropdownMenuItem(
             text = { Text("Reply") },
             leadingIcon = { Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null) },
-            onClick = onReply,
+            onClick = { run(actions.onReply) },
+        )
+        DropdownMenuItem(
+            text = { Text("Forward") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
+            onClick = { run(actions.onForward) },
+        )
+        if (message.contentType == "text") {
+            DropdownMenuItem(
+                text = { Text("Copy") },
+                leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                onClick = { run(actions.onCopy) },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            onClick = { run(actions.onDelete) },
         )
         Row(modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xs)) {
             QUICK_REACTIONS.forEach { emoji ->
@@ -1433,5 +1489,122 @@ private fun ViewOnceViewer(
                 Icon(Icons.Filled.Close, contentDescription = "Close", tint = SanchrWhite)
             }
         }
+    }
+}
+
+/** Pick one or more chats to forward into (iOS `MessageForwardDestinationPicker`). */
+@Composable
+private fun ForwardPickerDialog(
+    conversations: List<Conversation>,
+    onCancel: () -> Unit,
+    onSend: (List<String>) -> Unit,
+) {
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Forward to") },
+        text = {
+            if (conversations.isEmpty()) {
+                Text("No chats yet")
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(conversations, key = { it.id }) { conversation ->
+                        val checked = conversation.id in selected
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selected = if (checked) selected - conversation.id else selected + conversation.id }
+                                    .padding(vertical = 6.dp),
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = conversation.title ?: "Unknown", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSend(selected.toList()) }, enabled = selected.isNotEmpty()) {
+                Text(if (selected.size > 1) "Send to ${selected.size}" else "Send")
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun DeleteMessageDialog(
+    canDeleteForEveryone: Boolean,
+    onCancel: () -> Unit,
+    onDelete: (forEveryone: Boolean) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Delete message?") },
+        text = {
+            val body =
+                if (canDeleteForEveryone) {
+                    "Delete for everyone removes it from the chat on all devices."
+                } else {
+                    "This removes the message from this device."
+                }
+            Text(body)
+        },
+        confirmButton = {
+            Row {
+                if (canDeleteForEveryone) {
+                    TextButton(onClick = { onDelete(true) }) { Text("For everyone", color = MaterialTheme.colorScheme.error) }
+                }
+                TextButton(onClick = { onDelete(false) }) { Text("For me", color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+/** The transient dialogs a message action opens; split out to keep the screen composable readable. */
+@Composable
+private fun MessageDialogs(
+    viewModel: ChatDetailViewModel,
+    forwardTargets: List<Conversation>,
+    forwarding: MessageUiModel?,
+    onForwardingDone: () -> Unit,
+    deleting: MessageUiModel?,
+    onDeletingDone: () -> Unit,
+    viewOnceOpen: MessageUiModel?,
+    onViewOnceClosed: () -> Unit,
+) {
+    forwarding?.let { message ->
+        ForwardPickerDialog(
+            conversations = forwardTargets,
+            onCancel = onForwardingDone,
+            onSend = { targets ->
+                onForwardingDone()
+                viewModel.forward(message, targets)
+            },
+        )
+    }
+    deleting?.let { message ->
+        DeleteMessageDialog(
+            canDeleteForEveryone = message.isFromMe,
+            onCancel = onDeletingDone,
+            onDelete = { forEveryone ->
+                onDeletingDone()
+                viewModel.deleteMessage(message, forEveryone)
+            },
+        )
+    }
+    viewOnceOpen?.let { message ->
+        ViewOnceViewer(
+            message = message,
+            openAttachment = viewModel::openAttachment,
+            onClose = {
+                onViewOnceClosed()
+                viewModel.consumeViewOnce(message)
+            },
+        )
     }
 }

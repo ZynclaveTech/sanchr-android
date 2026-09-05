@@ -6,6 +6,7 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendMessageUseCase
@@ -46,6 +47,8 @@ class ChatDetailViewModelMarkAsReadTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
+
+    private val forwardMessageUseCase = mockk<ForwardMessageUseCase>(relaxed = true)
     private val sendMessageUseCase = mockk<SendMessageUseCase>()
     private val sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>()
     private val sessionManager = mockk<SessionManager>()
@@ -80,6 +83,7 @@ class ChatDetailViewModelMarkAsReadTest {
             sendReadReceiptUseCase = sendReadReceiptUseCase,
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
+            forwardMessageUseCase = forwardMessageUseCase,
             presenceStore = PresenceStore(),
             sessionManager = sessionManager,
             realtimeManager = realtimeManager,

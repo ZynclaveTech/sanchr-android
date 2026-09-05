@@ -22,6 +22,10 @@ data class ChatDetailUiState(
     val currentUserId: String = "",
     /** The message the next send will quote, or null. */
     val replyingTo: MessageUiModel? = null,
+    /** Every conversation, for the forward picker. */
+    val forwardTargets: List<Conversation> = emptyList(),
+    /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */
+    val notice: String? = null,
 )
 
 data class MessageUiModel(

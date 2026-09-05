@@ -14,12 +14,14 @@ import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.ConsumeViewOnceUseCase
+import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
 import com.sanchr.domain.messaging.ToggleReactionUseCase
+import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.sync.realtime.RealtimeManager
@@ -51,6 +53,7 @@ class ChatDetailViewModel
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val toggleReactionUseCase: ToggleReactionUseCase,
         private val consumeViewOnceUseCase: ConsumeViewOnceUseCase,
+        private val forwardMessageUseCase: ForwardMessageUseCase,
         private val presenceStore: PresenceStore,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
@@ -73,9 +76,13 @@ class ChatDetailViewModel
 
         private var presencePeer: String? = null
 
+        /** The loaded transcript as domain rows, keyed by id, for actions that need more than the UI model. */
+        private var domainMessages: Map<String, Message> = emptyMap()
+
         init {
             observeConversation()
             observeMessages()
+            observeForwardTargets()
             observeTyping()
             observePresence()
             markAsRead()
@@ -132,6 +139,7 @@ class ChatDetailViewModel
                     .observeMessages(conversationId)
                     .catch { /* DB closed during logout — nav teardown cancels this scope */ }
                     .collect { messages ->
+                        domainMessages = messages.associateBy { it.id }
                         _uiState.update { state ->
                             state.copy(
                                 messages = messages.toUiModels(state.conversation),
@@ -347,6 +355,61 @@ class ChatDetailViewModel
                         },
                 )
             }
+        }
+
+        private fun observeForwardTargets() {
+            viewModelScope.launch {
+                messageRepository
+                    .observeConversations()
+                    .catch { /* DB closed during logout */ }
+                    .collect { conversations -> _uiState.update { it.copy(forwardTargets = conversations) } }
+            }
+        }
+
+        /** Forwards [message] to [targetConversationIds] at once (iOS `forwardMessage`); reports the outcome as a notice. */
+        fun forward(
+            message: MessageUiModel,
+            targetConversationIds: List<String>,
+        ) {
+            val domain = domainMessages[message.id] ?: return
+            viewModelScope.launch {
+                try {
+                    val outcome = forwardMessageUseCase(domain, targetConversationIds)
+                    val notice =
+                        when {
+                            outcome.sent == 0 -> null
+                            outcome.failed == 0 -> "Forwarded to ${outcome.sent} ${if (outcome.sent == 1) "chat" else "chats"}"
+                            else -> "Forwarded to ${outcome.sent}, failed for ${outcome.failed}"
+                        }
+                    _uiState.update { it.copy(notice = notice, error = if (outcome.sent == 0) "Could not forward" else null) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: UnsupportedContentException) {
+                    _uiState.update { it.copy(error = "This message can't be forwarded") }
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = e.message ?: "Could not forward") }
+                }
+            }
+        }
+
+        /** Removes a message locally, and for everyone when [forEveryone] (our own messages only). */
+        fun deleteMessage(
+            message: MessageUiModel,
+            forEveryone: Boolean,
+        ) {
+            viewModelScope.launch {
+                try {
+                    messageRepository.deleteMessage(message.id, forEveryone = forEveryone && message.isFromMe)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = e.message ?: "Could not delete message") }
+                }
+            }
+        }
+
+        fun dismissNotice() {
+            _uiState.update { it.copy(notice = null) }
         }
 
         fun setReply(message: MessageUiModel) {

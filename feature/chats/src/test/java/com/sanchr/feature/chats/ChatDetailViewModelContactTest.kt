@@ -10,6 +10,7 @@ import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendMessageUseCase
@@ -40,6 +41,7 @@ import kotlinx.datetime.Instant
 class ChatDetailViewModelContactTest {
     private val testDispatcher = StandardTestDispatcher()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val forwardMessageUseCase = mockk<ForwardMessageUseCase>(relaxed = true)
     private val sendMessageUseCase = mockk<SendMessageUseCase>()
     private val realtimeManager = mockk<RealtimeManager>(relaxed = true)
 
@@ -65,6 +67,7 @@ class ChatDetailViewModelContactTest {
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
+            forwardMessageUseCase = forwardMessageUseCase,
             presenceStore = PresenceStore(),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,
@@ -221,5 +224,39 @@ class ChatDetailViewModelContactTest {
             assertEquals(true, rows[0].isViewOnce)
             assertEquals("system", rows[1].contentType)
             assertEquals("Viewed", rows[1].text)
+        }
+
+    @Test
+    fun `forward hands the domain row to the use case and reports a notice, and delete for everyone only applies to own rows`() =
+        runTest(testDispatcher) {
+            val row =
+                Message(
+                    id = "m1",
+                    conversationId = "conv-1",
+                    senderId = "peer",
+                    content = MessageContent.Text("hi"),
+                    status = MessageStatus.DELIVERED,
+                    timestamp = Instant.fromEpochMilliseconds(1_000),
+                )
+            every { messageRepository.observeMessages(any()) } returns flowOf(listOf(row))
+            coEvery { forwardMessageUseCase(row, listOf("c2", "c3")) } returns ForwardMessageUseCase.Outcome(sent = 2, failed = 0)
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            vm.forward(
+                vm.uiState.value.messages
+                    .single(),
+                listOf("c2", "c3"),
+            )
+            advanceUntilIdle()
+            assertEquals("Forwarded to 2 chats", vm.uiState.value.notice)
+
+            vm.deleteMessage(
+                vm.uiState.value.messages
+                    .single(),
+                forEveryone = true,
+            )
+            advanceUntilIdle()
+            coVerify { messageRepository.deleteMessage("m1", forEveryone = false) }
         }
 }
