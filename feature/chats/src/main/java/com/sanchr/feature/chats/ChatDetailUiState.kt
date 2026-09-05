@@ -30,6 +30,8 @@ data class ChatDetailUiState(
     val linkPreviewsEnabled: Boolean = true,
     /** Fraction of the attachment upload in flight, 0..1; null when nothing is uploading. */
     val uploadProgress: Float? = null,
+    /** Whether the user's screenshot protection is on, which the media viewer honours too. */
+    val screenshotProtectionEnabled: Boolean = true,
     /** Every conversation, for the forward picker. */
     val forwardTargets: List<Conversation> = emptyList(),
     /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */

@@ -506,6 +506,14 @@ class ChatDetailViewModel
             viewModelScope.launch {
                 userPreferences.linkPreviewsEnabled.collect { enabled -> _uiState.update { it.copy(linkPreviewsEnabled = enabled) } }
             }
+            viewModelScope.launch {
+                // The full-screen viewer honours the same toggle as the rest of
+                // the app; otherwise opening a photo would be the one window a
+                // screenshot could still catch.
+                userPreferences.screenshotProtectionEnabled.collect { on ->
+                    _uiState.update { it.copy(screenshotProtectionEnabled = on) }
+                }
+            }
         }
 
         /** The card for a link in a bubble; cached, and only called while the privacy setting is on. */

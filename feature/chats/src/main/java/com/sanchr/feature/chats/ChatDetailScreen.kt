@@ -143,6 +143,9 @@ import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.emoji.EmojiPickerSheet
 import com.sanchr.feature.chats.media.BlurHashImages
+import com.sanchr.feature.chats.media.GallerySelection
+import com.sanchr.feature.chats.media.GalleryState
+import com.sanchr.feature.chats.media.MediaGallery
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
 import com.sanchr.feature.chats.voice.VoiceRecordButton
@@ -177,6 +180,7 @@ fun ChatDetailScreen(
         )
     val pickContact = rememberContactPicker(viewModel::sendContact)
     var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
+    var gallery by remember { mutableStateOf<GalleryState?>(null) }
     var emojiPickerOpen by remember { mutableStateOf(false) }
     var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
     var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
@@ -310,6 +314,9 @@ fun ChatDetailScreen(
                     onDeletingDone = { deleting = null },
                     viewOnceOpen = viewOnceOpen,
                     onViewOnceClosed = { viewOnceOpen = null },
+                    gallery = gallery,
+                    galleryIsSecure = uiState.screenshotProtectionEnabled,
+                    onGalleryClosed = { gallery = null },
                 )
                 uiState.uploadProgress?.let { fraction ->
                     // Bytes actually written, so a stalled upload stops rather than sliding to full.
@@ -464,6 +471,7 @@ fun ChatDetailScreen(
                             viewModel = viewModel,
                             actions = actions,
                             onOpenViewOnce = { viewOnceOpen = it },
+                            onOpenMedia = { tapped -> gallery = GallerySelection.from(uiState.messages, tapped.id) },
                             loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
                         )
                     }
@@ -480,6 +488,7 @@ private fun MessageRow(
     viewModel: ChatDetailViewModel,
     actions: MessageActions,
     onOpenViewOnce: (MessageUiModel) -> Unit,
+    onOpenMedia: (MessageUiModel) -> Unit,
     loadLinkPreview: (suspend (String) -> LinkPreview?)?,
 ) {
     val context = LocalContext.current
@@ -493,6 +502,7 @@ private fun MessageRow(
             ImageMessageBubble(
                 message = message,
                 openAttachment = viewModel::openAttachment,
+                onOpen = { onOpenMedia(message) },
             )
 
         message.contentType == "voice" && message.attachment != null ->
@@ -509,9 +519,15 @@ private fun MessageRow(
                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
                 actions = actions,
                 onClick = {
-                    scope.launch {
-                        val file = viewModel.openAttachment(message) ?: return@launch
-                        presentAttachment(context, file, message.attachment.mimeType)
+                    // Video plays in our own viewer alongside the photos;
+                    // everything else still opens in whatever app handles it.
+                    if (message.isVideoAttachment) {
+                        onOpenMedia(message)
+                    } else {
+                        scope.launch {
+                            val file = viewModel.openAttachment(message) ?: return@launch
+                            presentAttachment(context, file, message.attachment.mimeType)
+                        }
                     }
                 },
             )
@@ -976,6 +992,7 @@ private fun MessageStatusIcon(message: MessageUiModel) {
 private fun ImageMessageBubble(
     message: MessageUiModel,
     openAttachment: suspend (MessageUiModel) -> File?,
+    onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
@@ -1001,7 +1018,8 @@ private fun ImageMessageBubble(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(150.dp),
+                            .height(150.dp)
+                            .clickable(onClick = onOpen),
                 )
                 if (message.text.isNotEmpty() && message.text != "[Image]") {
                     Text(
@@ -1674,6 +1692,9 @@ private fun MessageDialogs(
     onDeletingDone: () -> Unit,
     viewOnceOpen: MessageUiModel?,
     onViewOnceClosed: () -> Unit,
+    gallery: GalleryState?,
+    galleryIsSecure: Boolean,
+    onGalleryClosed: () -> Unit,
 ) {
     forwarding?.let { message ->
         ForwardPickerDialog(
@@ -1703,6 +1724,14 @@ private fun MessageDialogs(
                 onViewOnceClosed()
                 viewModel.consumeViewOnce(message)
             },
+        )
+    }
+    gallery?.let { state ->
+        MediaGallery(
+            state = state,
+            openAttachment = viewModel::openAttachment,
+            onClose = onGalleryClosed,
+            secure = galleryIsSecure,
         )
     }
 }

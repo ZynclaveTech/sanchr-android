@@ -131,4 +131,42 @@ class SanchrIdentityKeyStoreTest {
         assertNull(db.signalIdentityDao().getBlocking("peer.1"))
         assertFalse(store.hasIdentityKeyPair())
     }
+
+    @Test
+    fun `a verification is recorded and read back`() {
+        val address = SignalProtocolAddress("peer-1", 1)
+        store.saveIdentity(address, IdentityKeyPair.generate().publicKey)
+
+        assertNull(store.verifiedAtMillis(address), "a new identity starts unverified")
+
+        store.markVerified(address, atMillis = 1_700_000_000_000)
+        assertEquals(1_700_000_000_000, store.verifiedAtMillis(address))
+
+        store.clearVerified(address)
+        assertNull(store.verifiedAtMillis(address))
+    }
+
+    @Test
+    fun `a changed identity key drops the verification`() {
+        val address = SignalProtocolAddress("peer-2", 1)
+        store.saveIdentity(address, IdentityKeyPair.generate().publicKey)
+        store.markVerified(address, atMillis = 1_700_000_000_000)
+
+        // Re-saving the same key is not a change: a routine re-fetch must not
+        // silently un-verify a contact the user checked.
+        store.saveIdentity(address, store.getIdentity(address)!!)
+        assertEquals(1_700_000_000_000, store.verifiedAtMillis(address))
+
+        store.saveIdentity(address, IdentityKeyPair.generate().publicKey)
+        assertNull(store.verifiedAtMillis(address), "a verified badge must not outlive the key it vouched for")
+    }
+
+    @Test
+    fun `marking an unknown identity verified records nothing`() {
+        val address = SignalProtocolAddress("never-seen", 1)
+
+        store.markVerified(address)
+
+        assertNull(store.verifiedAtMillis(address))
+    }
 }

@@ -25,4 +25,14 @@ interface SignalIdentityDao {
 
     @Query("DELETE FROM signal_identities")
     fun deleteAllBlocking()
+
+    /**
+     * Records (or with null, revokes) a manual safety-number verification
+     * without touching the key itself.
+     */
+    @Query("UPDATE signal_identities SET verified_at = :verifiedAt WHERE address = :address")
+    fun setVerifiedAtBlocking(
+        address: String,
+        verifiedAt: Long?,
+    )
 }
