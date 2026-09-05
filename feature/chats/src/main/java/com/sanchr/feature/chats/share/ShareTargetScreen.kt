@@ -64,11 +64,51 @@ fun ShareTargetScreen(
         }
     }
 
+    ShareTargetContent(
+        uiState = uiState,
+        content = content,
+        onBack = { if (uiState.step == ShareStep.Picking) onFinished() else viewModel.backToPicking() },
+        onQueryChanged = viewModel::onQueryChanged,
+        onToggle = viewModel::toggleSelected,
+        onNext = viewModel::proceedToCompose,
+        onCaptionChanged = viewModel::onCaptionChanged,
+        onSend = {
+            when (content) {
+                is SharedContent.Text -> viewModel.sendText(content.body)
+                is SharedContent.Attachments -> {
+                    val prepared =
+                        withContext(Dispatchers.IO) {
+                            content.uris.mapNotNull { AttachmentPreparer.prepare(context, Uri.parse(it)) }
+                        }
+                    viewModel.sendAttachments(prepared)
+                }
+            }
+        },
+        modifier = modifier,
+    )
+}
+
+/**
+ * The share flow's rendering, with no dependency injection of its own, so a
+ * UI test can drive the picker and the review step directly.
+ */
+@Composable
+internal fun ShareTargetContent(
+    uiState: ShareTargetUiState,
+    content: SharedContent,
+    onBack: () -> Unit,
+    onQueryChanged: (String) -> Unit,
+    onToggle: (String) -> Unit,
+    onNext: () -> Unit,
+    onCaptionChanged: (String) -> Unit,
+    onSend: suspend () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(
         topBar = {
             SanchrTopBar(
                 title = if (uiState.step == ShareStep.Picking) "Share with" else "Review",
-                onNavigateBack = { if (uiState.step == ShareStep.Picking) onFinished() else viewModel.backToPicking() },
+                onNavigateBack = onBack,
             )
         },
         modifier = modifier,
@@ -78,27 +118,16 @@ fun ShareTargetScreen(
                 ShareStep.Picking ->
                     ChatPicker(
                         uiState = uiState,
-                        onQueryChanged = viewModel::onQueryChanged,
-                        onToggle = viewModel::toggleSelected,
-                        onNext = viewModel::proceedToCompose,
+                        onQueryChanged = onQueryChanged,
+                        onToggle = onToggle,
+                        onNext = onNext,
                     )
                 ShareStep.Composing ->
                     ShareComposer(
                         uiState = uiState,
                         content = content,
-                        onCaptionChanged = viewModel::onCaptionChanged,
-                        onSend = {
-                            when (content) {
-                                is SharedContent.Text -> viewModel.sendText(content.body)
-                                is SharedContent.Attachments -> {
-                                    val prepared =
-                                        withContext(Dispatchers.IO) {
-                                            content.uris.mapNotNull { AttachmentPreparer.prepare(context, Uri.parse(it)) }
-                                        }
-                                    viewModel.sendAttachments(prepared)
-                                }
-                            }
-                        },
+                        onCaptionChanged = onCaptionChanged,
+                        onSend = onSend,
                     )
             }
         }

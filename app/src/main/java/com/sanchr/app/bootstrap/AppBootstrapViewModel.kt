@@ -8,6 +8,7 @@ import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.feature.chats.share.SharedContent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +75,24 @@ class AppBootstrapViewModel
         /** Records (or clears, via `null`) the pending notification destination. */
         fun setPendingDestination(destination: PendingDestination?) {
             _pendingDestination.value = destination
+        }
+
+        /**
+         * Content handed to us by the system share sheet, held until the share
+         * flow finishes.
+         *
+         * Lives here for the same reason as [pendingDestination]: an Activity
+         * field is destroyed by any configuration change, and the Activity is
+         * then recreated with the original share Intent still attached — so a
+         * share the user had already sent would reappear on the next rotation
+         * or theme flip.
+         */
+        private val _sharedContent = MutableStateFlow<SharedContent?>(null)
+        val sharedContent: StateFlow<SharedContent?> = _sharedContent.asStateFlow()
+
+        /** Records (or clears, via `null`) content arriving from the share sheet. */
+        fun setSharedContent(content: SharedContent?) {
+            _sharedContent.value = content
         }
 
         /**

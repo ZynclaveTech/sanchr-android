@@ -41,7 +41,6 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.feature.chats.share.ShareTargetScreen
-import com.sanchr.feature.chats.share.SharedContent
 import com.sanchr.feature.chats.share.toSharedContent
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
@@ -71,13 +70,6 @@ class MainActivity : FragmentActivity() {
     private val bootstrapViewModel: AppBootstrapViewModel by viewModels()
 
     /**
-     * Content handed to us by the system share sheet, cleared once the share
-     * flow finishes. Held as Compose state so a share arriving on an already
-     * running task (launchMode is singleTop) recomposes into the flow.
-     */
-    private var sharedContent by mutableStateOf<SharedContent?>(null)
-
-    /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
      * The result is intentionally ignored -- if the user denies the permission,
      * notifications simply will not appear and the app continues to function.
@@ -100,7 +92,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         handleNotificationIntent(intent)
-        sharedContent = intent.toSharedContent()
+        consumeShareIntent(intent)
         bootstrapSignalKeysWhenAuthenticated()
         observeScreenshotProtectionPreference()
 
@@ -152,7 +144,8 @@ class MainActivity : FragmentActivity() {
                     }
 
                     val startDestination by bootstrapViewModel.startDestination.collectAsStateWithLifecycle()
-                    val pendingShare = sharedContent.takeIf { startDestination is StartDestination.Main }
+                    val shared by bootstrapViewModel.sharedContent.collectAsStateWithLifecycle()
+                    val pendingShare = shared.takeIf { startDestination is StartDestination.Main }
 
                     when {
                         // The nav host is not composed while locked, so no chat is
@@ -165,7 +158,7 @@ class MainActivity : FragmentActivity() {
                         pendingShare != null ->
                             ShareTargetScreen(
                                 content = pendingShare,
-                                onFinished = { sharedContent = null },
+                                onFinished = { bootstrapViewModel.setSharedContent(null) },
                             )
                         else ->
                             SanchrNavHost(
@@ -267,7 +260,27 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleNotificationIntent(intent)
-        sharedContent = intent.toSharedContent()
+        consumeShareIntent(intent)
+    }
+
+    /**
+     * Hands a share to the view model, then strips it from the Activity's
+     * Intent.
+     *
+     * The Intent outlives the Activity instance: a configuration change
+     * recreates the Activity and redelivers the same Intent, so a share left
+     * on it would be read a second time and reopen the picker for something
+     * the user had already sent. Reading it once and clearing it makes the
+     * view model the only source of truth, and it survives recreation.
+     */
+    private fun consumeShareIntent(source: android.content.Intent) {
+        val content = source.toSharedContent() ?: return
+        bootstrapViewModel.setSharedContent(content)
+        source.action = android.content.Intent.ACTION_MAIN
+        source.removeExtra(android.content.Intent.EXTRA_STREAM)
+        source.removeExtra(android.content.Intent.EXTRA_TEXT)
+        source.removeExtra(android.content.Intent.EXTRA_SUBJECT)
+        setIntent(source)
     }
 
     // ------------------------------------------------------------------
