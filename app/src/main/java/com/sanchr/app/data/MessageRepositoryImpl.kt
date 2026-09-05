@@ -23,9 +23,12 @@ import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
+import com.sanchr.proto.messaging.DeleteConversationRequest
 import com.sanchr.proto.messaging.DeleteMessageRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.StartDirectConversationRequest
+import com.sanchr.proto.notifications.NotificationServiceClient
+import com.sanchr.proto.notifications.SetConversationNotificationPrefsRequest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -49,6 +52,7 @@ class MessageRepositoryImpl
         private val contactProfileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
         private val reactionDao: MessageReactionDao,
+        private val notificationClient: NotificationServiceClient,
     ) : MessageRepository {
         private companion object {
             const val TAG = "MessageRepositoryImpl"
@@ -59,8 +63,13 @@ class MessageRepositoryImpl
          * then by that message's time (falling back to the row's `updated_at`
          * for empty chats), as the iOS chat list orders them.
          */
-        override fun observeConversations(): Flow<List<Conversation>> =
-            combine(conversationDao.observeConversations(), messageDao.observeLatestPerConversation()) { entities, latest ->
+        override fun observeConversations(): Flow<List<Conversation>> = withNewestMessages(conversationDao.observeConversations())
+
+        override fun observeArchivedConversations(): Flow<List<Conversation>> =
+            withNewestMessages(conversationDao.observeArchivedConversations())
+
+        private fun withNewestMessages(rows: Flow<List<ConversationEntity>>): Flow<List<Conversation>> =
+            combine(rows, messageDao.observeLatestPerConversation()) { entities, latest ->
                 val newestByConversation = latest.groupBy { it.conversationId }.mapValues { (_, rows) -> rows.maxBy { it.timestamp } }
                 entities
                     .map { entity -> entity.toDomain().copy(lastMessage = newestByConversation[entity.id]?.toDomain()) }
@@ -69,6 +78,25 @@ class MessageRepositoryImpl
                             .thenByDescending { it.lastMessage?.timestamp ?: it.updatedAt },
                     )
             }
+
+        override suspend fun setMuted(
+            conversationId: String,
+            muted: Boolean,
+        ) {
+            notificationClient.setConversationNotificationPrefs(SetConversationNotificationPrefsRequest(conversationId, muted))
+            conversationDao.setMuted(conversationId, muted)
+        }
+
+        override suspend fun deleteConversation(conversationId: String) {
+            try {
+                messagingClient.deleteConversation(DeleteConversationRequest(conversationId))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "server delete of conversation $conversationId failed: ${e.message}")
+            }
+            conversationDao.deleteConversation(conversationId)
+        }
 
         override fun observeConversation(conversationId: String): Flow<Conversation?> =
             conversationDao.observeConversation(conversationId).map { entity ->

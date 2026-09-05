@@ -34,3 +34,9 @@ data class UpdateNotificationPrefsRequest(
 data class UpdateNotificationPrefsResponse(
     val success: Boolean = false,
 )
+
+/** Per-conversation mute, as iOS `toggleMute` sends before flipping the local flag. */
+data class SetConversationNotificationPrefsRequest(
+    val conversationId: String = "",
+    val muted: Boolean = false,
+)

@@ -4,6 +4,7 @@ import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.NotifierState
 import com.sanchr.core.datastore.SessionManager
@@ -44,6 +45,7 @@ class NewMessageNotifier
     @Inject
     constructor(
         private val messageDao: MessageDao,
+        private val conversationDao: ConversationDao,
         private val contactDao: ContactDao,
         private val sessionManager: SessionManager,
         private val userPreferences: UserPreferences,
@@ -98,9 +100,21 @@ class NewMessageNotifier
                                     runCatching { userPreferences.showPreviewOnLockscreen.first() }
                                         .getOrDefault(false)
                                 val nameCache = mutableMapOf<String, String?>()
+                                val mutedCache = mutableMapOf<String, Boolean>()
                                 var maxTimestamp = 0L
                                 batch.forEach { entity ->
-                                    if (renderedIds.put(entity.id, true) == null) {
+                                    // A muted chat's messages are still marked as seen by the
+                                    // notifier so they never surface later when it is unmuted.
+                                    val muted =
+                                        mutedCache.getOrPut(entity.conversationId) {
+                                            runCatching {
+                                                conversationDao
+                                                    .getConversationById(
+                                                        entity.conversationId,
+                                                    )?.isMuted == true
+                                            }.getOrDefault(false)
+                                        }
+                                    if (renderedIds.put(entity.id, true) == null && !muted) {
                                         val senderName =
                                             nameCache.getOrPut(entity.senderId) {
                                                 resolveSenderName(entity.senderId)
@@ -110,9 +124,9 @@ class NewMessageNotifier
                                             senderDisplayName = senderName,
                                             showPreviewOnLockscreen = showPreview,
                                         )
-                                        if (entity.timestamp > maxTimestamp) {
-                                            maxTimestamp = entity.timestamp
-                                        }
+                                    }
+                                    if (entity.timestamp > maxTimestamp) {
+                                        maxTimestamp = entity.timestamp
                                     }
                                 }
                                 if (maxTimestamp > 0L) {

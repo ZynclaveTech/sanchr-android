@@ -35,6 +35,7 @@ class MessageRepositoryImplConversationsTest {
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             reactionDao = mockk(relaxed = true),
+            notificationClient = mockk(relaxed = true),
         )
 
     private fun conversation(

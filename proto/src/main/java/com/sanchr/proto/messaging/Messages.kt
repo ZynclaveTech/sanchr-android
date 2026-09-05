@@ -319,3 +319,11 @@ data class SendSealedMessageRequest(
 data class SendSealedMessageResponse(
     val serverTimestamp: Long = 0L,
 )
+
+data class DeleteConversationRequest(
+    val conversationId: String = "",
+)
+
+data class DeleteConversationResponse(
+    val success: Boolean = true,
+)

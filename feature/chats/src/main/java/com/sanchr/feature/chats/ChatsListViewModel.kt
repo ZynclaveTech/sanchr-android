@@ -15,6 +15,7 @@ import com.sanchr.sync.SyncWorker
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
@@ -42,6 +44,8 @@ sealed interface ChatsListUiState {
         val currentUserId: String = "",
         /** Conversations whose peer is typing right now; the row says so instead of the preview, as iOS. */
         val typingConversationIds: Set<String> = emptySet(),
+        /** How many chats are archived; the list shows an "Archived" row when non-zero. */
+        val archivedCount: Int = 0,
     ) : ChatsListUiState
 
     data object Empty : ChatsListUiState
@@ -114,14 +118,21 @@ class ChatsListViewModel
             )
         val events: SharedFlow<NewChatEvent> = _events.asSharedFlow()
 
+        /** Archived chats, for the Archived screen and the count on the list. */
+        val archived: StateFlow<List<Conversation>> =
+            messageRepository
+                .observeArchivedConversations()
+                .catch { emit(emptyList()) }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
         val uiState: StateFlow<ChatsListUiState> =
             combine(
                 observeConversationsUseCase(),
                 _searchQuery,
-                _isRefreshing,
-                syncState.isSyncing,
+                combine(_isRefreshing, syncState.isSyncing) { r, s -> r to s },
                 realtimeManager.typingCache,
-            ) { result, query, refreshing, syncing, typing ->
+                archived,
+            ) { result, query, (refreshing, syncing), typing, archivedList ->
                 when (result) {
                     is Result.Loading -> ChatsListUiState.Loading
 
@@ -144,6 +155,7 @@ class ChatsListViewModel
                                 isSyncing = syncing,
                                 currentUserId = sessionManager.getUserId().orEmpty(),
                                 typingConversationIds = typing.filterValues { it.isTyping }.keys,
+                                archivedCount = archivedList.size,
                             )
                         }
                     }
@@ -168,6 +180,40 @@ class ChatsListViewModel
                         _isRefreshing.value = false
                     }
                 }.launchIn(viewModelScope)
+        }
+
+        private val _actionError = MutableStateFlow<String?>(null)
+        val actionError: StateFlow<String?> = _actionError.asStateFlow()
+
+        fun dismissActionError() {
+            _actionError.value = null
+        }
+
+        // --- Row actions (iOS swipe actions): each persists first, then the list re-emits from the DB ---
+
+        fun togglePin(conversation: Conversation) = action { messageRepository.setPinned(conversation.id, !conversation.isPinned) }
+
+        fun toggleMute(conversation: Conversation) = action { messageRepository.setMuted(conversation.id, !conversation.isMuted) }
+
+        fun setArchived(
+            conversation: Conversation,
+            archived: Boolean,
+        ) = action { messageRepository.setArchived(conversation.id, archived) }
+
+        fun markAsRead(conversation: Conversation) = action { messageRepository.markAsRead(conversation.id) }
+
+        fun deleteConversation(conversation: Conversation) = action { messageRepository.deleteConversation(conversation.id) }
+
+        private fun action(block: suspend () -> Unit) {
+            viewModelScope.launch {
+                try {
+                    block()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _actionError.value = e.message ?: "Something went wrong"
+                }
+            }
         }
 
         fun onSearchQueryChanged(query: String) {

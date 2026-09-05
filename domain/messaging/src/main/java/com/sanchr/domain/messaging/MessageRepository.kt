@@ -232,6 +232,22 @@ interface MessageRepository {
         archived: Boolean,
     )
 
+    /** Archived conversations, newest message first, with their newest message attached. */
+    fun observeArchivedConversations(): Flow<List<Conversation>>
+
+    /** Mutes or unmutes notifications for a conversation: tells the server, then the local row. */
+    suspend fun setMuted(
+        conversationId: String,
+        muted: Boolean,
+    )
+
+    /**
+     * Deletes a conversation and its messages here, and asks the server to
+     * drop it; a server failure still removes it locally (iOS does the same
+     * and re-settles on the next sync).
+     */
+    suspend fun deleteConversation(conversationId: String)
+
     /**
      * Inserts a decrypted incoming message into local storage and, by
      * default, stages a pending ack keyed on this same [conversationId] /
