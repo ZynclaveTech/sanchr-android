@@ -8,6 +8,7 @@ import com.sanchr.core.model.MediaKind
 import com.sanchr.core.model.Message
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
 import kotlin.test.Test
@@ -66,5 +67,21 @@ class SendAttachmentUseCaseTest {
                 )("conv", AttachmentUploader.Prepared(byteArrayOf(1), "image/png", "p.png"))
 
             assertTrue(result is Result.Error)
+        }
+
+    @Test
+    fun `an attachment sent as a reply carries the quoted message id, and no reply sends none`() =
+        runTest {
+            val attachment = MediaAttachment("sanchr-media://m", "AQ==", "AQ==", "image/jpeg", 5)
+            coEvery { uploader.upload(any()) } returns attachment
+            coEvery { sender.invoke("conv", any(), any(), any()) } returns Result.Success(message)
+            val useCase = SendAttachmentUseCase(uploader, sender, dispatchers)
+            val prepared = AttachmentUploader.Prepared(byteArrayOf(1), "image/jpeg", "p.jpg")
+
+            useCase("conv", prepared, replyToId = "m-quoted")
+            useCase("conv", prepared)
+
+            coVerify(exactly = 1) { sender.invoke("conv", any(), "image", "m-quoted") }
+            coVerify(exactly = 1) { sender.invoke("conv", any(), "image", null) }
         }
 }

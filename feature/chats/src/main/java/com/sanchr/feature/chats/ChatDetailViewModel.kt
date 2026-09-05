@@ -271,15 +271,26 @@ class ChatDetailViewModel
         fun sendMessage() {
             val content = _uiState.value.inputText.trim()
             if (content.isBlank()) return
-            val replyToId = _uiState.value.replyingTo?.id
-            _uiState.update { it.copy(inputText = "", replyingTo = null) }
+            val replyToId = takePendingReply()
+            _uiState.update { it.copy(inputText = "") }
             dispatchSend(content, contentType = "text", replyToId = replyToId)
         }
 
         /** Shares a contact card the way iOS does: a bare `{"name","phoneNumber"}` body typed `contact`. */
         fun sendContact(card: ContactCard) {
             if (_uiState.value.isSending) return
-            dispatchSend(card.encode(), contentType = ContactCard.CONTENT_TYPE)
+            dispatchSend(card.encode(), contentType = ContactCard.CONTENT_TYPE, replyToId = takePendingReply())
+        }
+
+        /**
+         * The reply being composed, cleared as it is handed over: every send
+         * consumes it, so the banner does not linger and quote the next
+         * message too.
+         */
+        private fun takePendingReply(): String? {
+            val replyToId = _uiState.value.replyingTo?.id ?: return null
+            _uiState.update { it.copy(replyingTo = null) }
+            return replyToId
         }
 
         private fun dispatchSend(
@@ -309,9 +320,10 @@ class ChatDetailViewModel
         /** Encrypts and sends a picked file as an attachment message. */
         fun sendAttachment(prepared: AttachmentUploader.Prepared) {
             if (_uiState.value.isSending) return
+            val replyToId = takePendingReply()
             _uiState.update { it.copy(isSending = true) }
             viewModelScope.launch {
-                when (val result = sendAttachmentUseCase(conversationId, prepared)) {
+                when (val result = sendAttachmentUseCase(conversationId, prepared, replyToId)) {
                     is Result.Success -> _uiState.update { it.copy(isSending = false) }
                     is Result.Error ->
                         _uiState.update {

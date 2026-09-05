@@ -26,13 +26,15 @@ class SendAttachmentUseCase
         suspend operator fun invoke(
             conversationId: String,
             prepared: AttachmentUploader.Prepared,
+            /** The message this attachment answers, or null; travels in the sealed payload as for text. */
+            replyToId: String? = null,
         ): Result<Message> =
             withContext(dispatcherProvider.io) {
                 runCatchingResult {
                     val attachment = uploader.upload(prepared)
                     val kind = MediaKind.forMimeType(attachment.mimeType)
                     val body = MediaContentEnvelope.encode(kind, listOf(attachment))
-                    when (val sent = sendMessageUseCase(conversationId, body, contentType = kind.wire)) {
+                    when (val sent = sendMessageUseCase(conversationId, body, contentType = kind.wire, replyToId = replyToId)) {
                         is Result.Success -> sent.data
                         is Result.Error -> throw sent.exception
                         is Result.Loading -> error("unexpected loading state from send")
