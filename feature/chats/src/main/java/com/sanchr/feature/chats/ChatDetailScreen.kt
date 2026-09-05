@@ -13,6 +13,7 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -81,6 +82,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -103,6 +106,7 @@ import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import com.sanchr.core.model.ContactCard
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
 import com.sanchr.feature.chats.voice.VoiceRecordButton
@@ -809,6 +813,13 @@ private fun AttachmentImage(
         val f = openAttachment(message)
         if (f == null) failed = true else file = f
     }
+    val placeholder =
+        remember(message.attachment?.blurHash) {
+            message.attachment
+                ?.blurHash
+                ?.let(BlurHashImages::placeholder)
+                ?.asImageBitmap()
+        }
     Box(modifier = modifier.background(SanchrGray100), contentAlignment = Alignment.Center) {
         when {
             file != null ->
@@ -819,7 +830,20 @@ private fun AttachmentImage(
                     contentScale = ContentScale.Crop,
                 )
             failed -> Text(text = "Image unavailable", style = MaterialTheme.typography.bodySmall, color = SanchrGray400)
-            else -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            else -> {
+                // The BlurHash placeholder shows the picture's shape and colours
+                // while the blob downloads and decrypts, as on iOS.
+                if (placeholder != null) {
+                    Image(
+                        bitmap = placeholder,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        filterQuality = FilterQuality.Low,
+                    )
+                }
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
         }
     }
 }
@@ -980,13 +1004,15 @@ private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> 
                         } ?: uri.lastPathSegment
                     var width: Int? = null
                     var height: Int? = null
+                    var blurHash: String? = null
                     if (mime.startsWith("image/")) {
                         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                         if (bounds.outWidth > 0) width = bounds.outWidth
                         if (bounds.outHeight > 0) height = bounds.outHeight
+                        blurHash = BlurHashImages.encode(bytes)
                     }
-                    AttachmentUploader.Prepared(bytes, mime, name, width = width, height = height)
+                    AttachmentUploader.Prepared(bytes, mime, name, width = width, height = height, blurHash = blurHash)
                 }
             if (prepared != null) onPicked(prepared)
         }
