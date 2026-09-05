@@ -6,6 +6,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
+import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
@@ -61,6 +62,7 @@ class ChatDetailViewModelContactTest {
             sendAttachmentUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
+            toggleReactionUseCase = mockk(relaxed = true),
             presenceStore = PresenceStore(),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,
@@ -106,5 +108,38 @@ class ChatDetailViewModelContactTest {
             assertEquals("contact", row.contentType)
             assertEquals(ContactCard("Ada", "+15550100"), row.contact)
             assertEquals("Ada", row.text)
+        }
+
+    @Test
+    fun `reactions are grouped into chips with the viewer's own marked`() =
+        runTest(testDispatcher) {
+            every { messageRepository.observeMessages(any()) } returns
+                flowOf(
+                    listOf(
+                        Message(
+                            id = "m1",
+                            conversationId = "conv-1",
+                            senderId = "peer",
+                            content = MessageContent.Text("hi"),
+                            status = MessageStatus.DELIVERED,
+                            timestamp = Instant.fromEpochMilliseconds(1_000),
+                            reactions =
+                                listOf(
+                                    MessageReaction("❤️", "peer", Instant.fromEpochMilliseconds(1)),
+                                    MessageReaction("❤️", "self", Instant.fromEpochMilliseconds(2)),
+                                    MessageReaction("👍", "peer", Instant.fromEpochMilliseconds(3)),
+                                ),
+                        ),
+                    ),
+                )
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(ReactionChip("❤️", 2, mine = true), ReactionChip("👍", 1, mine = false)),
+                vm.uiState.value.messages
+                    .single()
+                    .reactions,
+            )
         }
 }

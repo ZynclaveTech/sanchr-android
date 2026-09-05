@@ -45,6 +45,15 @@ data class MessageUiModel(
     val attachment: MediaAttachment? = null,
     /** The shared card behind a contact row; null otherwise. */
     val contact: ContactCard? = null,
+    /** Emoji chips under the bubble, grouped and counted, in first-seen order. */
+    val reactions: List<ReactionChip> = emptyList(),
+)
+
+data class ReactionChip(
+    val emoji: String,
+    val count: Int,
+    /** Whether the viewer is among the reactors; tapping the chip then removes it. */
+    val mine: Boolean,
 )
 
 enum class MessageStatus {

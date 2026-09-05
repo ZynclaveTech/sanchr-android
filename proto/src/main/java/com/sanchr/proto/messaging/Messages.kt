@@ -69,7 +69,22 @@ sealed interface ServerEvent {
     data class CallLifecycle(
         val event: CallLifecycleEvent? = null,
     ) : ServerEvent
+
+    data class Reaction(
+        val reaction: com.sanchr.proto.messaging.Reaction? = null,
+    ) : ServerEvent
 }
+
+/** `SendReaction` request and the `ReactionEvent` the server fans out; iOS `Sanchr_Messaging_Reaction`. */
+data class Reaction(
+    val messageId: String = "",
+    val conversationId: String = "",
+    val userId: String = "",
+    val emoji: String = "",
+    val removed: Boolean = false,
+    /** Unix millis. */
+    val timestamp: Long = 0L,
+)
 
 data class EncryptedEnvelope(
     val conversationId: String = "",

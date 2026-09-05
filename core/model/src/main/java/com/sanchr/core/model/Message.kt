@@ -29,6 +29,16 @@ data class Message(
      * row is in any non-terminal state.
      */
     val failureReason: String? = null,
+    /** Emoji reactions on this message, oldest first. */
+    val reactions: List<MessageReaction> = emptyList(),
+)
+
+/** One user's emoji on a message (iOS `Message.MessageReaction`). */
+@Serializable
+data class MessageReaction(
+    val emoji: String,
+    val userId: String,
+    val timestamp: Instant,
 )
 
 @Serializable

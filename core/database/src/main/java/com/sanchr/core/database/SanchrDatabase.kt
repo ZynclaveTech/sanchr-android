@@ -16,6 +16,7 @@ import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.EnvelopeQueueDao
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.dao.QuarantinedEnvelopeDao
 import com.sanchr.core.database.dao.SignalIdentityDao
@@ -29,6 +30,7 @@ import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.EnvelopeQueueEntity
 import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.database.entity.QuarantinedEnvelopeEntity
 import com.sanchr.core.database.entity.SignalIdentityEntity
@@ -58,8 +60,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         QuarantinedEnvelopeEntity::class,
         ContactProfileEntity::class,
         AccessKeyEntity::class,
+        MessageReactionEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -89,6 +92,8 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun contactProfileDao(): ContactProfileDao
 
     abstract fun accessKeyDao(): AccessKeyDao
+
+    abstract fun messageReactionDao(): MessageReactionDao
 }
 
 /**
@@ -296,6 +301,24 @@ object DatabaseModule {
             }
         }
 
+    // Reactions: one row per (message, user, emoji), fed by `SendReaction`
+    // echoes and `ReactionEvent`s on the stream. No FK to messages: an event
+    // can precede the row it targets.
+    internal val migration8To9 =
+        object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `message_reactions` (" +
+                        "`message_id` TEXT NOT NULL, " +
+                        "`user_id` TEXT NOT NULL, " +
+                        "`emoji` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`message_id`, `user_id`, `emoji`))",
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_message_reactions_message_id` ON `message_reactions` (`message_id`)")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -319,8 +342,16 @@ object DatabaseModule {
                     SanchrDatabase::class.java,
                     "sanchr-database",
                 ).openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
-                .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7, migration7To8)
-                .build()
+                .addMigrations(
+                    migration1To2,
+                    migration2To3,
+                    migration3To4,
+                    migration4To5,
+                    migration5To6,
+                    migration6To7,
+                    migration7To8,
+                    migration8To9,
+                ).build()
         }
     }
 
@@ -362,4 +393,7 @@ object DatabaseModule {
 
     @Provides
     fun provideAccessKeyDao(database: SanchrDatabase): AccessKeyDao = database.accessKeyDao()
+
+    @Provides
+    fun provideMessageReactionDao(database: SanchrDatabase): MessageReactionDao = database.messageReactionDao()
 }

@@ -69,4 +69,15 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_8_to_9_creates_message_reactions() {
+        helper.createDatabase("migration-test-9", 8).close()
+        helper.runMigrationsAndValidate("migration-test-9", 9, true, DatabaseModule.migration8To9).use { db ->
+            db.query("PRAGMA table_info(`message_reactions`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(columns == listOf("message_id", "user_id", "emoji", "timestamp")) { "unexpected message_reactions columns: $columns" }
+            }
+        }
+    }
 }

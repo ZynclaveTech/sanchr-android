@@ -13,9 +13,12 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -338,18 +341,19 @@ fun ChatDetailScreen(
                         message.attachment != null ->
                             MessageBubble(
                                 message = message,
-                                modifier =
-                                    Modifier.clickable {
-                                        scope.launch {
-                                            val file = viewModel.openAttachment(message) ?: return@launch
-                                            presentAttachment(context, file, message.attachment.mimeType)
-                                        }
-                                    },
+                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                                onClick = {
+                                    scope.launch {
+                                        val file = viewModel.openAttachment(message) ?: return@launch
+                                        presentAttachment(context, file, message.attachment.mimeType)
+                                    }
+                                },
                             )
 
                         else ->
                             MessageBubble(
                                 message = message,
+                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
                             )
                     }
                 }
@@ -448,11 +452,15 @@ private fun ChatDetailTopBar(
 
 // --- Message bubble ---
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun MessageBubble(
     message: MessageUiModel,
+    onToggleReaction: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    var pickerOpen by remember(message.id) { mutableStateOf(false) }
 
     val bubbleShape =
         if (message.isFromMe) {
@@ -478,39 +486,50 @@ private fun MessageBubble(
         Column(
             horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start,
         ) {
-            Surface(
-                shape = bubbleShape,
-                color = Color.Transparent,
-                modifier = Modifier.widthIn(max = 280.dp),
-            ) {
-                Box(
+            Box {
+                ReactionPicker(open = pickerOpen, onDismiss = { pickerOpen = false }) { emoji ->
+                    pickerOpen = false
+                    onToggleReaction(emoji)
+                }
+                Surface(
+                    shape = bubbleShape,
+                    color = Color.Transparent,
                     modifier =
-                        if (message.isFromMe) {
-                            Modifier.background(
-                                brush =
-                                    Brush.linearGradient(
-                                        colors = listOf(SanchrIndigo500, SanchrIndigo900),
-                                    ),
-                            )
-                        } else {
-                            Modifier.background(SanchrGray100)
-                        },
+                        Modifier
+                            .widthIn(max = 280.dp)
+                            .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { pickerOpen = true }),
                 ) {
-                    Column(
+                    Box(
                         modifier =
-                            Modifier.padding(
-                                horizontal = SanchrTheme.spacing.md,
-                                vertical = SanchrTheme.spacing.sm,
-                            ),
+                            if (message.isFromMe) {
+                                Modifier.background(
+                                    brush =
+                                        Brush.linearGradient(
+                                            colors = listOf(SanchrIndigo500, SanchrIndigo900),
+                                        ),
+                                )
+                            } else {
+                                Modifier.background(SanchrGray100)
+                            },
                     ) {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (message.isFromMe) SanchrWhite else SanchrGray900,
-                        )
+                        Column(
+                            modifier =
+                                Modifier.padding(
+                                    horizontal = SanchrTheme.spacing.md,
+                                    vertical = SanchrTheme.spacing.sm,
+                                ),
+                        ) {
+                            Text(
+                                text = message.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                            )
+                        }
                     }
                 }
             }
+
+            ReactionChips(message.reactions, onToggleReaction)
 
             // --- Timestamp + read receipts ---
             Row(
@@ -527,6 +546,57 @@ private fun MessageBubble(
                     Spacer(modifier = Modifier.width(4.dp))
                     MessageStatusIcon(message)
                 }
+            }
+        }
+    }
+}
+
+/** iOS's quick reactions, shown on long-press above the bubble. */
+private val QUICK_REACTIONS = listOf("❤️", "👍", "😂", "😮", "😢", "🙏")
+
+@Composable
+private fun ReactionPicker(
+    open: Boolean,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    DropdownMenu(expanded = open, onDismissRequest = onDismiss) {
+        Row(modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xs)) {
+            QUICK_REACTIONS.forEach { emoji ->
+                Text(
+                    text = emoji,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier =
+                        Modifier
+                            .clickable { onPick(emoji) }
+                            .padding(horizontal = SanchrTheme.spacing.xs, vertical = SanchrTheme.spacing.xs),
+                )
+            }
+        }
+    }
+}
+
+/** Grouped emoji counts under a bubble; the viewer's own are outlined, tapping one toggles it. */
+@Composable
+private fun ReactionChips(
+    chips: List<ReactionChip>,
+    onToggle: (String) -> Unit,
+) {
+    if (chips.isEmpty()) return
+    Row(modifier = Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        chips.forEach { chip ->
+            Surface(
+                shape = SanchrShapeTokens.CornerFull,
+                color = if (chip.mine) SanchrIndigo500.copy(alpha = 0.15f) else SanchrGray100,
+                border = if (chip.mine) BorderStroke(1.dp, SanchrIndigo500) else null,
+                modifier = Modifier.clickable { onToggle(chip.emoji) },
+            ) {
+                Text(
+                    text = if (chip.count > 1) "${chip.emoji} ${chip.count}" else chip.emoji,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SanchrGray900,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                )
             }
         }
     }

@@ -4,15 +4,18 @@ import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
+import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.ContactProfileResolver
@@ -26,6 +29,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 import org.json.JSONArray
@@ -42,6 +46,7 @@ class MessageRepositoryImpl
         private val contactProfileDao: ContactProfileDao,
         private val contactProfileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
+        private val reactionDao: MessageReactionDao,
     ) : MessageRepository {
         override fun observeConversations(): Flow<List<Conversation>> =
             conversationDao.observeConversations().map { entities ->
@@ -54,9 +59,35 @@ class MessageRepositoryImpl
             }
 
         override fun observeMessages(conversationId: String): Flow<List<Message>> =
-            messageDao.observeMessages(conversationId).map { entities ->
-                entities.map { it.toDomain() }
+            combine(
+                messageDao.observeMessages(conversationId),
+                reactionDao.observeForConversation(conversationId),
+            ) { entities, reactions ->
+                val byMessage = reactions.groupBy { it.messageId }
+                entities.map { entity ->
+                    entity.toDomain().copy(reactions = byMessage[entity.id].orEmpty().map { it.toDomain() })
+                }
             }
+
+        override suspend fun applyReaction(
+            messageId: String,
+            userId: String,
+            emoji: String,
+            removed: Boolean,
+            timestampMillis: Long,
+        ) {
+            if (removed) {
+                reactionDao.delete(messageId, userId, emoji)
+            } else {
+                reactionDao.upsert(MessageReactionEntity(messageId, userId, emoji, timestampMillis))
+            }
+        }
+
+        override suspend fun reactionsFor(messageId: String): List<MessageReaction> =
+            reactionDao.forMessage(messageId).map { it.toDomain() }
+
+        private fun MessageReactionEntity.toDomain(): MessageReaction =
+            MessageReaction(emoji = emoji, userId = userId, timestamp = Instant.fromEpochMilliseconds(timestamp))
 
         override suspend fun isSenderBlocked(senderId: String): Boolean = contactDao.isBlocked(senderId) == true
 

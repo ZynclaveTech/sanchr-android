@@ -10,12 +10,14 @@ import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
+import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
+import com.sanchr.domain.messaging.ToggleReactionUseCase
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.sync.realtime.RealtimeManager
@@ -45,6 +47,7 @@ class ChatDetailViewModel
         private val sendAttachmentUseCase: SendAttachmentUseCase,
         private val attachmentDownloader: AttachmentDownloader,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
+        private val toggleReactionUseCase: ToggleReactionUseCase,
         private val presenceStore: PresenceStore,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
@@ -337,7 +340,27 @@ class ChatDetailViewModel
                 failureReason = failureReason.takeIf { uiStatus == MessageStatus.FAILED },
                 attachment = content.attachmentOrNull(),
                 contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
+                reactions = reactions.toChips(currentUser),
             )
+        }
+
+        private fun List<MessageReaction>.toChips(selfUserId: String): List<ReactionChip> =
+            groupBy { it.emoji }.map { (emoji, users) -> ReactionChip(emoji, users.size, users.any { it.userId == selfUserId }) }
+
+        /** Adds our [emoji] to a message, or removes it when already there (as iOS). */
+        fun toggleReaction(
+            messageId: String,
+            emoji: String,
+        ) {
+            viewModelScope.launch {
+                try {
+                    toggleReactionUseCase(conversationId, messageId, emoji)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = e.message ?: "Could not send reaction") }
+                }
+            }
         }
 
         /**

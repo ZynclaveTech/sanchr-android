@@ -60,6 +60,7 @@ class ChatDetailViewModelPresenceTest {
             sendAttachmentUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
+            toggleReactionUseCase = mockk(relaxed = true),
             presenceStore = presenceStore,
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,

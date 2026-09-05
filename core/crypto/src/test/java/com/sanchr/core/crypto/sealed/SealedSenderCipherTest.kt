@@ -25,6 +25,7 @@ import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.GetConversationsResponse
 import com.sanchr.proto.messaging.MessagingServiceClient
+import com.sanchr.proto.messaging.Reaction
 import com.sanchr.proto.messaging.ReceiptRequest
 import com.sanchr.proto.messaging.ReceiptResponse
 import com.sanchr.proto.messaging.SendMessageRequest
@@ -424,5 +425,7 @@ class SealedSenderCipherTest {
         override suspend fun getDeliveryTokens(request: DeliveryTokenRequest): DeliveryTokenResponse = error("not used")
 
         override suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse = error("not used")
+
+        override suspend fun sendReaction(request: Reaction): Reaction = error("not used")
     }
 }

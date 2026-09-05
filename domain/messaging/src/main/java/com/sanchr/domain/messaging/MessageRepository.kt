@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
+import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -162,10 +163,22 @@ interface MessageRepository {
      * caller that needs the same "ack/complete regardless" property must
      * guard its own call the same way.
      */
+
     suspend fun applyReceiptStatus(
         messageId: String,
         status: MessageStatus,
     )
+
+    /** Adds or removes one user's emoji on a message; a no-op when the row already matches. */
+    suspend fun applyReaction(
+        messageId: String,
+        userId: String,
+        emoji: String,
+        removed: Boolean,
+        timestampMillis: Long,
+    )
+
+    suspend fun reactionsFor(messageId: String): List<MessageReaction>
 
     /** Deletes a message locally (and requests remote deletion if own message). */
     suspend fun deleteMessage(

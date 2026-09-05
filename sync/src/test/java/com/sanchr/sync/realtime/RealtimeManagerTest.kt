@@ -5,6 +5,8 @@ import android.util.Log
 import com.sanchr.core.common.calls.CallLifecycleSignal
 import com.sanchr.core.common.calls.IncomingCallEvents
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.MessageReactionDao
+import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.PresenceStatus
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
@@ -12,6 +14,7 @@ import com.sanchr.domain.messaging.SendPresenceUseCase
 import com.sanchr.proto.messaging.CallLifecycleEvent
 import com.sanchr.proto.messaging.CallOfferEvent
 import com.sanchr.proto.messaging.MessagingServiceClient
+import com.sanchr.proto.messaging.Reaction
 import com.sanchr.proto.messaging.ServerEvent
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -57,6 +60,7 @@ class RealtimeManagerTest {
     private val messagingClient = mockk<MessagingServiceClient>()
     private val sessionManager = mockk<SessionManager>(relaxed = true)
     private val messageDao = mockk<MessageDao>(relaxed = true)
+    private val reactionDao = mockk<MessageReactionDao>(relaxed = true)
     private val receiveMessageUseCase = mockk<ReceiveMessageUseCase>(relaxed = true)
     private val incomingCallEvents = mockk<IncomingCallEvents>(relaxed = true)
     private val sendPresence = mockk<SendPresenceUseCase>(relaxed = true)
@@ -115,6 +119,7 @@ class RealtimeManagerTest {
             messagingClient = messagingClient,
             sessionManager = sessionManager,
             messageDao = messageDao,
+            reactionDao = reactionDao,
             receiveMessageUseCase = receiveMessageUseCase,
             incomingCallEvents = incomingCallEvents,
             sendPresence = sendPresence,
@@ -377,5 +382,25 @@ class RealtimeManagerTest {
             advanceTimeBy(RealtimeManager.PRESENCE_INTERVAL_MS + 100)
             runCurrent()
             coVerify(exactly = 1) { sendPresence("bob", PresenceStatus.ONLINE) }
+        }
+
+    // --- Reactions land in the reactions table ------------------------------------------------
+
+    @Test
+    fun `reaction events add and remove rows in the reactions table`() =
+        runTest {
+            every { messagingClient.messageStream(any()) } returns
+                flowOf(
+                    ServerEvent.Reaction(Reaction("m1", "c1", "alice", "❤️", removed = false, timestamp = 5)),
+                    ServerEvent.Reaction(Reaction("m1", "c1", "alice", "👍", removed = true, timestamp = 6)),
+                    ServerEvent.Reaction(Reaction("", "c1", "alice", "👍", removed = false, timestamp = 7)),
+                )
+
+            buildManager().enterForeground()
+            runCurrent()
+
+            coVerify(exactly = 1) { reactionDao.upsert(MessageReactionEntity("m1", "alice", "❤️", 5)) }
+            coVerify(exactly = 1) { reactionDao.delete("m1", "alice", "👍") }
+            coVerify(exactly = 1) { reactionDao.upsert(any()) }
         }
 }
