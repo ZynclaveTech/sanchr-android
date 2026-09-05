@@ -7,6 +7,7 @@ import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
 import com.sanchr.sync.realtime.RealtimeManager
@@ -77,6 +78,7 @@ class ChatDetailViewModelMarkAsReadTest {
             sendAttachmentUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = sendReadReceiptUseCase,
+            presenceStore = PresenceStore(),
             sessionManager = sessionManager,
             realtimeManager = realtimeManager,
             notificationHandler = notificationHandler,

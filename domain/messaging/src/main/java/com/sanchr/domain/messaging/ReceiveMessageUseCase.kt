@@ -99,6 +99,7 @@ class ReceiveMessageUseCase
         private val dispatchers: DispatcherProvider,
         private val profileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
+        private val presenceStore: PresenceStore,
     ) {
         /**
          * Scope for fire-and-forget session rebuilds. A SupervisorJob is used
@@ -259,6 +260,9 @@ class ReceiveMessageUseCase
                     if (routed.contentType == RECEIPT_CONTENT_TYPE) {
                         applyReceiptUpdate(routed.payload.content)
                     }
+                    if (routed.contentType == PRESENCE_CONTENT_TYPE) {
+                        applyPresence(success.senderUserId, routed.payload.content)
+                    }
                     messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
                 }
                 is RoutedPayload.UserMessage ->
@@ -366,6 +370,27 @@ class ReceiveMessageUseCase
                     }
                 }
             }
+        }
+
+        /**
+         * A peer's `presence/v1`: a `PresenceUpdate` telling us whether they
+         * are online. Never persisted as a message (iOS routes it the same
+         * way); the sender is the envelope's, not the payload's, so a peer
+         * cannot speak for someone else. Malformed content is ignored.
+         */
+        private fun applyPresence(
+            senderUserId: String,
+            content: ByteArray,
+        ) {
+            val update = runCatching { Messaging.PresenceUpdate.parseFrom(content) }.getOrNull() ?: return
+            val status =
+                when (update.statusCode) {
+                    Messaging.PresenceStatus.ONLINE -> PresenceStatus.ONLINE
+                    Messaging.PresenceStatus.OFFLINE -> PresenceStatus.OFFLINE
+                    Messaging.PresenceStatus.HIDDEN -> PresenceStatus.HIDDEN
+                    else -> return
+                }
+            presenceStore.update(senderUserId, status, update.lastSeen.takeIf { it > 0 })
         }
 
         /**
@@ -497,6 +522,7 @@ class ReceiveMessageUseCase
             private const val TAG = "ReceiveMessage"
             private const val RECEIPT_CONTENT_TYPE = "receipt/v1"
             private const val PROFILE_KEY_CONTENT_TYPE = "profile-key/v1"
+            private const val PRESENCE_CONTENT_TYPE = "presence/v1"
             private const val MILLIS_PER_SECOND = 1_000L
 
             @Suppress("unused")
