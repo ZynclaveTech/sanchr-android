@@ -6,8 +6,12 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.sanchr.core.notifications.NewMessageNotifier
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.sync.SendRetryWorker
 import com.sanchr.sync.SyncWorker
 import com.sanchr.sync.realtime.RealtimeManager
+import com.sanchr.sync.rotation.PreKeyReplenishWorker
+import com.sanchr.sync.rotation.SenderCertificateRotationWorker
+import com.sanchr.sync.rotation.SignedPreKeyRotationWorker
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -47,10 +51,25 @@ class SanchrApp :
         // SupervisorJob and one dispatcher pool.
         newMessageNotifier.start()
 
-        // Schedule periodic background sync (every 15 minutes).
-        // This is a fallback; SyncInitializer via App Startup also schedules
-        // periodic sync, but calling schedulePeriodic with KEEP policy is
-        // idempotent and harmless if already enqueued.
-        SyncWorker.schedulePeriodic(WorkManager.getInstance(this))
+        // Every periodic worker is scheduled here, and only here.
+        //
+        // It used to be scheduled from an App Startup initializer as well.
+        // Initializers run from a ContentProvider, before Application.onCreate,
+        // so Hilt had not yet injected `workerFactory`; that initializer named
+        // WorkManagerInitializer as a dependency, App Startup ran it directly
+        // regardless of the manifest removing it, and WorkManager was pinned to
+        // its default configuration before this class was ever consulted.
+        // HiltWorkerFactory was therefore never installed and every @HiltWorker
+        // failed to construct for the life of the process.
+        //
+        // Reaching WorkManager for the first time here, after super.onCreate()
+        // has injected the factory, is what makes on-demand initialization pick
+        // up the configuration above.
+        val workManager = WorkManager.getInstance(this)
+        SyncWorker.schedulePeriodic(workManager)
+        SendRetryWorker.schedulePeriodic(workManager)
+        SignedPreKeyRotationWorker.schedulePeriodic(workManager)
+        SenderCertificateRotationWorker.schedulePeriodic(workManager)
+        PreKeyReplenishWorker.schedulePeriodic(workManager)
     }
 }

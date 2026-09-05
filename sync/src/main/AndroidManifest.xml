@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <application>
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="com.sanchr.sync.SyncInitializer"
-                android:value="androidx.startup" />
-        </provider>
-    </application>
+<!--
+    No App Startup initializer here.
+
+    Initializers run from a ContentProvider, before Application.onCreate, so
+    Hilt has not injected HiltWorkerFactory yet. An initializer that reached
+    WorkManager there pinned it to the default configuration, and every
+    @HiltWorker then failed to construct for the life of the process. Periodic
+    work is scheduled from SanchrApp.onCreate instead.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application />
 </manifest>

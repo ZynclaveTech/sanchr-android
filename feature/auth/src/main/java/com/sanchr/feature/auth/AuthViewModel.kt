@@ -308,7 +308,7 @@ class AuthViewModel
                 _state.value = stage(RegistrationStep.REGISTERING_PUSH)
                 // Best-effort: FCM token upload must not block registration. If
                 // Play Services are missing or the backend rejects the token we
-                // log and continue; SyncInitializer's periodic refresh retries later.
+                // log and continue; the periodic refresh scheduled in SanchrApp retries later.
                 try {
                     pushTokenManager.uploadToken()
                 } catch (e: Exception) {
