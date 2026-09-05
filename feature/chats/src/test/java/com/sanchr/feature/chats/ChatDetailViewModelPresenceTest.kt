@@ -3,6 +3,7 @@ package com.sanchr.feature.chats
 import androidx.lifecycle.SavedStateHandle
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStatus
 import com.sanchr.domain.messaging.PresenceStore
@@ -34,6 +35,7 @@ import kotlinx.coroutines.test.setMain
 class ChatDetailViewModelPresenceTest {
     private val testDispatcher = StandardTestDispatcher()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val forwardMessageUseCase = mockk<ForwardMessageUseCase>(relaxed = true)
     private val realtimeManager = mockk<RealtimeManager>(relaxed = true)
     private var now = 1_700_000_000_000L
     private val presenceStore = PresenceStore { now }
@@ -62,6 +64,7 @@ class ChatDetailViewModelPresenceTest {
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
+            forwardMessageUseCase = forwardMessageUseCase,
             presenceStore = presenceStore,
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,
