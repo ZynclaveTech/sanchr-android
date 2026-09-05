@@ -62,7 +62,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -342,6 +342,17 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * Adds the device-only "hidden from the chat lists" flag. Defaults to 0 so
+     * an upgrade hides nothing the user did not hide themselves.
+     */
+    internal val migration11To12 =
+        object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `is_hidden` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -376,6 +387,7 @@ object DatabaseModule {
                     migration8To9,
                     migration9To10,
                     migration10To11,
+                    migration11To12,
                 ).build()
         }
     }

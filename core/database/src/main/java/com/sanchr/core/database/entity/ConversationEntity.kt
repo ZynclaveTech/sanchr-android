@@ -37,6 +37,14 @@ data class ConversationEntity(
     val isMuted: Boolean = false,
     @ColumnInfo(name = "is_archived")
     val isArchived: Boolean = false,
+    /**
+     * Hidden from every chat list on this device until the user restores it.
+     *
+     * Device-only, like [isArchived]: nothing on the wire carries it, and it
+     * must survive a sync (see `ConversationDao.upsertFromServer`).
+     */
+    @ColumnInfo(name = "is_hidden")
+    val isHidden: Boolean = false,
     @ColumnInfo(name = "disappearing_duration_ms")
     val disappearingDurationMs: Long? = null,
     @ColumnInfo(name = "updated_at")

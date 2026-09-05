@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -78,12 +80,14 @@ fun ChatsListScreen(
     onConversationClick: (String) -> Unit,
     onOpenConversation: (String) -> Unit,
     onOpenArchived: () -> Unit,
+    onOpenHidden: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChatsListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pickerState by viewModel.picker.collectAsStateWithLifecycle()
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
+    val hiddenChats by viewModel.hidden.collectAsStateWithLifecycle()
     var deleting by remember { mutableStateOf<Conversation?>(null) }
     val context = LocalContext.current
     actionError?.let { error ->
@@ -267,6 +271,16 @@ fun ChatsListScreen(
                             if (state.archivedCount > 0) {
                                 item(key = "archived") { ArchivedRow(count = state.archivedCount, onClick = onOpenArchived) }
                             }
+                            if (hiddenChats.isNotEmpty()) {
+                                item(key = "hidden") {
+                                    ShelfRow(
+                                        icon = Icons.Filled.VisibilityOff,
+                                        label = "Hidden",
+                                        count = hiddenChats.size,
+                                        onClick = onOpenHidden,
+                                    )
+                                }
+                            }
                             items(
                                 items = state.conversations,
                                 key = { it.id },
@@ -283,6 +297,7 @@ fun ChatsListScreen(
                                             onMarkAsRead = { viewModel.markAsRead(conversation) },
                                             onArchive = { viewModel.setArchived(conversation, archived = true) },
                                             onDelete = { deleting = conversation },
+                                            onHide = { viewModel.setHidden(conversation, hidden = true) },
                                         ),
                                 )
                             }
@@ -311,6 +326,8 @@ class ConversationActions(
     val onArchive: (() -> Unit)?,
     val onDelete: () -> Unit,
     val onUnarchive: (() -> Unit)? = null,
+    val onHide: (() -> Unit)? = null,
+    val onUnhide: (() -> Unit)? = null,
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -503,6 +520,20 @@ private fun ConversationMenu(
                 onClick = { run(unarchive) },
             )
         }
+        actions.onHide?.let { hide ->
+            DropdownMenuItem(
+                text = { Text("Hide") },
+                leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                onClick = { run(hide) },
+            )
+        }
+        actions.onUnhide?.let { unhide ->
+            DropdownMenuItem(
+                text = { Text("Unhide") },
+                leadingIcon = { Icon(Icons.Filled.Visibility, contentDescription = null) },
+                onClick = { run(unhide) },
+            )
+        }
         DropdownMenuItem(
             text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
             leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
@@ -515,6 +546,15 @@ private fun ConversationMenu(
 private fun ArchivedRow(
     count: Int,
     onClick: () -> Unit,
+) = ShelfRow(icon = Icons.Filled.Archive, label = "Archived", count = count, onClick = onClick)
+
+/** A row above the chats that opens a shelf holding [count] conversations. */
+@Composable
+private fun ShelfRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    count: Int,
+    onClick: () -> Unit,
 ) {
     Row(
         modifier =
@@ -524,9 +564,9 @@ private fun ArchivedRow(
                 .padding(horizontal = SanchrTheme.spacing.default, vertical = SanchrTheme.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(imageVector = Icons.Filled.Archive, contentDescription = null, tint = SanchrGray400)
+        Icon(imageVector = icon, contentDescription = null, tint = SanchrGray400)
         Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
-        Text(text = "Archived", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Text(text = count.toString(), style = MaterialTheme.typography.labelMedium, color = SanchrGray400)
     }
 }

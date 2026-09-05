@@ -37,6 +37,7 @@ class ConversationDaoTest {
         archived: Boolean = false,
         timerMs: Long? = null,
         lastMessageId: String? = null,
+        hidden: Boolean = false,
     ) = ConversationEntity(
         id = id,
         type = "DIRECT",
@@ -44,6 +45,7 @@ class ConversationDaoTest {
         participantIds = """["self","peer"]""",
         unreadCount = unread,
         isArchived = archived,
+        isHidden = hidden,
         disappearingDurationMs = timerMs,
         lastMessageId = lastMessageId,
         updatedAt = 1L,
@@ -54,7 +56,7 @@ class ConversationDaoTest {
     fun upsertFromServer_keeps_local_only_state_on_an_existing_row() =
         runBlocking {
             val dao = db.conversationDao()
-            dao.insertConversation(row(archived = true, timerMs = 86_400_000L, lastMessageId = "m-9"))
+            dao.insertConversation(row(archived = true, hidden = true, timerMs = 86_400_000L, lastMessageId = "m-9"))
 
             // What a server refresh carries: no archived flag, no timer, no
             // last message id — but a fresh unread count and title.
@@ -62,6 +64,7 @@ class ConversationDaoTest {
 
             val stored = requireNotNull(dao.getConversationById("c1"))
             assertTrue(stored.isArchived)
+            assertTrue(stored.isHidden)
             assertEquals(86_400_000L, stored.disappearingDurationMs)
             assertEquals("m-9", stored.lastMessageId)
             assertEquals("~Alice", stored.title)
@@ -160,5 +163,47 @@ class ConversationDaoTest {
             assertEquals(listOf("b", "a"), dao.searchTextMessageIds("c1", "hello"))
             assertEquals(listOf("c"), dao.searchTextMessageIds("c1", "100\\%"))
             assertEquals(emptyList<String>(), dao.searchTextMessageIds("c1", "100\\_"))
+        }
+
+    @Test
+    fun a_hidden_chat_leaves_the_main_and_archived_lists_and_appears_in_the_hidden_one() =
+        runBlocking {
+            val dao = db.conversationDao()
+            dao.insertConversation(row(id = "plain"))
+            dao.insertConversation(row(id = "filed", archived = true))
+            dao.insertConversation(row(id = "secret", hidden = true))
+            dao.insertConversation(row(id = "filed-and-hidden", archived = true, hidden = true))
+
+            assertEquals(listOf("plain"), dao.observeConversations().first().map { it.id })
+            assertEquals(listOf("filed"), dao.observeArchivedConversations().first().map { it.id })
+            assertEquals(
+                setOf("secret", "filed-and-hidden"),
+                dao
+                    .observeHiddenConversations()
+                    .first()
+                    .map { it.id }
+                    .toSet(),
+            )
+        }
+
+    @Test
+    fun hiding_and_restoring_touches_nothing_else_about_the_row() =
+        runBlocking {
+            val dao = db.conversationDao()
+            dao.insertConversation(row(id = "c1", archived = true, timerMs = 5_000L, lastMessageId = "m-1", unread = 4))
+
+            dao.setHidden("c1", true)
+            val hidden = requireNotNull(dao.getConversationById("c1"))
+            assertTrue(hidden.isHidden)
+            assertTrue(hidden.isArchived)
+            assertEquals(5_000L, hidden.disappearingDurationMs)
+            assertEquals("m-1", hidden.lastMessageId)
+            assertEquals(4, hidden.unreadCount)
+
+            dao.setHidden("c1", false)
+            val restored = requireNotNull(dao.getConversationById("c1"))
+            assertEquals(false, restored.isHidden)
+            assertTrue(restored.isArchived)
+            assertEquals("m-1", restored.lastMessageId)
         }
 }

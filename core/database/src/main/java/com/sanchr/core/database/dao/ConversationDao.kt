@@ -14,7 +14,7 @@ interface ConversationDao {
     @Query(
         """
         SELECT * FROM conversations
-        WHERE is_archived = 0
+        WHERE is_archived = 0 AND is_hidden = 0
         ORDER BY is_pinned DESC, updated_at DESC
         """,
     )
@@ -23,11 +23,25 @@ interface ConversationDao {
     @Query(
         """
         SELECT * FROM conversations
-        WHERE is_archived = 1
+        WHERE is_archived = 1 AND is_hidden = 0
         ORDER BY updated_at DESC
         """,
     )
     fun observeArchivedConversations(): Flow<List<ConversationEntity>>
+
+    /**
+     * Hidden chats, which is the only list that shows them. Archived state is
+     * ignored here: a chat the user hid should appear in exactly one place,
+     * whatever it was before.
+     */
+    @Query(
+        """
+        SELECT * FROM conversations
+        WHERE is_hidden = 1
+        ORDER BY updated_at DESC
+        """,
+    )
+    fun observeHiddenConversations(): Flow<List<ConversationEntity>>
 
     @Query("SELECT * FROM conversations WHERE id = :conversationId")
     suspend fun getConversationById(conversationId: String): ConversationEntity?
@@ -49,11 +63,11 @@ interface ConversationDao {
 
     /**
      * Writes what the server knows about these conversations without
-     * discarding what only this device knows. `is_archived`,
+     * discarding what only this device knows. `is_archived`, `is_hidden`,
      * `disappearing_duration_ms` and `last_message_id` are not on the wire;
      * a plain REPLACE (see [insertConversations]) resets them to defaults,
-     * which un-archives every chat and clears every disappearing timer on
-     * each periodic sync. Server-owned columns are taken from [conversations]
+     * which un-archives every chat, unhides every hidden one, and clears
+     * every disappearing timer on each periodic sync. Server-owned columns are taken from [conversations]
      * as given.
      */
     @Transaction
@@ -66,6 +80,7 @@ interface ConversationDao {
                 } else {
                     incoming.copy(
                         isArchived = local.isArchived,
+                        isHidden = local.isHidden,
                         disappearingDurationMs = local.disappearingDurationMs,
                         lastMessageId = local.lastMessageId,
                     )
@@ -121,6 +136,12 @@ interface ConversationDao {
     suspend fun setMuted(
         conversationId: String,
         isMuted: Boolean,
+    )
+
+    @Query("UPDATE conversations SET is_hidden = :isHidden WHERE id = :conversationId")
+    suspend fun setHidden(
+        conversationId: String,
+        isHidden: Boolean,
     )
 
     @Query("UPDATE conversations SET is_archived = :isArchived WHERE id = :conversationId")

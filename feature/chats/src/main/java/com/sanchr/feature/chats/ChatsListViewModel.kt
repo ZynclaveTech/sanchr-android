@@ -125,6 +125,18 @@ class ChatsListViewModel
                 .catch { emit(emptyList()) }
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+        /**
+         * Hidden chats, for the Hidden screen and the row that opens it.
+         *
+         * Kept out of [uiState] deliberately: that combine already takes its
+         * maximum arity, and the screen needs this list either way.
+         */
+        val hidden: StateFlow<List<Conversation>> =
+            messageRepository
+                .observeHiddenConversations()
+                .catch { emit(emptyList()) }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
         val uiState: StateFlow<ChatsListUiState> =
             combine(
                 observeConversationsUseCase(),
@@ -199,6 +211,17 @@ class ChatsListViewModel
             conversation: Conversation,
             archived: Boolean,
         ) = action { messageRepository.setArchived(conversation.id, archived) }
+
+        /**
+         * Hides a chat from every list on this device, or restores it.
+         *
+         * Nothing is deleted and the server is not told, so restoring brings
+         * the conversation back with its transcript intact.
+         */
+        fun setHidden(
+            conversation: Conversation,
+            hidden: Boolean,
+        ) = action { messageRepository.setHidden(conversation.id, hidden) }
 
         fun markAsRead(conversation: Conversation) = action { messageRepository.markAsRead(conversation.id) }
 
