@@ -52,7 +52,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CallsListScreen(
-    onCallClick: (String) -> Unit,
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: CallsViewModel = hiltViewModel(),
 ) {
@@ -129,14 +129,8 @@ fun CallsListScreen(
                             ) { item ->
                                 CallEntryRow(
                                     item = item,
-                                    onClick = { onCallClick(item.entry.peerId) },
-                                    onCallBack = {
-                                        if (item.isVideo) {
-                                            viewModel.startVideoCall(item.entry.peerId, item.displayName)
-                                        } else {
-                                            viewModel.startVoiceCall(item.entry.peerId, item.displayName)
-                                        }
-                                    },
+                                    onClick = { onStartCall(item.entry.peerId, item.displayName, item.isVideo) },
+                                    onCallBack = { onStartCall(item.entry.peerId, item.displayName, item.isVideo) },
                                 )
                             }
                         }

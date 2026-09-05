@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.callengine.CallManager
+import com.sanchr.core.callengine.CallPlatform
 import com.sanchr.core.callengine.CallState
 import com.sanchr.core.callengine.WebRTCClient
 import com.sanchr.core.common.calls.CallPeerNames
@@ -57,6 +58,7 @@ class CallsViewModel
         private val callManager: CallManager,
         private val peerNames: CallPeerNames,
         val webRTCClient: WebRTCClient,
+        private val callPlatform: CallPlatform,
     ) : ViewModel() {
         companion object {
             private const val TAG = "CallsViewModel"
@@ -209,30 +211,14 @@ class CallsViewModel
         // Call actions
         // -----------------------------------------------------------------------
 
-        fun startVoiceCall(
+        /** Places a call through the foreground call service; the caller must already hold the runtime permissions. */
+        fun startCall(
             userId: String,
-            userName: String = userId,
+            userName: String,
+            isVideo: Boolean,
         ) {
-            viewModelScope.launch {
-                callManager.startCall(
-                    recipientId = userId,
-                    recipientName = userName,
-                    isVideo = false,
-                )
-            }
-        }
-
-        fun startVideoCall(
-            userId: String,
-            userName: String = userId,
-        ) {
-            viewModelScope.launch {
-                callManager.startCall(
-                    recipientId = userId,
-                    recipientName = userName,
-                    isVideo = true,
-                )
-            }
+            if (callManager.callState.value !is CallState.Idle) return
+            callPlatform.startOutgoingCallService(recipientId = userId, recipientName = userName.ifBlank { userId }, isVideo = isVideo)
         }
 
         fun answerCall() {

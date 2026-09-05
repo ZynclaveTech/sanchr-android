@@ -56,10 +56,13 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
@@ -97,6 +100,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
@@ -148,6 +153,7 @@ fun ChatDetailScreen(
     conversationId: String,
     onNavigateBack: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
@@ -186,6 +192,13 @@ fun ChatDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val focusedResultId = uiState.search?.currentId
+    LaunchedEffect(focusedResultId, uiState.messages.size) {
+        val id = focusedResultId ?: return@LaunchedEffect
+        // The list is reversed (newest at index 0), so map the transcript index across.
+        val index = uiState.messages.indexOfFirst { it.id == id }
+        if (index >= 0) listState.animateScrollToItem(uiState.messages.size - 1 - index)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.error) {
@@ -198,14 +211,27 @@ fun ChatDetailScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            ChatDetailTopBar(
-                title = uiState.conversation?.title ?: "Chat",
-                statusText = if (uiState.peerTyping) "Typing..." else uiState.peerPresence,
-                onNavigateBack = onNavigateBack,
-                onVideoCall = { /* TODO */ },
-                onVoiceCall = { /* TODO */ },
-                onMenu = { /* TODO */ },
-            )
+            val search = uiState.search
+            if (search != null) {
+                ChatSearchBar(
+                    state = search,
+                    onQueryChanged = viewModel::onSearchQueryChanged,
+                    onPrevious = viewModel::previousSearchResult,
+                    onNext = viewModel::nextSearchResult,
+                    onClose = viewModel::closeSearch,
+                )
+            } else {
+                ChatDetailTopBar(
+                    title = uiState.conversation?.title ?: "Chat",
+                    statusText = if (uiState.peerTyping) "Typing..." else uiState.peerPresence,
+                    onNavigateBack = onNavigateBack,
+                    canCall = uiState.directPeerId != null,
+                    onVideoCall = { uiState.directPeerId?.let { onStartCall(it, uiState.conversation?.title.orEmpty(), true) } },
+                    onVoiceCall = { uiState.directPeerId?.let { onStartCall(it, uiState.conversation?.title.orEmpty(), false) } },
+                    onMenu = { uiState.directPeerId?.let(onNavigateToProfile) },
+                    onSearch = viewModel::openSearch,
+                )
+            }
         },
         bottomBar = {
             Column {
@@ -402,48 +428,75 @@ fun ChatDetailScreen(
                     items = uiState.messages.reversed(),
                     key = { it.id },
                 ) { message ->
-                    when {
-                        message.contentType == "system" -> SystemNote(message.text)
-
-                        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { viewOnceOpen = message })
-
-                        message.contentType == "image" ->
-                            ImageMessageBubble(
-                                message = message,
-                                openAttachment = viewModel::openAttachment,
-                            )
-
-                        message.contentType == "voice" && message.attachment != null ->
-                            VoiceMessageBubble(
-                                message = message,
-                                openAttachment = viewModel::openAttachment,
-                            )
-
-                        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
-
-                        message.attachment != null ->
-                            MessageBubble(
-                                message = message,
-                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                actions = actions,
-                                onClick = {
-                                    scope.launch {
-                                        val file = viewModel.openAttachment(message) ?: return@launch
-                                        presentAttachment(context, file, message.attachment.mimeType)
-                                    }
-                                },
-                            )
-
-                        else ->
-                            MessageBubble(
-                                message = message,
-                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                actions = actions,
-                            )
+                    Box(
+                        modifier =
+                            if (message.id == focusedResultId) {
+                                Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
+                            } else {
+                                Modifier
+                            },
+                    ) {
+                        MessageRow(
+                            message = message,
+                            viewModel = viewModel,
+                            actions = actions,
+                            onOpenViewOnce = { viewOnceOpen = it },
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+/** Picks the bubble for one transcript row. */
+@Composable
+private fun MessageRow(
+    message: MessageUiModel,
+    viewModel: ChatDetailViewModel,
+    actions: MessageActions,
+    onOpenViewOnce: (MessageUiModel) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    when {
+        message.contentType == "system" -> SystemNote(message.text)
+
+        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
+
+        message.contentType == "image" ->
+            ImageMessageBubble(
+                message = message,
+                openAttachment = viewModel::openAttachment,
+            )
+
+        message.contentType == "voice" && message.attachment != null ->
+            VoiceMessageBubble(
+                message = message,
+                openAttachment = viewModel::openAttachment,
+            )
+
+        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
+
+        message.attachment != null ->
+            MessageBubble(
+                message = message,
+                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                actions = actions,
+                onClick = {
+                    scope.launch {
+                        val file = viewModel.openAttachment(message) ?: return@launch
+                        presentAttachment(context, file, message.attachment.mimeType)
+                    }
+                },
+            )
+
+        else ->
+            MessageBubble(
+                message = message,
+                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                actions = actions,
+            )
     }
 }
 
@@ -454,6 +507,8 @@ private fun ChatDetailTopBar(
     title: String,
     statusText: String?,
     onNavigateBack: () -> Unit,
+    canCall: Boolean,
+    onSearch: () -> Unit,
     onVideoCall: () -> Unit,
     onVoiceCall: () -> Unit,
     onMenu: () -> Unit,
@@ -509,13 +564,16 @@ private fun ChatDetailTopBar(
             }
         },
         actions = {
-            IconButton(onClick = onVideoCall) {
+            IconButton(onClick = onSearch) {
+                Icon(imageVector = Icons.Filled.Search, contentDescription = "Search messages")
+            }
+            IconButton(onClick = onVideoCall, enabled = canCall) {
                 Icon(
                     imageVector = Icons.Filled.Videocam,
                     contentDescription = "Video call",
                 )
             }
-            IconButton(onClick = onVoiceCall) {
+            IconButton(onClick = onVoiceCall, enabled = canCall) {
                 Icon(
                     imageVector = Icons.Filled.Call,
                     contentDescription = "Voice call",
@@ -1607,4 +1665,56 @@ private fun MessageDialogs(
             },
         )
     }
+}
+
+/** Replaces the title bar while searching (iOS): the query, "n/m", previous / next, and close. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatSearchBar(
+    state: ChatSearchState,
+    onQueryChanged: (String) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    TopAppBar(
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search")
+            }
+        },
+        title = {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChanged,
+                singleLine = true,
+                placeholder = { Text("Search messages...") },
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                    ),
+            )
+        },
+        actions = {
+            if (state.resultIds.isNotEmpty()) {
+                Text(
+                    text = "${state.currentIndex + 1}/${state.resultIds.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SanchrGray400,
+                )
+            } else if (state.query.isNotBlank()) {
+                Text(text = "0/0", style = MaterialTheme.typography.labelMedium, color = SanchrGray400)
+            }
+            IconButton(onClick = onPrevious, enabled = state.resultIds.size > 1) {
+                Icon(imageVector = Icons.Filled.KeyboardArrowUp, contentDescription = "Previous result")
+            }
+            IconButton(onClick = onNext, enabled = state.resultIds.size > 1) {
+                Icon(imageVector = Icons.Filled.KeyboardArrowDown, contentDescription = "Next result")
+            }
+        },
+    )
 }

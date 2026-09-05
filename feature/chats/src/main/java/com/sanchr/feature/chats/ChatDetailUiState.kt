@@ -22,6 +22,10 @@ data class ChatDetailUiState(
     val currentUserId: String = "",
     /** The message the next send will quote, or null. */
     val replyingTo: MessageUiModel? = null,
+    /** The other participant of a 1:1 chat (calls and profile go to them); null for groups. */
+    val directPeerId: String? = null,
+    /** In-chat search (iOS search bar): null when closed. */
+    val search: ChatSearchState? = null,
     /** Every conversation, for the forward picker. */
     val forwardTargets: List<Conversation> = emptyList(),
     /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */
@@ -94,4 +98,13 @@ enum class FailureKind {
 
     /** Anything else (no recipients, crypto error, server error, ...). */
     GENERIC,
+}
+
+/** The search bar's state: what was typed, the matching message ids (newest first) and which one is focused. */
+data class ChatSearchState(
+    val query: String = "",
+    val resultIds: List<String> = emptyList(),
+    val currentIndex: Int = 0,
+) {
+    val currentId: String? get() = resultIds.getOrNull(currentIndex)
 }

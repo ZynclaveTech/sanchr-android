@@ -1,5 +1,10 @@
 package com.sanchr.feature.calls
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -51,7 +56,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,10 +67,12 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.callengine.CallState
@@ -79,9 +88,11 @@ fun ActiveCallScreen(
     callId: String,
     onCallEnded: () -> Unit,
     modifier: Modifier = Modifier,
+    outgoing: OutgoingCallRequest? = null,
     viewModel: CallsViewModel = hiltViewModel(),
 ) {
     val callState by viewModel.callState.collectAsStateWithLifecycle()
+    val placed = rememberCallPlaced(callId, outgoing, viewModel, onRefused = onCallEnded)
     val isMuted by viewModel.isMuted.collectAsStateWithLifecycle()
     val isSpeakerOn by viewModel.isSpeakerOn.collectAsStateWithLifecycle()
     val isVideoEnabled by viewModel.isVideoEnabled.collectAsStateWithLifecycle()
@@ -100,8 +111,8 @@ fun ActiveCallScreen(
             callState is CallState.Outgoing
 
     // Navigate away when call ends and returns to idle
-    LaunchedEffect(callState) {
-        if (callState is CallState.Idle) {
+    LaunchedEffect(callState, placed) {
+        if (placed && callState is CallState.Idle) {
             onCallEnded()
         }
     }
@@ -149,42 +160,29 @@ fun ActiveCallScreen(
 
             // Call controls
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                if (isIncoming) {
-                    IncomingCallControls(
-                        onAnswer = viewModel::answerCall,
-                        onDecline = viewModel::declineCall,
-                    )
-                } else {
-                    ActiveCallControls(
-                        isMuted = isMuted,
-                        isSpeakerOn = isSpeakerOn,
-                        isVideoEnabled = isVideoEnabled,
-                        isVideoCall = isVideoCall,
-                        canRequestVideo = isActive && !outgoingVideoUpgradePending,
-                        onToggleMute = viewModel::toggleMute,
-                        onToggleSpeaker = viewModel::toggleSpeaker,
-                        onToggleVideo = viewModel::toggleVideo,
-                        onSwitchCamera = viewModel::switchCamera,
-                        onEndCall = {
-                            viewModel.endCall()
-                        },
-                    )
-                }
+                CallControlsSection(
+                    isIncoming = isIncoming,
+                    isMuted = isMuted,
+                    isSpeakerOn = isSpeakerOn,
+                    isVideoEnabled = isVideoEnabled,
+                    isVideoCall = isVideoCall,
+                    canRequestVideo = isActive && !outgoingVideoUpgradePending,
+                    viewModel = viewModel,
+                )
 
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
             }
         }
 
         // Local video PiP (top-right, draggable) during active video call
-        if (isVideoCall && isActive && isVideoEnabled) {
-            LocalVideoPiP(
-                viewModel = viewModel,
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 64.dp, end = SanchrTheme.spacing.default),
-            )
-        }
+        LocalPreviewIfLive(
+            show = isVideoCall && isActive && isVideoEnabled,
+            viewModel = viewModel,
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 64.dp, end = SanchrTheme.spacing.default),
+        )
 
         if (incomingVideoUpgradeRequest) {
             AlertDialog(
@@ -647,3 +645,121 @@ private fun CallState.peerName(): String =
         is CallState.Ringing -> recipientName
         is CallState.Ended, CallState.Idle -> ""
     }.ifBlank { "Your contact" }
+
+/** What the call screen was opened to do: place a call to [peerId] once the microphone (and camera) are granted. */
+data class OutgoingCallRequest(
+    val peerId: String,
+    val peerName: String,
+    val isVideo: Boolean,
+)
+
+/**
+ * Asks for RECORD_AUDIO (and CAMERA for video) and then places the call
+ * through the foreground call service. A denied permission ends the
+ * attempt; a call without a microphone is not a call.
+ */
+@Composable
+private fun OutgoingCallStarter(
+    request: OutgoingCallRequest,
+    onPlaced: () -> Unit,
+    onRefused: () -> Unit,
+    viewModel: CallsViewModel,
+) {
+    val context = LocalContext.current
+    val needed =
+        if (request.isVideo) {
+            arrayOf(
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.CAMERA,
+            )
+        } else {
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        }
+    val launcher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+            if (needed.all { grants[it] == true }) {
+                viewModel.startCall(request.peerId, request.peerName, request.isVideo)
+                onPlaced()
+            } else {
+                Toast
+                    .makeText(
+                        context,
+                        if (request.isVideo) "Camera and microphone are needed for a video call" else "Microphone is needed for a call",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                onRefused()
+            }
+        }
+    LaunchedEffect(request) {
+        if (needed.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
+            viewModel.startCall(request.peerId, request.peerName, request.isVideo)
+            onPlaced()
+        } else {
+            launcher.launch(needed)
+        }
+    }
+}
+
+/**
+ * Whether the call this screen shows has been placed. An outgoing screen
+ * opens on Idle and must not pop until the call was placed (or refused);
+ * an incoming or already-live one counts as placed from the start.
+ */
+@Composable
+private fun rememberCallPlaced(
+    callId: String,
+    outgoing: OutgoingCallRequest?,
+    viewModel: CallsViewModel,
+    onRefused: () -> Unit,
+): Boolean {
+    var placed by rememberSaveable(callId) { mutableStateOf(outgoing == null) }
+    if (outgoing != null && !placed) {
+        OutgoingCallStarter(
+            request = outgoing,
+            onPlaced = { placed = true },
+            onRefused = onRefused,
+            viewModel = viewModel,
+        )
+    }
+    return placed
+}
+
+@Composable
+private fun CallControlsSection(
+    isIncoming: Boolean,
+    isMuted: Boolean,
+    isSpeakerOn: Boolean,
+    isVideoEnabled: Boolean,
+    isVideoCall: Boolean,
+    canRequestVideo: Boolean,
+    viewModel: CallsViewModel,
+) {
+    if (isIncoming) {
+        IncomingCallControls(
+            onAnswer = viewModel::answerCall,
+            onDecline = viewModel::declineCall,
+        )
+    } else {
+        ActiveCallControls(
+            isMuted = isMuted,
+            isSpeakerOn = isSpeakerOn,
+            isVideoEnabled = isVideoEnabled,
+            isVideoCall = isVideoCall,
+            canRequestVideo = canRequestVideo,
+            onToggleMute = viewModel::toggleMute,
+            onToggleSpeaker = viewModel::toggleSpeaker,
+            onToggleVideo = viewModel::toggleVideo,
+            onSwitchCamera = viewModel::switchCamera,
+            onEndCall = { viewModel.endCall() },
+        )
+    }
+}
+
+@Composable
+private fun LocalPreviewIfLive(
+    show: Boolean,
+    viewModel: CallsViewModel,
+    modifier: Modifier = Modifier,
+) {
+    if (show) LocalVideoPiP(viewModel = viewModel, modifier = modifier)
+}

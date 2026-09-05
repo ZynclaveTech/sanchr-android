@@ -127,4 +127,38 @@ class ConversationDaoTest {
 
             assertEquals(listOf("a2", "b1"), latest)
         }
+
+    @Test
+    fun searchTextMessageIds_matches_substrings_case_insensitively_newest_first_and_honours_escapes() =
+        runBlocking {
+            db.conversationDao().insertConversation(row(id = "c1"))
+            val dao = db.messageDao()
+
+            fun msg(
+                id: String,
+                body: String,
+                ts: Long,
+                type: String = "text",
+            ) = MessageEntity(
+                id = id,
+                conversationId = "c1",
+                senderId = "peer",
+                contentType = type,
+                contentBody = body,
+                status = "DELIVERED",
+                timestamp = ts,
+            )
+            dao.insertMessages(
+                listOf(
+                    msg("a", "Hello there", 1),
+                    msg("b", "say hello again", 2),
+                    msg("c", "100% sure", 3),
+                    msg("d", "hello", 4, type = "image"),
+                ),
+            )
+
+            assertEquals(listOf("b", "a"), dao.searchTextMessageIds("c1", "hello"))
+            assertEquals(listOf("c"), dao.searchTextMessageIds("c1", "100\\%"))
+            assertEquals(emptyList<String>(), dao.searchTextMessageIds("c1", "100\\_"))
+        }
 }

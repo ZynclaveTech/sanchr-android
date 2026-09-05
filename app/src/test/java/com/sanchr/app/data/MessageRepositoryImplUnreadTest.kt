@@ -66,4 +66,13 @@ class MessageRepositoryImplUnreadTest {
             insert(sender = "self", id = "m2")
             coVerify(exactly = 0) { conversationDao.incrementUnread(any(), any()) }
         }
+
+    @Test
+    fun `search escapes LIKE wildcards and skips blank queries`() =
+        runTest {
+            coEvery { messageDao.searchTextMessageIds("c1", "100\\%\\_sure") } returns listOf("m1")
+            org.junit.Assert.assertEquals(listOf("m1"), repo.searchMessages("c1", " 100%_sure "))
+            org.junit.Assert.assertEquals(emptyList<String>(), repo.searchMessages("c1", "   "))
+            coVerify(exactly = 1) { messageDao.searchTextMessageIds(any(), any()) }
+        }
 }
