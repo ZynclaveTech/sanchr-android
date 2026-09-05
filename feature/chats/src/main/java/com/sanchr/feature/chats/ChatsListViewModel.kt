@@ -12,6 +12,7 @@ import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ObserveConversationsUseCase
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
+import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -39,6 +40,8 @@ sealed interface ChatsListUiState {
         val isSyncing: Boolean = false,
         /** Who "we" are, so a row can tell an outgoing last message from an incoming one. */
         val currentUserId: String = "",
+        /** Conversations whose peer is typing right now; the row says so instead of the preview, as iOS. */
+        val typingConversationIds: Set<String> = emptySet(),
     ) : ChatsListUiState
 
     data object Empty : ChatsListUiState
@@ -87,6 +90,7 @@ class ChatsListViewModel
         private val messageRepository: MessageRepository,
         val syncState: SyncState,
         private val sessionManager: SessionManager,
+        realtimeManager: RealtimeManager,
     ) : ViewModel() {
         private val _searchQuery = MutableStateFlow("")
         private val _isRefreshing = MutableStateFlow(false)
@@ -116,7 +120,8 @@ class ChatsListViewModel
                 _searchQuery,
                 _isRefreshing,
                 syncState.isSyncing,
-            ) { result, query, refreshing, syncing ->
+                realtimeManager.typingCache,
+            ) { result, query, refreshing, syncing, typing ->
                 when (result) {
                     is Result.Loading -> ChatsListUiState.Loading
 
@@ -138,6 +143,7 @@ class ChatsListViewModel
                                 isRefreshing = refreshing,
                                 isSyncing = syncing,
                                 currentUserId = sessionManager.getUserId().orEmpty(),
+                                typingConversationIds = typing.filterValues { it.isTyping }.keys,
                             )
                         }
                     }

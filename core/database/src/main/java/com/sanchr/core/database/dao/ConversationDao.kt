@@ -97,6 +97,20 @@ interface ConversationDao {
     @Query("UPDATE conversations SET unread_count = 0 WHERE id = :conversationId")
     suspend fun markAsRead(conversationId: String)
 
+    /** A new inbound message landed: one more unread, and the chat moves up (as iOS bumps `unreadCount` on save). */
+    @Query(
+        """
+        UPDATE conversations
+        SET unread_count = unread_count + 1,
+            updated_at = MAX(updated_at, :timestamp)
+        WHERE id = :conversationId
+        """,
+    )
+    suspend fun incrementUnread(
+        conversationId: String,
+        timestamp: Long,
+    )
+
     @Query("UPDATE conversations SET is_pinned = :isPinned WHERE id = :conversationId")
     suspend fun setPinned(
         conversationId: String,

@@ -9,6 +9,7 @@ import com.sanchr.domain.messaging.ObserveConversationsUseCase
 import com.sanchr.sync.SyncState
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -87,6 +88,7 @@ class ChatsListViewModelNewChatTest {
             messageRepository = messageRepository,
             syncState = syncState,
             sessionManager = mockk(relaxed = true),
+            realtimeManager = mockk(relaxed = true) { every { typingCache } returns MutableStateFlow(emptyMap()) },
         )
 
     @Test

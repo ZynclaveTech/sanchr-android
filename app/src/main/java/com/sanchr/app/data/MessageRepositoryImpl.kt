@@ -324,7 +324,13 @@ class MessageRepositoryImpl
                     expiresAt = expiresAtMillis,
                     replyToId = replyToId,
                 )
+            // A resend replaces the same row (see InnerPayload.messageId) and must
+            // not count twice; our own messages echoed from another device are read.
+            val isNewRow = messageDao.getMessageById(messageId) == null
             messageDao.insertMessage(entity)
+            if (isNewRow && senderId != sessionManager.getUserId()) {
+                conversationDao.incrementUnread(conversationId, timestamp)
+            }
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
         }
 
