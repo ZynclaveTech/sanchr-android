@@ -36,6 +36,19 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): MessageEntity?
 
+    /** The newest non-deleted message of every conversation (ties on timestamp may yield more than one row per chat). */
+    @Query(
+        """
+        SELECT m.* FROM messages m
+        WHERE m.is_deleted = 0
+          AND m.timestamp = (
+            SELECT MAX(timestamp) FROM messages
+            WHERE conversation_id = m.conversation_id AND is_deleted = 0
+          )
+        """,
+    )
+    fun observeLatestPerConversation(): Flow<List<MessageEntity>>
+
     @Query("SELECT * FROM messages ORDER BY timestamp ASC")
     suspend fun getAllMessages(): List<MessageEntity>
 

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.sanchr.core.common.Result
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
@@ -36,6 +37,8 @@ sealed interface ChatsListUiState {
         val searchQuery: String = "",
         val isRefreshing: Boolean = false,
         val isSyncing: Boolean = false,
+        /** Who "we" are, so a row can tell an outgoing last message from an incoming one. */
+        val currentUserId: String = "",
     ) : ChatsListUiState
 
     data object Empty : ChatsListUiState
@@ -83,6 +86,7 @@ class ChatsListViewModel
         private val contactRepository: ContactRepository,
         private val messageRepository: MessageRepository,
         val syncState: SyncState,
+        private val sessionManager: SessionManager,
     ) : ViewModel() {
         private val _searchQuery = MutableStateFlow("")
         private val _isRefreshing = MutableStateFlow(false)
@@ -133,6 +137,7 @@ class ChatsListViewModel
                                 searchQuery = query,
                                 isRefreshing = refreshing,
                                 isSyncing = syncing,
+                                currentUserId = sessionManager.getUserId().orEmpty(),
                             )
                         }
                     }

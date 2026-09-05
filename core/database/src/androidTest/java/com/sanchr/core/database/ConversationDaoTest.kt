@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.sanchr.core.database.entity.ConversationEntity
+import com.sanchr.core.database.entity.MessageEntity
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -90,5 +92,39 @@ class ConversationDaoTest {
             val stored = requireNotNull(dao.getConversationById("c1"))
             assertEquals(false, stored.isArchived)
             assertNull(stored.disappearingDurationMs)
+        }
+
+    @Test
+    fun observeLatestPerConversation_returns_only_each_chats_newest_undeleted_message() =
+        runBlocking {
+            db.conversationDao().insertConversation(row(id = "c1"))
+            db.conversationDao().insertConversation(row(id = "c2"))
+            val dao = db.messageDao()
+
+            fun msg(
+                id: String,
+                conversation: String,
+                ts: Long,
+                deleted: Boolean = false,
+            ) = MessageEntity(
+                id = id,
+                conversationId = conversation,
+                senderId = "peer",
+                contentType = "text",
+                contentBody = id,
+                status = "DELIVERED",
+                timestamp = ts,
+                isDeleted = deleted,
+            )
+            dao.insertMessages(listOf(msg("a1", "c1", 1), msg("a2", "c1", 2), msg("a3", "c1", 3, deleted = true), msg("b1", "c2", 9)))
+
+            val latest =
+                dao
+                    .observeLatestPerConversation()
+                    .first()
+                    .map { it.id }
+                    .sorted()
+
+            assertEquals(listOf("a2", "b1"), latest)
         }
 }

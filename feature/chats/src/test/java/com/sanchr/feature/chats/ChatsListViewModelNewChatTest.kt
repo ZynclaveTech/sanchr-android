@@ -86,6 +86,7 @@ class ChatsListViewModelNewChatTest {
             contactRepository = contactRepository,
             messageRepository = messageRepository,
             syncState = syncState,
+            sessionManager = mockk(relaxed = true),
         )
 
     @Test

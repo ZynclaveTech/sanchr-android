@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +55,7 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.MessageStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -233,6 +235,7 @@ fun ChatsListScreen(
                             ) { conversation ->
                                 ConversationItem(
                                     conversation = conversation,
+                                    currentUserId = state.currentUserId,
                                     onClick = { onConversationClick(conversation.id) },
                                 )
                             }
@@ -256,6 +259,7 @@ fun ChatsListScreen(
 @Composable
 private fun ConversationItem(
     conversation: Conversation,
+    currentUserId: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -315,13 +319,27 @@ private fun ConversationItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = conversation.lastMessage?.let { "Encrypted message" } ?: "No messages yet",
-                style = MaterialTheme.typography.bodyMedium,
-                color = SanchrGray500,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val last = conversation.lastMessage
+                if (last != null && last.senderId == currentUserId) {
+                    Icon(
+                        imageVector = Icons.Filled.DoneAll,
+                        contentDescription = last.status.name.lowercase(),
+                        modifier = Modifier.size(14.dp),
+                        tint = if (last.status == MessageStatus.READ) SanchrIndigo500 else SanchrGray400,
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                val prefix = conversation.senderPrefix(currentUserId)
+                Text(
+                    text = if (prefix != null) prefix + conversation.previewText() else conversation.previewText(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (conversation.unreadCount > 0) MaterialTheme.colorScheme.onSurface else SanchrGray500,
+                    fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
@@ -332,7 +350,7 @@ private fun ConversationItem(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "Now", // TODO: Format conversation.updatedAt to relative time string
+                text = conversation.lastMessage?.let { formatChatTimestamp(it.timestamp.toEpochMilliseconds()) }.orEmpty(),
                 style = MaterialTheme.typography.labelSmall,
                 color =
                     if (conversation.unreadCount > 0) {
