@@ -99,4 +99,21 @@ class AttachmentUploaderTest {
             assertEquals(listOf(0.1f, 0.9f), attachment.audioWaveform)
             assertEquals("voice-1.m4a", attachment.filename)
         }
+
+    @Test
+    fun `an image's blurHash rides on the attachment for the peer's placeholder`() =
+        runTest {
+            val attachment =
+                AttachmentUploader(Client(), Store()).upload(
+                    AttachmentUploader.Prepared(
+                        byteArrayOf(1, 2, 3),
+                        "image/jpeg",
+                        "p.jpg",
+                        width = 4,
+                        height = 3,
+                        blurHash = "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+                    ),
+                )
+            assertEquals("LEHV6nWB2yk8pyo0adR*.7kCMdnj", attachment.blurHash)
+        }
 }
