@@ -169,4 +169,87 @@ class SanchrIdentityKeyStoreTest {
 
         assertNull(store.verifiedAtMillis(address))
     }
+
+    @Test
+    fun `a changed key blocks sending but still lets messages arrive`() {
+        val address = SignalProtocolAddress("peer-3", 1)
+        val original = IdentityKeyPair.generate().publicKey
+        val replacement = IdentityKeyPair.generate().publicKey
+        store.saveIdentity(address, original)
+
+        assertTrue(store.isTrustedIdentity(address, original, IdentityKeyStore.Direction.SENDING))
+
+        // Receiving stays open so a contact who reinstalled is not permanently
+        // undecryptable; sending fails closed until the user reviews.
+        assertTrue(store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.RECEIVING))
+        assertFalse(store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.SENDING))
+        assertTrue(store.hasPendingIdentityChange("peer-3"))
+    }
+
+    @Test
+    fun `adopting the new key on receive does not erase the pending review`() {
+        val address = SignalProtocolAddress("peer-4", 1)
+        store.saveIdentity(address, IdentityKeyPair.generate().publicKey)
+        val replacement = IdentityKeyPair.generate().publicKey
+
+        store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.RECEIVING)
+        store.saveIdentity(address, replacement)
+
+        assertTrue(store.hasPendingIdentityChange("peer-4"), "the save that adopts the key must not clear the warning")
+        assertFalse(store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.SENDING))
+    }
+
+    @Test
+    fun `accepting the change unblocks sending without granting a verified badge`() {
+        val address = SignalProtocolAddress("peer-5", 1)
+        store.saveIdentity(address, IdentityKeyPair.generate().publicKey)
+        val replacement = IdentityKeyPair.generate().publicKey
+        store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.RECEIVING)
+        store.saveIdentity(address, replacement)
+
+        store.acceptIdentityChange("peer-5")
+
+        assertFalse(store.hasPendingIdentityChange("peer-5"))
+        assertTrue(store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.SENDING))
+        assertNull(store.verifiedAtMillis(address), "acknowledging a change is weaker than comparing safety numbers")
+    }
+
+    @Test
+    fun `comparing the new safety number clears the review as well`() {
+        val address = SignalProtocolAddress("peer-6", 1)
+        store.saveIdentity(address, IdentityKeyPair.generate().publicKey)
+        val replacement = IdentityKeyPair.generate().publicKey
+        store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.RECEIVING)
+        store.saveIdentity(address, replacement)
+
+        store.markVerified(address, atMillis = 1_700_000_000_000)
+
+        assertFalse(store.hasPendingIdentityChange("peer-6"))
+        assertTrue(store.isTrustedIdentity(address, replacement, IdentityKeyStore.Direction.SENDING))
+        assertEquals(1_700_000_000_000, store.verifiedAtMillis(address))
+    }
+
+    @Test
+    fun `an unchanged key never blocks anything`() {
+        val address = SignalProtocolAddress("peer-7", 1)
+        val key = IdentityKeyPair.generate().publicKey
+        store.saveIdentity(address, key)
+        store.saveIdentity(address, key)
+
+        assertFalse(store.hasPendingIdentityChange("peer-7"))
+        assertTrue(store.isTrustedIdentity(address, key, IdentityKeyStore.Direction.SENDING))
+    }
+
+    @Test
+    fun `a user id holding LIKE wildcards is not confused with another contact`() {
+        val wildcard = SignalProtocolAddress("a_b%c", 1)
+        val other = SignalProtocolAddress("axbyc", 1)
+        store.saveIdentity(wildcard, IdentityKeyPair.generate().publicKey)
+        store.saveIdentity(other, IdentityKeyPair.generate().publicKey)
+
+        store.isTrustedIdentity(other, IdentityKeyPair.generate().publicKey, IdentityKeyStore.Direction.RECEIVING)
+
+        assertTrue(store.hasPendingIdentityChange("axbyc"))
+        assertFalse(store.hasPendingIdentityChange("a_b%c"), "underscore and percent must not match another user's id")
+    }
 }

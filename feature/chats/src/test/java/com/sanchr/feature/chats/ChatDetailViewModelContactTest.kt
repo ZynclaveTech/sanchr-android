@@ -81,6 +81,7 @@ class ChatDetailViewModelContactTest {
                     every { screenshotProtectionEnabled } returns flowOf(true)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
+            safetyNumbers = mockk(relaxed = true),
         )
 
     @Test

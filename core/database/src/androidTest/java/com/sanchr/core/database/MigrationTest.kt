@@ -93,4 +93,20 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_10_to_11_adds_pending_identity_key() {
+        helper.createDatabase("migration-test-11", 10).close()
+        helper.runMigrationsAndValidate("migration-test-11", 11, true, DatabaseModule.migration10To11).use { db ->
+            db.query("PRAGMA table_info(`signal_identities`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(
+                    columns ==
+                        listOf("address", "identity_key", "trust_level", "first_seen_at", "verified_at", "pending_identity_key"),
+                ) {
+                    "unexpected signal_identities columns: $columns"
+                }
+            }
+        }
+    }
 }

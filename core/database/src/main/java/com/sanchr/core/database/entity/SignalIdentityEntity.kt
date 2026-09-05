@@ -23,6 +23,16 @@ data class SignalIdentityEntity(
      */
     @ColumnInfo(name = "verified_at")
     val verifiedAt: Long? = null,
+    /**
+     * The replacement key seen for this address that the local user has not
+     * reviewed, or null when there is nothing to review.
+     *
+     * Kept separately from [identityKey] because the receiving path adopts the
+     * new key so that inbound messages still decrypt. Without its own column,
+     * "the key changed" would be erased by the very save that records it.
+     */
+    @ColumnInfo(name = "pending_identity_key")
+    val pendingIdentityKey: ByteArray? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -31,7 +41,8 @@ data class SignalIdentityEntity(
             identityKey.contentEquals(other.identityKey) &&
             trustLevel == other.trustLevel &&
             firstSeenAt == other.firstSeenAt &&
-            verifiedAt == other.verifiedAt
+            verifiedAt == other.verifiedAt &&
+            pendingIdentityKey.contentEquals(other.pendingIdentityKey)
     }
 
     override fun hashCode(): Int {
@@ -40,6 +51,7 @@ data class SignalIdentityEntity(
         r = 31 * r + trustLevel
         r = 31 * r + firstSeenAt.hashCode()
         r = 31 * r + verifiedAt.hashCode()
+        r = 31 * r + pendingIdentityKey.contentHashCode()
         return r
     }
 }

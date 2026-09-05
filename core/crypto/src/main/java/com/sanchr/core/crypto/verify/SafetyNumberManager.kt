@@ -90,6 +90,24 @@ class SafetyNumberManager
             identityKeyStore.markVerified(SignalProtocolAddress(userId, deviceId), atMillis)
         }
 
+        /**
+         * Whether [userId] has a key change the local user has not reviewed.
+         * While true, sending to them fails closed.
+         */
+        suspend fun hasPendingIdentityChange(userId: String): Boolean =
+            withContext(dispatchers.io) {
+                identityKeyStore.hasPendingIdentityChange(userId)
+            }
+
+        /**
+         * Records that the user reviewed the change and chose to carry on,
+         * unblocking sending without granting a verified badge.
+         */
+        suspend fun acceptIdentityChange(userId: String) =
+            withContext(dispatchers.io) {
+                identityKeyStore.acceptIdentityChange(userId)
+            }
+
         /** Revokes a verification, after a mismatch or at the user's request. */
         suspend fun clearVerified(
             userId: String,

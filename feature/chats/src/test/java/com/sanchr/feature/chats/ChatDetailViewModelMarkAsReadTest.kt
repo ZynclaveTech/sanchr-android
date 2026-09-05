@@ -95,6 +95,7 @@ class ChatDetailViewModelMarkAsReadTest {
                     every { screenshotProtectionEnabled } returns flowOf(true)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
+            safetyNumbers = mockk(relaxed = true),
         )
 
     private fun message(

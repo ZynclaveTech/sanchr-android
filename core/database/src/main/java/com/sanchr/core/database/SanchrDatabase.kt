@@ -62,7 +62,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -331,6 +331,17 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * Adds the unreviewed key change. Nullable, so every existing identity
+     * starts with nothing pending rather than blocking sends on upgrade.
+     */
+    internal val migration10To11 =
+        object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `signal_identities` ADD COLUMN `pending_identity_key` BLOB DEFAULT NULL")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -364,6 +375,7 @@ object DatabaseModule {
                     migration7To8,
                     migration8To9,
                     migration9To10,
+                    migration10To11,
                 ).build()
         }
     }
