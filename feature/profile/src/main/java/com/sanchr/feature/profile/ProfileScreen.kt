@@ -1,6 +1,7 @@
 package com.sanchr.feature.profile
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -43,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,13 +75,14 @@ import kotlinx.coroutines.withContext
 fun ProfileScreen(
     userId: String,
     onNavigateBack: () -> Unit,
-    onStartChat: (String) -> Unit,
-    onStartCall: (String) -> Unit,
+    onOpenConversation: (conversationId: String) -> Unit,
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pickAvatar = rememberAvatarPicker(onPicked = viewModel::uploadAvatar)
+    ProfileEvents(viewModel = viewModel, onOpenConversation = onOpenConversation)
 
     Scaffold(
         topBar = {
@@ -301,7 +304,7 @@ fun ProfileScreen(
                     ProfileActionButton(
                         icon = Icons.Filled.Chat,
                         label = "Message",
-                        onClick = { onStartChat(userId) },
+                        onClick = viewModel::openConversation,
                     )
 
                     Spacer(modifier = Modifier.width(SanchrTheme.spacing.xxl))
@@ -309,7 +312,7 @@ fun ProfileScreen(
                     ProfileActionButton(
                         icon = Icons.Filled.Call,
                         label = "Voice",
-                        onClick = { onStartCall(userId) },
+                        onClick = { onStartCall(userId, uiState.displayName, false) },
                     )
 
                     Spacer(modifier = Modifier.width(SanchrTheme.spacing.xxl))
@@ -317,7 +320,7 @@ fun ProfileScreen(
                     ProfileActionButton(
                         icon = Icons.Filled.Videocam,
                         label = "Video",
-                        onClick = { onStartCall(userId) },
+                        onClick = { onStartCall(userId, uiState.displayName, true) },
                     )
                 }
 
@@ -470,5 +473,23 @@ private fun BlockControl(
         Icon(imageVector = Icons.Filled.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error)
         Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
         Text(text = if (isBlocked) "Unblock" else "Block", color = MaterialTheme.colorScheme.error)
+    }
+}
+
+/** Routes the view model's one-shot events: open the resolved chat, or show why it could not. */
+@Composable
+private fun ProfileEvents(
+    viewModel: ProfileViewModel,
+    onOpenConversation: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is ProfileEvent.OpenConversation -> onOpenConversation(event.conversationId)
+                is ProfileEvent.Error -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                ProfileEvent.ProfileSaved -> Unit
+            }
+        }
     }
 }

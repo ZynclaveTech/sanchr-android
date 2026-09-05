@@ -276,7 +276,10 @@ private fun ResolvedNavHost(
             }
 
             // Standalone flows (no bottom bar)
-            profileGraph(navController = navController)
+            profileGraph(
+                navController = navController,
+                onStartCall = { peerId, peerName, isVideo -> navController.navigate(outgoingCallRoute(peerId, peerName, isVideo)) },
+            )
             vaultGraph(navController = navController)
         }
     }

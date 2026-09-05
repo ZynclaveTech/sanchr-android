@@ -42,6 +42,7 @@ dependencies {
     implementation(projects.core.network)
     implementation(projects.proto)
     implementation(projects.domain.contacts)
+    implementation(projects.domain.messaging)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -63,4 +64,5 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
 }
