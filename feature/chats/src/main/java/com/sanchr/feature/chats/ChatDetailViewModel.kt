@@ -29,6 +29,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +63,7 @@ class ChatDetailViewModel
         private companion object {
             const val TAG = "ChatDetailViewModel"
             const val PRESENCE_REFRESH_MS = 15_000L
+            const val SEARCH_DEBOUNCE_MS = 300L
         }
 
         private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
@@ -420,6 +422,52 @@ class ChatDetailViewModel
                 } catch (e: Exception) {
                     _uiState.update { it.copy(error = e.message ?: "Could not delete message") }
                 }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // In-chat search (iOS `scheduleSearch`: debounced, newest first, wraps around)
+        // ------------------------------------------------------------------
+
+        private var searchJob: Job? = null
+
+        fun openSearch() {
+            _uiState.update { it.copy(search = it.search ?: ChatSearchState()) }
+        }
+
+        fun closeSearch() {
+            searchJob?.cancel()
+            _uiState.update { it.copy(search = null) }
+        }
+
+        fun onSearchQueryChanged(query: String) {
+            _uiState.update { it.copy(search = (it.search ?: ChatSearchState()).copy(query = query)) }
+            searchJob?.cancel()
+            if (query.isBlank()) {
+                _uiState.update { it.copy(search = it.search?.copy(resultIds = emptyList(), currentIndex = 0)) }
+                return
+            }
+            searchJob =
+                viewModelScope.launch {
+                    delay(SEARCH_DEBOUNCE_MS)
+                    val ids = runCatching { messageRepository.searchMessages(conversationId, query) }.getOrDefault(emptyList())
+                    _uiState.update { state ->
+                        val search = state.search ?: return@update state
+                        if (search.query != query) state else state.copy(search = search.copy(resultIds = ids, currentIndex = 0))
+                    }
+                }
+        }
+
+        fun nextSearchResult() = stepSearch(+1)
+
+        fun previousSearchResult() = stepSearch(-1)
+
+        private fun stepSearch(delta: Int) {
+            _uiState.update { state ->
+                val search = state.search ?: return@update state
+                if (search.resultIds.isEmpty()) return@update state
+                val size = search.resultIds.size
+                state.copy(search = search.copy(currentIndex = ((search.currentIndex + delta) % size + size) % size))
             }
         }
 

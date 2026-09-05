@@ -251,6 +251,16 @@ class MessageRepositoryImpl
             }
         }
 
+        override suspend fun searchMessages(
+            conversationId: String,
+            query: String,
+        ): List<String> {
+            val needle = query.trim()
+            if (needle.isEmpty()) return emptyList()
+            val escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            return messageDao.searchTextMessageIds(conversationId, escaped)
+        }
+
         override suspend fun loadMoreMessages(
             conversationId: String,
             beforeTimestamp: Long,
