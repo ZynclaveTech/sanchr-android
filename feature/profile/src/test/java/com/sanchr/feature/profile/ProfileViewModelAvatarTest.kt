@@ -45,7 +45,14 @@ class ProfileViewModelAvatarTest {
     }
 
     private fun vm() =
-        ProfileViewModel(SavedStateHandle(mapOf("userId" to "me")), settingsClient, uploader, profileUpdater, mockk(relaxed = true))
+        ProfileViewModel(
+            SavedStateHandle(mapOf("userId" to "me")),
+            settingsClient,
+            uploader,
+            profileUpdater,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+        )
 
     @Test
     fun `uploads, writes the new url into the encrypted profile, then shows it`() =

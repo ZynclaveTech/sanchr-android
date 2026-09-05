@@ -7,11 +7,13 @@ import androidx.lifecycle.viewModelScope
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.settings.GetSettingsRequest
 import com.sanchr.proto.settings.SettingsServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +49,7 @@ class ProfileViewModel
         private val avatarUploader: AvatarUploader,
         private val profileUpdater: EncryptedProfileUpdater,
         private val contactRepository: ContactRepository,
+        private val messageRepository: MessageRepository,
     ) : ViewModel() {
         companion object {
             private const val TAG = "ProfileViewModel"
@@ -100,6 +103,28 @@ class ProfileViewModel
                 }
             }
         }
+
+        /**
+         * Opens the 1:1 chat with this person, creating it if there is none.
+         * The screen only knows a user id, and the chat route wants a
+         * conversation id, so the two must not be confused: the profile used
+         * to navigate with the user id, which resolved to no conversation.
+         */
+        fun openConversation() {
+            if (_uiState.value.isOwnProfile || openConversationJob?.isActive == true) return
+            openConversationJob =
+                viewModelScope.launch {
+                    try {
+                        _events.emit(ProfileEvent.OpenConversation(messageRepository.ensureConversation(userId)))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _events.emit(ProfileEvent.Error(e.message ?: "Couldn't open the chat"))
+                    }
+                }
+        }
+
+        private var openConversationJob: Job? = null
 
         /** Blocks or unblocks this person; enforced locally at once and told to the server (best effort). */
         fun setBlocked(blocked: Boolean) {
@@ -210,6 +235,11 @@ class ProfileViewModel
 
 sealed interface ProfileEvent {
     data object ProfileSaved : ProfileEvent
+
+    /** The chat with this person is ready at [conversationId]; the screen navigates there. */
+    data class OpenConversation(
+        val conversationId: String,
+    ) : ProfileEvent
 
     data class Error(
         val message: String,

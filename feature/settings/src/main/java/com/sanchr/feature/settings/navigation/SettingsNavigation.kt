@@ -9,6 +9,7 @@ import com.sanchr.feature.settings.BlockedContactsScreen
 import com.sanchr.feature.settings.ChatSettingsScreen
 import com.sanchr.feature.settings.EncryptionKeysScreen
 import com.sanchr.feature.settings.HelpCenterScreen
+import com.sanchr.feature.settings.LegalScreen
 import com.sanchr.feature.settings.NotificationsScreen
 import com.sanchr.feature.settings.PrivacyScreen
 import com.sanchr.feature.settings.RegistrationLockScreen
@@ -26,6 +27,7 @@ const val SETTINGS_STORAGE_ROUTE = "settings/storage"
 const val SETTINGS_CHAT_ROUTE = "settings/chat"
 const val SETTINGS_ENCRYPTION_KEYS_ROUTE = "settings/encryption-keys"
 const val SETTINGS_HELP_ROUTE = "settings/help"
+const val SETTINGS_LEGAL_ROUTE = "settings/legal"
 const val SETTINGS_BLOCKED_ROUTE = "settings/blocked"
 const val SETTINGS_REGISTRATION_LOCK_ROUTE = "settings/registration-lock"
 
@@ -41,6 +43,7 @@ fun NavGraphBuilder.settingsGraph(navController: NavController) {
                 onNavigateToChatSettings = { navController.navigate(SETTINGS_CHAT_ROUTE) },
                 onNavigateToEncryptionKeys = { navController.navigate(SETTINGS_ENCRYPTION_KEYS_ROUTE) },
                 onNavigateToHelp = { navController.navigate(SETTINGS_HELP_ROUTE) },
+                onNavigateToLegal = { navController.navigate(SETTINGS_LEGAL_ROUTE) },
                 onNavigateToProfile = { navController.navigate("profile/me") },
             )
         }
@@ -89,6 +92,10 @@ fun NavGraphBuilder.settingsGraph(navController: NavController) {
 
         composable(SETTINGS_HELP_ROUTE) {
             HelpCenterScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(SETTINGS_LEGAL_ROUTE) {
+            LegalScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }
