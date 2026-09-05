@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ContactCard
+import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
@@ -131,7 +132,7 @@ class ChatDetailViewModel
                     .collect { messages ->
                         _uiState.update { state ->
                             state.copy(
-                                messages = messages.map { message -> message.toUiModel() },
+                                messages = messages.toUiModels(state.conversation),
                                 isLoading = false,
                             )
                         }
@@ -237,8 +238,9 @@ class ChatDetailViewModel
         fun sendMessage() {
             val content = _uiState.value.inputText.trim()
             if (content.isBlank()) return
-            _uiState.update { it.copy(inputText = "") }
-            dispatchSend(content, contentType = "text")
+            val replyToId = _uiState.value.replyingTo?.id
+            _uiState.update { it.copy(inputText = "", replyingTo = null) }
+            dispatchSend(content, contentType = "text", replyToId = replyToId)
         }
 
         /** Shares a contact card the way iOS does: a bare `{"name","phoneNumber"}` body typed `contact`. */
@@ -250,10 +252,11 @@ class ChatDetailViewModel
         private fun dispatchSend(
             content: String,
             contentType: String,
+            replyToId: String? = null,
         ) {
             _uiState.update { it.copy(isSending = true) }
             viewModelScope.launch {
-                when (val result = sendMessageUseCase(conversationId, content, contentType)) {
+                when (val result = sendMessageUseCase(conversationId, content, contentType, replyToId)) {
                     is Result.Success -> {
                         _uiState.update { it.copy(isSending = false) }
                     }
@@ -326,6 +329,32 @@ class ChatDetailViewModel
             _uiState.update { it.copy(error = null) }
         }
 
+        /** Maps the transcript, resolving each reply's quote against the same batch (as iOS builds `ReplyQuote`s). */
+        private fun List<Message>.toUiModels(conversation: Conversation?): List<MessageUiModel> {
+            val currentUser = sessionManager.getUserId() ?: ""
+            val byId = associateBy { it.id }
+            return map { message ->
+                val quoted = message.replyToId?.let(byId::get)
+                message.toUiModel().copy(
+                    quote =
+                        quoted?.let {
+                            ReplyQuote(
+                                authorName = if (it.senderId == currentUser) "You" else conversation?.title.orEmpty().ifBlank { "Contact" },
+                                preview = it.content.displayText(),
+                            )
+                        },
+                )
+            }
+        }
+
+        fun setReply(message: MessageUiModel) {
+            _uiState.update { it.copy(replyingTo = message) }
+        }
+
+        fun clearReply() {
+            _uiState.update { it.copy(replyingTo = null) }
+        }
+
         private fun Message.toUiModel(): MessageUiModel {
             val currentUser = sessionManager.getUserId() ?: ""
             val uiStatus = status.toUiStatus()
@@ -341,6 +370,7 @@ class ChatDetailViewModel
                 attachment = content.attachmentOrNull(),
                 contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
                 reactions = reactions.toChips(currentUser),
+                replyToId = replyToId,
             )
         }
 

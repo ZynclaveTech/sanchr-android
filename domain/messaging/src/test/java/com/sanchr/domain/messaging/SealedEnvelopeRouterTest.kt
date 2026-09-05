@@ -161,4 +161,24 @@ class SealedEnvelopeRouterTest {
         assertTrue(routed is RoutedPayload.Control)
         assertEquals("presence/v1", routed.contentType)
     }
+
+    @Test
+    fun `a reply's quoted id rides through to the user message, and a blank one is dropped`() {
+        val reply =
+            InnerPayload(
+                conversationId = "c",
+                messageId = "m2",
+                contentType = "text",
+                content = "yes".toByteArray(),
+                replyToMessageId = "m1",
+            )
+        val routed = SealedEnvelopeRouter.route(reply.encode(), fallbackContentType = "text") as RoutedPayload.UserMessage
+        assertEquals("m1", routed.replyToMessageId)
+
+        val blank = reply.copy(replyToMessageId = "")
+        assertEquals(
+            null,
+            (SealedEnvelopeRouter.route(blank.encode(), fallbackContentType = "text") as RoutedPayload.UserMessage).replyToMessageId,
+        )
+    }
 }

@@ -76,6 +76,8 @@ class SendMessageUseCase
             conversationId: String,
             content: String,
             contentType: String = "text",
+            /** The message being answered; travels inside the sealed payload as on iOS. */
+            replyToId: String? = null,
         ): Result<Message> =
             withContext(dispatcherProvider.io) {
                 runCatchingResult {
@@ -90,6 +92,7 @@ class SendMessageUseCase
                                 disappearingSeconds?.let {
                                     System.currentTimeMillis() + it * MILLIS_PER_SECOND
                                 },
+                            replyToId = replyToId,
                         )
                     attemptSendOrThrow(entity)
                 }
@@ -274,6 +277,7 @@ class SendMessageUseCase
                         // whichever attempt lands, so the absolute deadlines
                         // stay aligned across retries.
                         expiresAfterSecs = entity.expiresAt?.let { remainingSecondsUntil(it) },
+                        replyToMessageId = entity.replyToId,
                         // Our Profile Key rides every sealed payload, as on iOS:
                         // delivery is then idempotent and self-healing, and a key
                         // that changed (a reinstall) reaches the peer on our very

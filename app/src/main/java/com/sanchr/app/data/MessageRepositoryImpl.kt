@@ -103,6 +103,7 @@ class MessageRepositoryImpl
             content: String,
             contentType: String,
             expiresAtMillis: Long?,
+            replyToId: String?,
         ): MessageEntity {
             val currentUserId = sessionManager.getUserId().orEmpty()
             require(currentUserId.isNotBlank()) { "Missing current user id" }
@@ -117,6 +118,7 @@ class MessageRepositoryImpl
                     status = MessageStatus.QUEUED.name,
                     timestamp = System.currentTimeMillis(),
                     expiresAt = expiresAtMillis,
+                    replyToId = replyToId,
                 )
             messageDao.insertMessage(entity)
             return entity
@@ -279,6 +281,7 @@ class MessageRepositoryImpl
             flushAckImmediately: Boolean,
             stageAck: Boolean,
             expiresAtMillis: Long?,
+            replyToId: String?,
         ) {
             val entity =
                 MessageEntity(
@@ -290,6 +293,7 @@ class MessageRepositoryImpl
                     status = MessageStatus.DELIVERED.name,
                     timestamp = timestamp,
                     expiresAt = expiresAtMillis,
+                    replyToId = replyToId,
                 )
             messageDao.insertMessage(entity)
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
