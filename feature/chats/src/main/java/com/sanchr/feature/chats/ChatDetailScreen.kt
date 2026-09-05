@@ -140,6 +140,7 @@ import com.sanchr.core.network.link.LinkDetector
 import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.feature.chats.emoji.EmojiPickerSheet
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
@@ -175,6 +176,7 @@ fun ChatDetailScreen(
         )
     val pickContact = rememberContactPicker(viewModel::sendContact)
     var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
+    var emojiPickerOpen by remember { mutableStateOf(false) }
     var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
     var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
     val clipboard = LocalClipboardManager.current
@@ -323,9 +325,16 @@ fun ChatDetailScreen(
                         onClear = viewModel::clearReply,
                     )
                 }
+                if (emojiPickerOpen) {
+                    EmojiPickerSheet(
+                        onDismiss = { emojiPickerOpen = false },
+                        onSelect = { emoji -> viewModel.onInputTextChanged(uiState.inputText + emoji) },
+                    )
+                }
                 MessageInputBar(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
+                    onEmojiClick = { emojiPickerOpen = true },
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     onAttachViewOnce = {
@@ -1025,6 +1034,7 @@ private fun MessageInputBar(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
+    onEmojiClick: () -> Unit,
     onAttachFile: () -> Unit,
     onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
@@ -1069,7 +1079,7 @@ private fun MessageInputBar(
                     )
                 },
                 trailingIcon = {
-                    IconButton(onClick = { /* TODO: emoji picker */ }) {
+                    IconButton(onClick = onEmojiClick) {
                         Icon(
                             imageVector = Icons.Filled.EmojiEmotions,
                             contentDescription = "Emoji",
