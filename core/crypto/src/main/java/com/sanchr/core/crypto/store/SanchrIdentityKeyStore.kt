@@ -259,19 +259,22 @@ class SanchrIdentityKeyStore
         ): IdentityKeyStore.IdentityChange {
             val key = address.toRoomKey()
             val existing = identityDao.getBlocking(key)
-            val newBytes = identityKey.serialize()
-            val changed = existing != null && !existing.identityKey.contentEquals(newBytes)
+            val incoming = identityKey.serialize()
+            val changed = existing != null && !existing.identityKey.contentEquals(incoming)
 
             identityDao.upsertBlocking(
                 SignalIdentityEntity(
                     address = key,
-                    identityKey = newBytes,
+                    identityKey = incoming,
                     trustLevel = TRUST_LEVEL_TRUSTED,
                     firstSeenAt = existing?.firstSeenAt ?: System.currentTimeMillis(),
                     // A manual verification vouches for one specific key. When
                     // the key changes the old comparison proves nothing, so the
                     // badge is dropped and the user has to compare again.
                     verifiedAt = if (changed) null else existing?.verifiedAt,
+                    // Adopting the key on the receiving path must not erase the
+                    // fact that it changed; only the user's review clears that.
+                    pendingIdentityKey = if (changed) incoming else existing?.pendingIdentityKey,
                 ),
             )
 
@@ -282,13 +285,45 @@ class SanchrIdentityKeyStore
             }
         }
 
+        /**
+         * Decides whether [identityKey] may be used for [address].
+         *
+         * Trust on first use: an address never seen is trusted, and an
+         * unchanged key stays trusted. A *changed* key is the security-relevant
+         * case, because it is exactly what a server substituting its own key
+         * would produce.
+         *
+         * On the first sighting of a change the new key is recorded for review
+         * and any verification is revoked. The two directions then diverge, as
+         * on iOS:
+         *
+         * - Receiving returns true, so messages already sent to us still
+         *   decrypt and the conversation is not silently broken. libsignal then
+         *   calls [saveIdentity], which adopts the new key.
+         * - Sending returns false while the change is unreviewed, so encryption
+         *   fails closed rather than handing plaintext to whoever supplied the
+         *   new key.
+         *
+         * Before this, both directions were refused, which left a contact who
+         * merely reinstalled permanently undecryptable with no way back.
+         */
         override fun isTrustedIdentity(
             address: SignalProtocolAddress,
             identityKey: IdentityKey,
             direction: IdentityKeyStore.Direction,
         ): Boolean {
-            val existing = identityDao.getBlocking(address.toRoomKey()) ?: return true // TOFU
-            return existing.identityKey.contentEquals(identityKey.serialize())
+            val key = address.toRoomKey()
+            val existing = identityDao.getBlocking(key) ?: return true // TOFU
+            val incoming = identityKey.serialize()
+            val changed = !existing.identityKey.contentEquals(incoming)
+
+            if (changed && existing.pendingIdentityKey == null) {
+                identityDao.upsertBlocking(existing.copy(pendingIdentityKey = incoming, verifiedAt = null))
+            }
+
+            val reviewPending = changed || existing.pendingIdentityKey != null
+            if (!reviewPending) return true
+            return direction == IdentityKeyStore.Direction.RECEIVING
         }
 
         override fun getIdentity(address: SignalProtocolAddress): IdentityKey? {
@@ -322,6 +357,33 @@ class SanchrIdentityKeyStore
             atMillis: Long = System.currentTimeMillis(),
         ) {
             identityDao.setVerifiedAtBlocking(address.toRoomKey(), atMillis)
+            // Comparing the new safety number is a strictly stronger review
+            // than merely acknowledging the change, so it clears the review too.
+            identityDao.setPendingIdentityKeyBlocking(address.toRoomKey(), null)
+        }
+
+        /**
+         * Whether [userId] has a key change the local user has not reviewed.
+         * While true, sending to them fails closed.
+         */
+        fun hasPendingIdentityChange(userId: String): Boolean =
+            identityDao.getForUserBlocking(userId.likePrefix()).any {
+                it.pendingIdentityKey !=
+                    null
+            }
+
+        /**
+         * Records that the user reviewed the change and chose to continue,
+         * unblocking sending.
+         *
+         * Deliberately does not mark the identity verified: acknowledging a
+         * change is weaker than comparing safety numbers, and conflating them
+         * would hand out a verified badge nobody earned.
+         */
+        fun acceptIdentityChange(userId: String) {
+            identityDao.getForUserBlocking(userId.likePrefix()).forEach { row ->
+                if (row.pendingIdentityKey != null) identityDao.setPendingIdentityKeyBlocking(row.address, null)
+            }
         }
 
         /** Revokes a manual verification, e.g. after a scan that did not match. */
@@ -331,6 +393,15 @@ class SanchrIdentityKeyStore
 
         /** When [address] was verified, or null if it never was. */
         fun verifiedAtMillis(address: SignalProtocolAddress): Long? = identityDao.getBlocking(address.toRoomKey())?.verifiedAt
+
+        /**
+         * The LIKE pattern matching every device row for one user id.
+         *
+         * Room keys are `"<userId>.<deviceId>"`, and a user id may itself hold
+         * `%` or `_`, which LIKE would otherwise read as wildcards — so they
+         * are escaped and the query declares the escape character.
+         */
+        private fun String.likePrefix(): String = replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + ".%"
 
         private companion object {
             const val TRUST_LEVEL_TRUSTED = 1

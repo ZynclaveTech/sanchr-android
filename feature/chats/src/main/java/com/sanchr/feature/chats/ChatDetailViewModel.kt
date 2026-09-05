@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
+import com.sanchr.core.crypto.verify.SafetyNumberManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.ContactCard
@@ -64,6 +65,7 @@ class ChatDetailViewModel
         private val notificationHandler: NotificationHandler,
         private val userPreferences: UserPreferences,
         private val linkPreviewFetcher: LinkPreviewFetcher,
+        private val safetyNumbers: SafetyNumberManager,
     ) : ViewModel() {
         private companion object {
             const val TAG = "ChatDetailViewModel"
@@ -109,6 +111,7 @@ class ChatDetailViewModel
                 if (peer.isNullOrEmpty()) return@launch
                 presencePeer = peer
                 _uiState.update { it.copy(directPeerId = peer) }
+                refreshIdentityChangeState()
                 realtimeManager.trackPresencePeer(peer)
                 presenceStore.presence
                     .map { it[peer] }
@@ -340,6 +343,32 @@ class ChatDetailViewModel
                         }
                     is Result.Loading -> Unit
                 }
+            }
+        }
+
+        /**
+         * Re-reads whether the peer's key changed without review. Sends fail
+         * closed while it has, so the banner has to reflect the store rather
+         * than a cached flag that a review elsewhere would leave stale.
+         */
+        fun refreshIdentityChangeState() {
+            val peer = presencePeer ?: return
+            viewModelScope.launch {
+                val pending = runCatching { safetyNumbers.hasPendingIdentityChange(peer) }.getOrDefault(false)
+                _uiState.update { it.copy(identityChangePending = pending) }
+            }
+        }
+
+        /**
+         * The user reviewed the key change and chose to carry on. Unblocks
+         * sending; it does not mark the contact verified, which needs the
+         * safety numbers actually compared.
+         */
+        fun acceptIdentityChange() {
+            val peer = presencePeer ?: return
+            viewModelScope.launch {
+                runCatching { safetyNumbers.acceptIdentityChange(peer) }
+                refreshIdentityChangeState()
             }
         }
 

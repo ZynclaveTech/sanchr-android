@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.GppMaybe
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -122,8 +123,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
@@ -164,6 +167,8 @@ fun ChatDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
     onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
+    /** Opens the peer's safety number, so a key change can be reviewed where it is reported. */
+    onVerifySafetyNumber: (peerId: String, peerName: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
@@ -181,6 +186,12 @@ fun ChatDetailScreen(
     val pickContact = rememberContactPicker(viewModel::sendContact)
     var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
     var gallery by remember { mutableStateOf<GalleryState?>(null) }
+    // Re-read on resume: a review done on the safety-number screen must clear
+    // this banner when the user comes back, not leave a stale warning.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshIdentityChangeState()
+        onPauseOrDispose {}
+    }
     var emojiPickerOpen by remember { mutableStateOf(false) }
     var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
     var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
@@ -444,6 +455,12 @@ fun ChatDetailScreen(
             }
 
             // --- Messages list ---
+            IdentityChangeNotice(
+                uiState = uiState,
+                onVerifySafetyNumber = onVerifySafetyNumber,
+                onAccept = viewModel::acceptIdentityChange,
+            )
+
             LazyColumn(
                 modifier =
                     Modifier
@@ -477,6 +494,69 @@ fun ChatDetailScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Shows the key-change warning only when there is one, keeping the screen composable flat. */
+@Composable
+private fun IdentityChangeNotice(
+    uiState: ChatDetailUiState,
+    onVerifySafetyNumber: (peerId: String, peerName: String) -> Unit,
+    onAccept: () -> Unit,
+) {
+    val peerId = uiState.directPeerId
+    if (!uiState.identityChangePending || peerId == null) return
+    val name = uiState.conversation?.title ?: "This contact"
+    IdentityChangeBanner(
+        contactName = name,
+        onVerify = { onVerifySafetyNumber(peerId, uiState.conversation?.title.orEmpty()) },
+        onAccept = onAccept,
+    )
+}
+
+/**
+ * The peer's security code changed and nobody has reviewed it.
+ *
+ * Deliberately not dismissible: it is the only sign that sends are failing
+ * closed, and it stays until the user either compares the new safety number or
+ * explicitly accepts the change.
+ */
+@Composable
+private fun IdentityChangeBanner(
+    contactName: String,
+    onVerify: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SanchrWarning.copy(alpha = BANNER_TINT))
+                .padding(SanchrTheme.spacing.default),
+        verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
+            Icon(imageVector = Icons.Filled.GppMaybe, contentDescription = null, tint = SanchrWarning)
+            Column {
+                Text(
+                    text = "Security code changed",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text =
+                        "$contactName's security code changed. This happens when they reinstall or switch " +
+                            "devices, but it can also mean someone is intercepting this chat. Messages won't " +
+                            "send until you review.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm)) {
+            SanchrButton(text = "Verify security code", onClick = onVerify)
+            TextButton(onClick = onAccept) { Text("Accept change") }
         }
     }
 }
@@ -1877,3 +1957,5 @@ private fun ViewOnceVideo(file: File) {
         onRelease = { it.stopPlayback() },
     )
 }
+
+private const val BANNER_TINT = 0.12f

@@ -9,6 +9,8 @@ import androidx.navigation.navArgument
 import com.sanchr.feature.chats.ArchivedChatsScreen
 import com.sanchr.feature.chats.ChatDetailScreen
 import com.sanchr.feature.chats.ChatsListScreen
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 const val CHATS_TAB_ROUTE = "chats_tab"
 const val CHATS_LIST_ROUTE = "chats/list"
@@ -63,6 +65,10 @@ fun NavGraphBuilder.chatsGraph(
                     navController.navigate("profile/$userId")
                 },
                 onStartCall = onStartCall,
+                onVerifySafetyNumber = { peerId, peerName ->
+                    val encoded = URLEncoder.encode(peerName, StandardCharsets.UTF_8.name())
+                    navController.navigate("profile/$peerId/verify?name=$encoded")
+                },
             )
         }
     }

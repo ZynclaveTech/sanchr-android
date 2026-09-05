@@ -32,6 +32,11 @@ data class ChatDetailUiState(
     val uploadProgress: Float? = null,
     /** Whether the user's screenshot protection is on, which the media viewer honours too. */
     val screenshotProtectionEnabled: Boolean = true,
+    /**
+     * The peer's security code changed and the user has not reviewed it. While
+     * true, sends to them fail closed, so the banner is not dismissible.
+     */
+    val identityChangePending: Boolean = false,
     /** Every conversation, for the forward picker. */
     val forwardTargets: List<Conversation> = emptyList(),
     /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */

@@ -35,4 +35,18 @@ interface SignalIdentityDao {
         address: String,
         verifiedAt: Long?,
     )
+
+    /**
+     * Records (or with null, clears) an unreviewed key change without touching
+     * the adopted key or the verification.
+     */
+    @Query("UPDATE signal_identities SET pending_identity_key = :pendingKey WHERE address = :address")
+    fun setPendingIdentityKeyBlocking(
+        address: String,
+        pendingKey: ByteArray?,
+    )
+
+    /** Every address for [userId] across their devices, to answer per-contact questions. */
+    @Query("SELECT * FROM signal_identities WHERE address LIKE :userIdPrefix ESCAPE '\\'")
+    fun getForUserBlocking(userIdPrefix: String): List<SignalIdentityEntity>
 }

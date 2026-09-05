@@ -1,44 +1,42 @@
 package com.sanchr.feature.chats
 
 import androidx.lifecycle.SavedStateHandle
+import com.sanchr.core.crypto.verify.SafetyNumberManager
 import com.sanchr.core.datastore.SessionManager
-import com.sanchr.core.notifications.NotificationHandler
-import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
-import com.sanchr.domain.messaging.PresenceStatus
 import com.sanchr.domain.messaging.PresenceStore
-import com.sanchr.domain.messaging.SendMessageUseCase
-import com.sanchr.domain.messaging.SendReadReceiptUseCase
 import com.sanchr.sync.realtime.RealtimeManager
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 
-/** The chat header's presence line: track the 1:1 peer, mirror the store, age it, and stop on clear. */
+/**
+ * The banner reads the store rather than a cached flag. While a key change is
+ * unreviewed, sends fail closed, so a stale "all clear" would leave the user
+ * believing messages went out when they did not.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ChatDetailViewModelPresenceTest {
+class ChatDetailViewModelIdentityChangeTest {
     private val testDispatcher = StandardTestDispatcher()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
-    private val forwardMessageUseCase = mockk<ForwardMessageUseCase>(relaxed = true)
     private val realtimeManager = mockk<RealtimeManager>(relaxed = true)
-    private var now = 1_700_000_000_000L
-    private val presenceStore = PresenceStore { now }
+    private val safetyNumbers = mockk<SafetyNumberManager>(relaxed = true)
 
     @BeforeTest
     fun setUp() {
@@ -50,57 +48,78 @@ class ChatDetailViewModelPresenceTest {
     }
 
     @AfterTest
-    fun tearDown() {
-        Dispatchers.resetMain()
-    }
+    fun tearDown() = Dispatchers.resetMain()
 
     private fun newViewModel(): ChatDetailViewModel =
         ChatDetailViewModel(
             savedStateHandle = SavedStateHandle(mapOf("conversationId" to "conv-1")),
             messageRepository = messageRepository,
-            sendMessageUseCase = mockk<SendMessageUseCase>(),
+            sendMessageUseCase = mockk(relaxed = true),
             sendAttachmentUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
-            sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
+            sendReadReceiptUseCase = mockk(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
-            forwardMessageUseCase = forwardMessageUseCase,
-            presenceStore = presenceStore,
+            forwardMessageUseCase = mockk(relaxed = true),
+            presenceStore = PresenceStore { 0L },
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,
-            notificationHandler = mockk<NotificationHandler>(relaxed = true),
+            notificationHandler = mockk(relaxed = true),
             userPreferences =
                 mockk {
                     every { linkPreviewsEnabled } returns flowOf(true)
                     every { screenshotProtectionEnabled } returns flowOf(true)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
-            safetyNumbers = mockk(relaxed = true),
+            safetyNumbers = safetyNumbers,
         )
 
     @Test
-    fun `opening a 1-1 chat tracks the peer and shows Online until it decays`() =
-        kotlinx.coroutines.test.runTest(testDispatcher) {
-            val vm = newViewModel()
-            runCurrent()
-            verify { realtimeManager.trackPresencePeer("peer") }
-            assertEquals("peer", vm.uiState.value.directPeerId)
-            assertNull(vm.uiState.value.peerPresence)
+    fun `an unreviewed key change raises the banner as soon as the peer is known`() =
+        runTest(testDispatcher) {
+            coEvery { safetyNumbers.hasPendingIdentityChange("peer") } returns true
 
-            presenceStore.update("peer", PresenceStatus.ONLINE, null)
+            val model = newViewModel()
             runCurrent()
-            assertEquals("Online", vm.uiState.value.peerPresence)
 
-            now += PresenceStore.ONLINE_TTL_MS + 1
-            advanceTimeBy(16_000)
-            runCurrent()
-            assertNull(vm.uiState.value.peerPresence)
+            assertTrue(model.uiState.value.identityChangePending)
+        }
 
-            presenceStore.update("peer", PresenceStatus.OFFLINE, now - 120_000)
+    @Test
+    fun `no pending change leaves the banner down`() =
+        runTest(testDispatcher) {
+            coEvery { safetyNumbers.hasPendingIdentityChange("peer") } returns false
+
+            val model = newViewModel()
             runCurrent()
-            assertEquals("Last seen 2 min ago", vm.uiState.value.peerPresence)
-            presenceStore.update("peer", PresenceStatus.HIDDEN, now)
+
+            assertFalse(model.uiState.value.identityChangePending)
+        }
+
+    @Test
+    fun `accepting the change lowers the banner without verifying the contact`() =
+        runTest(testDispatcher) {
+            coEvery { safetyNumbers.hasPendingIdentityChange("peer") } returnsMany listOf(true, false)
+            val model = newViewModel()
             runCurrent()
-            assertNull(vm.uiState.value.peerPresence)
+            assertTrue(model.uiState.value.identityChangePending)
+
+            model.acceptIdentityChange()
+            runCurrent()
+
+            coVerify(exactly = 1) { safetyNumbers.acceptIdentityChange("peer") }
+            coVerify(exactly = 0) { safetyNumbers.markVerified(any(), any(), any()) }
+            assertFalse(model.uiState.value.identityChangePending)
+        }
+
+    @Test
+    fun `a store that throws leaves the banner down rather than crashing the chat`() =
+        runTest(testDispatcher) {
+            coEvery { safetyNumbers.hasPendingIdentityChange("peer") } throws IllegalStateException("db closed")
+
+            val model = newViewModel()
+            runCurrent()
+
+            assertFalse(model.uiState.value.identityChangePending)
         }
 }
