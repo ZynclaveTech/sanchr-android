@@ -230,6 +230,8 @@ private fun Messaging.CallOfferEvent.toManual(): CallOfferEvent =
         callType = callType,
         sdpOffer = sdpOffer.toByteArray(),
         srtpKeyParams = srtpKeyParams.toByteArray(),
+        encryptedSdpPayload = encryptedSdpPayload.toByteArray(),
+        callerDevice = callerDevice,
     )
 
 private fun Messaging.CallLifecycleEvent.toManual(): CallLifecycleEvent =

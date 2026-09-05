@@ -3,32 +3,23 @@ package com.sanchr.domain.calls
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Repository interface for call history and signaling operations.
+ * Call history. Live signaling is the call engine's (`CallManager`), which
+ * owns the WebRTC session the SDP must come from; there is no way to
+ * "initiate a call" from a repository without one.
  */
 interface CallRepository {
-    /** Observes the call history log. */
-    fun observeCallHistory(): Flow<List<CallRecord>>
+    /** The server's call log, newest first. */
+    fun observeCallHistory(limit: Int = DEFAULT_HISTORY_LIMIT): Flow<List<CallRecord>>
 
-    /** Initiates a call via the signaling server. */
-    suspend fun initiateCall(userId: String, isVideo: Boolean): String // Returns call ID
-
-    /** Sends a hangup signal for an active call. */
-    suspend fun endCall(callId: String)
-
-    /** Sends an SDP offer/answer via signaling. */
-    suspend fun sendSignal(
-        callId: String,
-        type: String,
-        payload: String,
-    )
-
-    /** Observes incoming signals for a call. */
-    fun observeSignals(callId: String): Flow<CallSignal>
+    companion object {
+        const val DEFAULT_HISTORY_LIMIT = 50
+    }
 }
 
 data class CallRecord(
     val id: String,
     val remoteUserId: String,
+    /** Resolved by the caller through the contact layer; empty here. */
     val remoteUserName: String,
     val remoteUserAvatarUrl: String?,
     val isOutgoing: Boolean,
@@ -36,9 +27,4 @@ data class CallRecord(
     val durationSeconds: Long,
     val timestamp: Long,
     val isMissed: Boolean,
-)
-
-data class CallSignal(
-    val type: String, // "offer", "answer", "ice-candidate", "hangup"
-    val payload: String,
 )

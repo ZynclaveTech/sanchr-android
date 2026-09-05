@@ -144,12 +144,21 @@ data class PreKeyCountLow(
     val remainingCount: Int = 0,
 )
 
-data class CallOfferEvent(
+/**
+ * A call offer relayed on the message stream. [encryptedSdpPayload] is the
+ * caller's Signal-encrypted `SealedCallPayload` for this device;
+ * [callerDevice] is the device the ciphertext came from (zero: assume 1).
+ * [sdpOffer] / [srtpKeyParams] are legacy plaintext fields the server no
+ * longer fills.
+ */
+class CallOfferEvent(
     val callId: String = "",
     val callerId: String = "",
     val callType: String = "",
     val sdpOffer: ByteArray = ByteArray(0),
     val srtpKeyParams: ByteArray = ByteArray(0),
+    val encryptedSdpPayload: ByteArray = ByteArray(0),
+    val callerDevice: Int = 0,
 )
 
 data class CallLifecycleEvent(

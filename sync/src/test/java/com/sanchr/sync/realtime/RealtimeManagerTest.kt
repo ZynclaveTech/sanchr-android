@@ -2,11 +2,17 @@ package com.sanchr.sync.realtime
 
 import android.content.Context
 import android.util.Log
+import com.sanchr.core.common.calls.CallLifecycleSignal
+import com.sanchr.core.common.calls.IncomingCallEvents
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
+import com.sanchr.proto.messaging.CallLifecycleEvent
+import com.sanchr.proto.messaging.CallOfferEvent
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.ServerEvent
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -27,6 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -49,6 +56,7 @@ class RealtimeManagerTest {
     private val sessionManager = mockk<SessionManager>(relaxed = true)
     private val messageDao = mockk<MessageDao>(relaxed = true)
     private val receiveMessageUseCase = mockk<ReceiveMessageUseCase>(relaxed = true)
+    private val incomingCallEvents = mockk<IncomingCallEvents>(relaxed = true)
 
     /** Counts how many `messageStream(...).collect { }` invocations are live right now. */
     private val activeCollectors = AtomicInteger(0)
@@ -105,9 +113,60 @@ class RealtimeManagerTest {
             sessionManager = sessionManager,
             messageDao = messageDao,
             receiveMessageUseCase = receiveMessageUseCase,
+            incomingCallEvents = incomingCallEvents,
             appScope = scope,
         )
     }
+
+    // --- Call events reach the call engine, and a failing one does not stop the stream -------
+
+    @Test
+    fun `call offers and lifecycle events are delivered to the call engine`() =
+        runTest {
+            val offer =
+                CallOfferEvent(
+                    callId = "call-1",
+                    callerId = "alice",
+                    callType = "video",
+                    encryptedSdpPayload = byteArrayOf(1, 2),
+                    callerDevice = 2,
+                )
+            val lifecycle = CallLifecycleEvent(callId = "call-1", peerId = "alice", eventType = "accepted")
+            every { messagingClient.messageStream(any()) } returns
+                flowOf(ServerEvent.CallOffer(offer), ServerEvent.CallLifecycle(lifecycle))
+
+            buildManager().enterForeground()
+            runCurrent()
+
+            coVerify {
+                incomingCallEvents.onCallOffer(
+                    match {
+                        it.callId == "call-1" &&
+                            it.callerId == "alice" &&
+                            it.callType == "video" &&
+                            it.callerDevice == 2 &&
+                            it.encryptedSdpPayload.contentEquals(byteArrayOf(1, 2))
+                    },
+                )
+            }
+            coVerify { incomingCallEvents.onCallLifecycle(CallLifecycleSignal("call-1", "alice", "accepted")) }
+        }
+
+    @Test
+    fun `a call engine failure on one offer does not stop later events`() =
+        runTest {
+            coEvery { incomingCallEvents.onCallOffer(any()) } throws IllegalStateException("boom")
+            every { messagingClient.messageStream(any()) } returns
+                flowOf(
+                    ServerEvent.CallOffer(CallOfferEvent(callId = "bad")),
+                    ServerEvent.CallLifecycle(CallLifecycleEvent(callId = "c2", peerId = "p", eventType = "ended")),
+                )
+
+            buildManager().enterForeground()
+            runCurrent()
+
+            coVerify { incomingCallEvents.onCallLifecycle(CallLifecycleSignal("c2", "p", "ended")) }
+        }
 
     // --- Test 1: the bug -------------------------------------------------------------------
 
