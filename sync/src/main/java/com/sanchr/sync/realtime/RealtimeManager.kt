@@ -16,7 +16,9 @@ import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
+import com.sanchr.domain.messaging.PresenceStatus
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
+import com.sanchr.domain.messaging.SendPresenceUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
 import com.sanchr.proto.messaging.CallLifecycleEvent
 import com.sanchr.proto.messaging.CallOfferEvent
@@ -53,6 +55,7 @@ class RealtimeManager
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val incomingCallEvents: IncomingCallEvents,
+        private val sendPresence: SendPresenceUseCase,
         // `@ApplicationScope` runs on Dispatchers.Default (see AppModule) and is shared with
         // other app-wide singletons, so everything reached from handleServerEvent() must stay
         // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
@@ -66,10 +69,15 @@ class RealtimeManager
 
             /** How long a call wake keeps the stream open in the background: the server's ring timeout. */
             const val CALL_WAKE_WINDOW_MS = 60_000L
+            const val PRESENCE_INTERVAL_MS = 30_000L
         }
 
         private var inForeground = false
         private var wakeStopJob: Job? = null
+
+        /** Peers whose chat is open, ref-counted; they get our presence while we are in the foreground. */
+        private val trackedPeers = mutableMapOf<String, Int>()
+        private var presenceLoop: Job? = null
 
         private val outboundEvents = Channel<ClientEvent>(capacity = Channel.BUFFERED)
         private val _typingCache = MutableStateFlow<Map<String, TypingIndicator>>(emptyMap())
@@ -105,6 +113,51 @@ class RealtimeManager
                 wakeStopJob = null
                 ensureStreamStartedLocked()
             }
+            broadcastPresence(PresenceStatus.ONLINE)
+            startPresenceLoop()
+        }
+
+        /** A chat with [userId] is on screen: announce ourselves and keep them in the presence loop. */
+        fun trackPresencePeer(userId: String) {
+            if (userId.isEmpty()) return
+            val first =
+                synchronized(lock) {
+                    val previous = trackedPeers[userId] ?: 0
+                    trackedPeers[userId] = previous + 1
+                    previous == 0
+                }
+            if (first && inForeground) {
+                appScope.launch { sendPresence(userId, PresenceStatus.ONLINE) }
+                startPresenceLoop()
+            }
+        }
+
+        fun untrackPresencePeer(userId: String) {
+            synchronized(lock) {
+                val count = trackedPeers[userId] ?: return
+                if (count > 1) trackedPeers[userId] = count - 1 else trackedPeers.remove(userId)
+            }
+        }
+
+        private fun broadcastPresence(status: PresenceStatus) {
+            val peers = synchronized(lock) { trackedPeers.keys.toList() }
+            peers.forEach { peer -> appScope.launch { sendPresence(peer, status) } }
+        }
+
+        /**
+         * iOS re-announces ONLINE every 30 s; peers stop showing "Online" two
+         * missed beats later. Runs only while there is someone to tell, so an
+         * idle app holds no timer.
+         */
+        private fun startPresenceLoop() {
+            if (presenceLoop?.isActive == true) return
+            presenceLoop =
+                appScope.launch {
+                    while (inForeground && synchronized(lock) { trackedPeers.isNotEmpty() }) {
+                        delay(PRESENCE_INTERVAL_MS)
+                        if (inForeground) broadcastPresence(PresenceStatus.ONLINE)
+                    }
+                }
         }
 
         /**
@@ -137,6 +190,9 @@ class RealtimeManager
 
         fun enterBackground() {
             synchronized(lock) { inForeground = false }
+            presenceLoop?.cancel()
+            presenceLoop = null
+            if (!sessionManager.getAccessToken().isNullOrEmpty()) broadcastPresence(PresenceStatus.OFFLINE)
             if (sessionManager.getAccessToken().isNullOrEmpty()) {
                 stopStream()
                 return

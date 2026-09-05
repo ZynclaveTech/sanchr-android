@@ -11,6 +11,7 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
@@ -21,11 +22,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,12 +44,14 @@ class ChatDetailViewModel
         private val sendAttachmentUseCase: SendAttachmentUseCase,
         private val attachmentDownloader: AttachmentDownloader,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
+        private val presenceStore: PresenceStore,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
         private val notificationHandler: NotificationHandler,
     ) : ViewModel() {
         private companion object {
             const val TAG = "ChatDetailViewModel"
+            const val PRESENCE_REFRESH_MS = 15_000L
         }
 
         private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
@@ -57,12 +64,46 @@ class ChatDetailViewModel
             )
         val uiState: StateFlow<ChatDetailUiState> = _uiState.asStateFlow()
 
+        private var presencePeer: String? = null
+
         init {
             observeConversation()
             observeMessages()
             observeTyping()
+            observePresence()
             markAsRead()
             clearNotificationsForConversation()
+        }
+
+        /**
+         * A 1:1 chat on screen announces us to the peer and shows what they
+         * last told us (`PresenceStore`). While there is a line to show it is
+         * re-evaluated every 15 s so "Online" decays and "Last seen" ages.
+         */
+        private fun observePresence() {
+            viewModelScope.launch {
+                val self = sessionManager.getUserId().orEmpty()
+                val peer = runCatching { messageRepository.oneToOneRecipient(conversationId, self) }.getOrNull()
+                if (peer.isNullOrEmpty()) return@launch
+                presencePeer = peer
+                realtimeManager.trackPresencePeer(peer)
+                presenceStore.presence
+                    .map { it[peer] }
+                    .distinctUntilChanged()
+                    .collectLatest {
+                        while (true) {
+                            val line = presenceStore.statusLine(peer)
+                            _uiState.update { it.copy(peerPresence = line) }
+                            if (line == null) return@collectLatest
+                            delay(PRESENCE_REFRESH_MS)
+                        }
+                    }
+            }
+        }
+
+        override fun onCleared() {
+            presencePeer?.let(realtimeManager::untrackPresencePeer)
+            super.onCleared()
         }
 
         private fun observeConversation() {

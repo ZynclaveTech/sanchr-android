@@ -48,6 +48,7 @@ class ReceiveMessageUseCaseProfileKeyTest {
             dispatchers,
             profileResolver,
             sessionManager,
+            PresenceStore(),
         )
 
     private val bytes = byteArrayOf(10, 20, 30)

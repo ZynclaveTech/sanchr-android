@@ -6,7 +6,9 @@ import com.sanchr.core.common.calls.CallLifecycleSignal
 import com.sanchr.core.common.calls.IncomingCallEvents
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.domain.messaging.PresenceStatus
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
+import com.sanchr.domain.messaging.SendPresenceUseCase
 import com.sanchr.proto.messaging.CallLifecycleEvent
 import com.sanchr.proto.messaging.CallOfferEvent
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -57,6 +59,7 @@ class RealtimeManagerTest {
     private val messageDao = mockk<MessageDao>(relaxed = true)
     private val receiveMessageUseCase = mockk<ReceiveMessageUseCase>(relaxed = true)
     private val incomingCallEvents = mockk<IncomingCallEvents>(relaxed = true)
+    private val sendPresence = mockk<SendPresenceUseCase>(relaxed = true)
 
     /** Counts how many `messageStream(...).collect { }` invocations are live right now. */
     private val activeCollectors = AtomicInteger(0)
@@ -114,6 +117,7 @@ class RealtimeManagerTest {
             messageDao = messageDao,
             receiveMessageUseCase = receiveMessageUseCase,
             incomingCallEvents = incomingCallEvents,
+            sendPresence = sendPresence,
             appScope = scope,
         )
     }
@@ -335,5 +339,43 @@ class RealtimeManagerTest {
             advanceTimeBy(5_000)
             runCurrent()
             assertEquals(2, activeCollectors.get(), "the wake window outlives a background transition")
+        }
+
+    // --- Presence: tracked peers hear ONLINE on foreground and every 30 s, OFFLINE on background --
+
+    @Test
+    fun `a tracked peer is told ONLINE on foreground, re-announced every 30 seconds, and OFFLINE on background`() =
+        runTest {
+            val manager = buildManager()
+            manager.trackPresencePeer("alice")
+            manager.enterForeground()
+            runCurrent()
+            coVerify(exactly = 1) { sendPresence("alice", PresenceStatus.ONLINE) }
+
+            advanceTimeBy(RealtimeManager.PRESENCE_INTERVAL_MS + 100)
+            runCurrent()
+            coVerify(exactly = 2) { sendPresence("alice", PresenceStatus.ONLINE) }
+
+            manager.enterBackground()
+            runCurrent()
+            coVerify(exactly = 1) { sendPresence("alice", PresenceStatus.OFFLINE) }
+            advanceTimeBy(RealtimeManager.PRESENCE_INTERVAL_MS * 2)
+            runCurrent()
+            coVerify(exactly = 2) { sendPresence("alice", PresenceStatus.ONLINE) }
+        }
+
+    @Test
+    fun `tracking a peer while in the foreground announces immediately, and untracking stops the beats`() =
+        runTest {
+            val manager = buildManager()
+            manager.enterForeground()
+            runCurrent()
+            manager.trackPresencePeer("bob")
+            runCurrent()
+            coVerify(exactly = 1) { sendPresence("bob", PresenceStatus.ONLINE) }
+            manager.untrackPresencePeer("bob")
+            advanceTimeBy(RealtimeManager.PRESENCE_INTERVAL_MS + 100)
+            runCurrent()
+            coVerify(exactly = 1) { sendPresence("bob", PresenceStatus.ONLINE) }
         }
 }

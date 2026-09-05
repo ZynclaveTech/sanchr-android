@@ -135,7 +135,7 @@ fun ChatDetailScreen(
         topBar = {
             ChatDetailTopBar(
                 title = uiState.conversation?.title ?: "Chat",
-                statusText = if (uiState.peerTyping) "Typing..." else null,
+                statusText = if (uiState.peerTyping) "Typing..." else uiState.peerPresence,
                 onNavigateBack = onNavigateBack,
                 onVideoCall = { /* TODO */ },
                 onVoiceCall = { /* TODO */ },

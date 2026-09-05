@@ -153,4 +153,12 @@ class SealedEnvelopeRouterTest {
         assertTrue(routed is RoutedPayload.UserMessage)
         assertNull(routed.senderProfileKey)
     }
+
+    @Test
+    fun `a presence v1 payload routes to Control, never to a message row`() {
+        val payload = InnerPayload(conversationId = "", contentType = "presence/v1", content = byteArrayOf(8, 1))
+        val routed = SealedEnvelopeRouter.route(payload.encode(), fallbackContentType = "text")
+        assertTrue(routed is RoutedPayload.Control)
+        assertEquals("presence/v1", routed.contentType)
+    }
 }

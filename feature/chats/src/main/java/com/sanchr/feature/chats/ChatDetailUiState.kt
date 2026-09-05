@@ -13,6 +13,8 @@ data class ChatDetailUiState(
     val isLoading: Boolean = true,
     val isSending: Boolean = false,
     val peerTyping: Boolean = false,
+    /** "Online" / "Last seen …" from the peer's presence, or null. */
+    val peerPresence: String? = null,
     val error: String? = null,
     val isLoadingMore: Boolean = false,
     val hasMoreMessages: Boolean = true,

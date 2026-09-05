@@ -85,7 +85,7 @@ sealed interface RoutedPayload {
  */
 object SealedEnvelopeRouter {
     /** Content types that are control traffic, never a visible message. */
-    private val CONTROL_CONTENT_TYPES = setOf("receipt/v1", "profile-key/v1")
+    private val CONTROL_CONTENT_TYPES = setOf("receipt/v1", "profile-key/v1", "presence/v1")
 
     /**
      * @param plaintext The decrypted envelope bytes.
