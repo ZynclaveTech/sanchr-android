@@ -167,10 +167,19 @@ class AuthViewModel
             }
         }
 
+        fun onRegistrationLockPinChanged(pin: String) {
+            val current = _state.value as? AuthState.OtpEntry ?: return
+            _state.value = current.copy(pin = pin.filter { it.isDigit() }.take(REGISTRATION_LOCK_PIN_LENGTH))
+        }
+
         fun submitOtp() {
             val current = _state.value as? AuthState.OtpEntry ?: return
             if (current.otp.length != OTP_LENGTH) {
                 _state.value = AuthState.Error(current, "Enter the 6-digit code")
+                return
+            }
+            if (current.pinRequired && current.pin.isEmpty()) {
+                _state.value = AuthState.Error(current, "Enter your Registration Lock PIN")
                 return
             }
 
@@ -184,6 +193,7 @@ class AuthViewModel
                                     phoneNumber = current.phoneE164,
                                     otpCode = current.otp,
                                     device = buildDeviceInfo(),
+                                    registrationLockPin = current.pin,
                                 ),
                             )
                         }
@@ -236,6 +246,11 @@ class AuthViewModel
                         isNewUser = isNewUser,
                     )
                 } catch (e: Exception) {
+                    if (e.message?.contains(REGISTRATION_LOCK_REQUIRED) == true) {
+                        // As iOS: the code was fine, the number is locked; ask for the PIN and resend with it.
+                        _state.value = current.copy(isSubmitting = false, pinRequired = true, pin = "")
+                        return@launch
+                    }
                     _state.value =
                         AuthState.Error(
                             current.copy(isSubmitting = false),
@@ -391,6 +406,10 @@ class AuthViewModel
 
         private companion object {
             const val OTP_LENGTH = 6
+            const val REGISTRATION_LOCK_PIN_LENGTH = 6
+
+            /** Substring of the server's status message when a locked number is verified without its PIN. */
+            const val REGISTRATION_LOCK_REQUIRED = "registration_lock_pin_required"
             const val MIN_SUBSCRIBER_DIGITS = 7
             const val MAX_SUBSCRIBER_DIGITS = 15
         }
