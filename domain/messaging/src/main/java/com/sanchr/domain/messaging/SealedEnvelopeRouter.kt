@@ -29,7 +29,34 @@ sealed interface RoutedPayload {
          * plaintext, which has nowhere to carry it.
          */
         val expiresAfterSecs: Long? = null,
-    ) : RoutedPayload
+        /**
+         * The sender's Profile Key (`sender_profile_key`), which every peer
+         * rides on every payload so that anyone who can read their messages
+         * can read their profile. Null for a legacy bare-text plaintext.
+         */
+        val senderProfileKey: ByteArray? = null,
+    ) : RoutedPayload {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is UserMessage) return false
+            return content == other.content &&
+                contentType == other.contentType &&
+                conversationId == other.conversationId &&
+                messageId == other.messageId &&
+                expiresAfterSecs == other.expiresAfterSecs &&
+                (senderProfileKey?.contentEquals(other.senderProfileKey) ?: (other.senderProfileKey == null))
+        }
+
+        override fun hashCode(): Int {
+            var result = content.hashCode()
+            result = 31 * result + contentType.hashCode()
+            result = 31 * result + conversationId.hashCode()
+            result = 31 * result + (messageId?.hashCode() ?: 0)
+            result = 31 * result + (expiresAfterSecs?.hashCode() ?: 0)
+            result = 31 * result + (senderProfileKey?.contentHashCode() ?: 0)
+            return result
+        }
+    }
 
     /**
      * A control payload — e.g. `receipt/v1`, `profile-key/v1` — that must
@@ -101,6 +128,7 @@ object SealedEnvelopeRouter {
                 // emits, and a negative value is nonsense we must not turn
                 // into an already-past deadline.
                 expiresAfterSecs = payload.expiresAfterSecs?.takeIf { it > 0 },
+                senderProfileKey = payload.senderProfileKey,
             )
         }
     }
