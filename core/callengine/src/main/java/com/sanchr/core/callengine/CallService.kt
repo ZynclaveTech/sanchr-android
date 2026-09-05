@@ -32,7 +32,6 @@ class CallService : Service() {
         const val EXTRA_CALL_ID = "extra_call_id"
         const val EXTRA_CALLER_ID = "extra_caller_id"
         const val EXTRA_CALLER_NAME = "extra_caller_name"
-        const val EXTRA_SDP_OFFER = "extra_sdp_offer"
     }
 
     @Inject lateinit var callManager: CallManager
@@ -80,11 +79,15 @@ class CallService : Service() {
         }
     }
 
+    /**
+     * Started by [CallManager.onCallOffer] once an offer has been decrypted
+     * and verified; this only puts the incoming-call notification up. The
+     * call state itself already lives in the manager.
+     */
     private fun handleIncomingCall(intent: Intent) {
         val callId = intent.getStringExtra(EXTRA_CALL_ID) ?: return
         val callerId = intent.getStringExtra(EXTRA_CALLER_ID) ?: return
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME) ?: callerId
-        val sdpOffer = intent.getStringExtra(EXTRA_SDP_OFFER) ?: return
         val isVideo = intent.getBooleanExtra(EXTRA_IS_VIDEO, false)
 
         val notification =
@@ -95,14 +98,6 @@ class CallService : Service() {
             )
 
         startForegroundService(notification)
-
-        callManager.handleIncomingCall(
-            callId = callId,
-            callerId = callerId,
-            callerName = callerName,
-            sdpOffer = sdpOffer,
-            isVideo = isVideo,
-        )
     }
 
     private fun handleAnswer() {

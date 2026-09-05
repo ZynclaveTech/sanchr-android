@@ -5,6 +5,9 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.sanchr.core.common.calls.CallLifecycleSignal
+import com.sanchr.core.common.calls.IncomingCallEvents
+import com.sanchr.core.common.calls.IncomingCallOffer
 import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.datastore.SessionManager
@@ -14,6 +17,8 @@ import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
+import com.sanchr.proto.messaging.CallLifecycleEvent
+import com.sanchr.proto.messaging.CallOfferEvent
 import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -46,6 +51,7 @@ class RealtimeManager
         private val sessionManager: SessionManager,
         private val messageDao: MessageDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
+        private val incomingCallEvents: IncomingCallEvents,
         // `@ApplicationScope` runs on Dispatchers.Default (see AppModule) and is shared with
         // other app-wide singletons, so everything reached from handleServerEvent() must stay
         // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
@@ -173,12 +179,43 @@ class RealtimeManager
                 is ServerEvent.Typing -> handleTyping(event.indicator)
                 is ServerEvent.Receipt -> handleReceipt(event.update)
                 is ServerEvent.PreKeyCountLow -> PreKeyReplenishWorker.enqueueOneTime(appContext)
-                is ServerEvent.CallOffer -> {
-                    Log.d(TAG, "Received call offer event ${event.offer?.callId.orEmpty()}")
-                }
-                is ServerEvent.CallLifecycle -> {
-                    Log.d(TAG, "Received call lifecycle event ${event.event?.eventType.orEmpty()}")
-                }
+                is ServerEvent.CallOffer -> event.offer?.let { deliverCallOffer(it) }
+                is ServerEvent.CallLifecycle -> event.event?.let { deliverCallLifecycle(it) }
+            }
+        }
+
+        /**
+         * Hands a call offer to the call engine. Its failure must not take
+         * the message stream down with it: a bad offer is one call, the
+         * stream is every message.
+         */
+        private suspend fun deliverCallOffer(offer: CallOfferEvent) {
+            Log.d(TAG, "Call offer ${offer.callId} from device ${offer.callerDevice}")
+            try {
+                incomingCallEvents.onCallOffer(
+                    IncomingCallOffer(
+                        callId = offer.callId,
+                        callerId = offer.callerId,
+                        callType = offer.callType,
+                        encryptedSdpPayload = offer.encryptedSdpPayload,
+                        callerDevice = offer.callerDevice,
+                    ),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Call offer ${offer.callId} could not be handled", e)
+            }
+        }
+
+        private suspend fun deliverCallLifecycle(event: CallLifecycleEvent) {
+            Log.d(TAG, "Call lifecycle ${event.eventType} for ${event.callId}")
+            try {
+                incomingCallEvents.onCallLifecycle(CallLifecycleSignal(event.callId, event.peerId, event.eventType))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Call lifecycle for ${event.callId} could not be handled", e)
             }
         }
 

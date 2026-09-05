@@ -45,7 +45,6 @@ import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.proto.calling.CallLogEntry
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -126,31 +125,16 @@ fun CallsListScreen(
                         ) {
                             items(
                                 items = uiState.entries,
-                                key = { it.callId },
-                            ) { entry ->
+                                key = { it.entry.callId },
+                            ) { item ->
                                 CallEntryRow(
-                                    entry = entry,
-                                    onClick = {
-                                        // Call back the person
-                                        val targetUserId =
-                                            if (entry.callerId.isNotEmpty()) {
-                                                entry.callerId
-                                            } else {
-                                                entry.calleeId
-                                            }
-                                        onCallClick(targetUserId)
-                                    },
+                                    item = item,
+                                    onClick = { onCallClick(item.entry.peerId) },
                                     onCallBack = {
-                                        val targetUserId =
-                                            if (entry.callerId.isNotEmpty()) {
-                                                entry.callerId
-                                            } else {
-                                                entry.calleeId
-                                            }
-                                        if (entry.callType == "video") {
-                                            viewModel.startVideoCall(targetUserId)
+                                        if (item.isVideo) {
+                                            viewModel.startVideoCall(item.entry.peerId, item.displayName)
                                         } else {
-                                            viewModel.startVoiceCall(targetUserId)
+                                            viewModel.startVoiceCall(item.entry.peerId, item.displayName)
                                         }
                                     },
                                 )
@@ -194,17 +178,16 @@ private fun EmptyCallsState() {
 
 @Composable
 private fun CallEntryRow(
-    entry: CallLogEntry,
+    item: CallLogItem,
     onClick: () -> Unit,
     onCallBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isMissed = entry.status == "missed"
-    val isOutgoing = entry.calleeId.isNotEmpty()
-    val isVideo = entry.callType == "video"
-
-    // Determine display name from caller/callee ID
-    val displayName = if (isOutgoing) entry.calleeId else entry.callerId
+    val entry = item.entry
+    val isMissed = item.isMissed
+    val isOutgoing = item.isOutgoing
+    val isVideo = item.isVideo
+    val displayName = item.displayName
 
     Row(
         modifier =
@@ -282,9 +265,9 @@ private fun CallEntryRow(
                 )
 
                 // Duration for completed calls
-                if (!isMissed && entry.durationSeconds > 0) {
+                if (!isMissed && entry.durationSecs > 0) {
                     Text(
-                        text = " - ${formatDuration(entry.durationSeconds)}",
+                        text = " - ${formatDuration(entry.durationSecs)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

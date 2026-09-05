@@ -507,4 +507,91 @@ class SignalSessionManagerTest {
         override val unconfined: CoroutineDispatcher = Dispatchers.Unconfined
         override val signalDispatcher: CoroutineDispatcher = Dispatchers.Unconfined
     }
+
+    // ------------------------------------------------------------------
+    // Call payloads: iOS framing, no padding
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `encryptForCall yields a 0x01-framed PreKeySignalMessage that Bob decrypts unpadded`() =
+        runTest {
+            aliceFakeClient.preKeyBundleResponse = publishBobsBundle()
+            val plaintext = """{"sdp":"v=0","dtls_fingerprint":"sha-256 AA","timestamp":1.0}""".toByteArray()
+
+            val framed = aliceSessionManager.encryptForCall(plaintext, bobUserId, bobDeviceId)
+
+            assertEquals(CallCiphertextFraming.PREKEY, framed[0])
+            // Bob's side: dispatch on the type byte, decrypt on his own store; no padding to strip.
+            val bobCipher = SessionCipher(bobStore, SignalProtocolAddress(aliceUserId, aliceDeviceId))
+            val decrypted = bobCipher.decrypt(PreKeySignalMessage(framed.copyOfRange(1, framed.size)))
+            assertTrue(plaintext.contentEquals(decrypted))
+        }
+
+    @Test
+    fun `once the callee has replied, the next call payload is 0x02-framed and decryptForCall reads the reply`() =
+        runTest {
+            aliceFakeClient.preKeyBundleResponse = publishBobsBundle()
+            val offer = aliceSessionManager.encryptForCall("offer".toByteArray(), bobUserId, bobDeviceId)
+            val bobCipher = SessionCipher(bobStore, SignalProtocolAddress(aliceUserId, aliceDeviceId))
+            bobCipher.decrypt(PreKeySignalMessage(offer.copyOfRange(1, offer.size)))
+
+            // Bob answers on the session the offer created; Alice reads it through decryptForCall.
+            val answer = CallCiphertextFraming.frame(bobCipher.encrypt("answer".toByteArray()))
+            assertTrue("answer".toByteArray().contentEquals(aliceSessionManager.decryptForCall(answer, bobUserId, bobDeviceId)))
+
+            // The session is acknowledged on Alice's side now: no more pre-key messages.
+            val next = aliceSessionManager.encryptForCall("ice-restart".toByteArray(), bobUserId, bobDeviceId)
+            assertEquals(CallCiphertextFraming.WHISPER, next[0])
+        }
+
+    @Test
+    fun `decryptForCall reads the type byte and rejects an unknown one`() =
+        runTest {
+            aliceFakeClient.preKeyBundleResponse = publishBobsBundle()
+            val framed = aliceSessionManager.encryptForCall("hello".toByteArray(), bobUserId, bobDeviceId)
+            val bobCipher = SessionCipher(bobStore, SignalProtocolAddress(aliceUserId, aliceDeviceId))
+            // Establish Bob's side of the session from the framed bytes the same way decryptForCall does.
+            val (type, body) = CallCiphertextFraming.unframe(framed)
+            assertEquals(CallCiphertextFraming.PREKEY, type)
+            assertTrue("hello".toByteArray().contentEquals(bobCipher.decrypt(PreKeySignalMessage(body))))
+
+            val bogus = byteArrayOf(0x07, 1, 2, 3)
+            assertFailsWith<CallCiphertextFraming.UnknownTypeException> {
+                aliceSessionManager.decryptForCall(bogus, bobUserId, bobDeviceId)
+            }
+        }
+
+    @Test
+    fun `encryptCallOffers resets and re-establishes every key-capable device, so each offer is a PreKey message`() =
+        runTest {
+            aliceFakeClient.userDevicesResponse =
+                GetUserDevicesResponse(
+                    devices =
+                        listOf(
+                            DeviceInfo(deviceId = 1, platform = "android", keyCapable = true),
+                            DeviceInfo(deviceId = 2, platform = "ios", keyCapable = true),
+                            DeviceInfo(deviceId = 3, platform = "web", keyCapable = false),
+                        ),
+                )
+            // Device 1 is Bob's real identity (stable across bundle fetches);
+            // device 2 is a separate identity, as a second device would be.
+            aliceFakeClient.preKeyBundleResponder = { req ->
+                if (req.deviceId ==
+                    bobDeviceId
+                ) {
+                    publishBobsBundle()
+                } else {
+                    publishPeerBundle(req.userId, req.deviceId, bobRegistrationId + req.deviceId)
+                }
+            }
+            // A pre-existing session with device 1 must not survive: a stale
+            // ratchet is exactly what the reset protects the call from.
+            aliceSessionManager.establishSession(bobUserId, bobDeviceId)
+            aliceSessionManager.encrypt("warm".toByteArray(), bobUserId, bobDeviceId)
+
+            val offers = aliceSessionManager.encryptCallOffers("offer".toByteArray(), bobUserId)
+
+            assertEquals(setOf(1, 2), offers.map { it.deviceId }.toSet())
+            offers.forEach { assertEquals(CallCiphertextFraming.PREKEY, it.ciphertext[0]) }
+        }
 }
