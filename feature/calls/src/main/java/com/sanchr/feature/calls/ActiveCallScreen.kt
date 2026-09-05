@@ -38,15 +38,18 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -84,6 +87,10 @@ fun ActiveCallScreen(
     val isVideoEnabled by viewModel.isVideoEnabled.collectAsStateWithLifecycle()
     val callDuration by viewModel.callDuration.collectAsStateWithLifecycle()
     val callType by viewModel.callType.collectAsStateWithLifecycle()
+    val peerVideoEnabled by viewModel.peerVideoEnabled.collectAsStateWithLifecycle()
+    val hasRemoteVideoTrack by viewModel.hasRemoteVideoTrack.collectAsStateWithLifecycle()
+    val incomingVideoUpgradeRequest by viewModel.incomingVideoUpgradeRequest.collectAsStateWithLifecycle()
+    val outgoingVideoUpgradePending by viewModel.outgoingVideoUpgradePending.collectAsStateWithLifecycle()
 
     val isVideoCall = callType == "video"
     val isIncoming = callState is CallState.Incoming
@@ -105,12 +112,15 @@ fun ActiveCallScreen(
                 .fillMaxSize()
                 .background(SanchrGradients.CallActive),
     ) {
-        // Video mode: remote video fills the screen
-        if (isVideoCall && isActive) {
-            RemoteVideoView(
-                viewModel = viewModel,
-                modifier = Modifier.fillMaxSize(),
-            )
+        // Video mode: remote video fills the screen. Keyed on the track so a
+        // renderer created before a mid-call upgrade re-attaches to the new track.
+        if (isVideoCall && isActive && peerVideoEnabled) {
+            key(hasRemoteVideoTrack) {
+                RemoteVideoView(
+                    viewModel = viewModel,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
 
         // Main content overlay
@@ -125,7 +135,7 @@ fun ActiveCallScreen(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.huge))
 
             // Caller info (hide during active video call to show video)
-            if (!isVideoCall || !isActive) {
+            if (!isVideoCall || !isActive || !peerVideoEnabled) {
                 CallerInfoSection(
                     callState = callState,
                     callDuration = callDuration,
@@ -150,6 +160,7 @@ fun ActiveCallScreen(
                         isSpeakerOn = isSpeakerOn,
                         isVideoEnabled = isVideoEnabled,
                         isVideoCall = isVideoCall,
+                        canRequestVideo = isActive && !outgoingVideoUpgradePending,
                         onToggleMute = viewModel::toggleMute,
                         onToggleSpeaker = viewModel::toggleSpeaker,
                         onToggleVideo = viewModel::toggleVideo,
@@ -172,6 +183,16 @@ fun ActiveCallScreen(
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 64.dp, end = SanchrTheme.spacing.default),
+            )
+        }
+
+        if (incomingVideoUpgradeRequest) {
+            AlertDialog(
+                onDismissRequest = viewModel::declineVideoUpgrade,
+                title = { Text("Join video call?") },
+                text = { Text("${callState.peerName()} wants to switch to video.") },
+                confirmButton = { TextButton(onClick = viewModel::acceptVideoUpgrade) { Text("Join") } },
+                dismissButton = { TextButton(onClick = viewModel::declineVideoUpgrade) { Text("Not now") } },
             )
         }
 
@@ -323,6 +344,7 @@ private fun ActiveCallControls(
     isSpeakerOn: Boolean,
     isVideoEnabled: Boolean,
     isVideoCall: Boolean,
+    canRequestVideo: Boolean,
     onToggleMute: () -> Unit,
     onToggleSpeaker: () -> Unit,
     onToggleVideo: () -> Unit,
@@ -355,7 +377,7 @@ private fun ActiveCallControls(
                     onClick = onToggleSpeaker,
                 )
 
-                // Video toggle
+                // Video toggle; in a voice call this asks the peer to switch to video.
                 if (isVideoCall) {
                     CallControlButton(
                         icon = if (isVideoEnabled) Icons.Filled.Videocam else Icons.Filled.VideocamOff,
@@ -370,6 +392,13 @@ private fun ActiveCallControls(
                         label = "Flip",
                         isActive = false,
                         onClick = onSwitchCamera,
+                    )
+                } else {
+                    CallControlButton(
+                        icon = Icons.Filled.Videocam,
+                        label = if (canRequestVideo) "Video" else "Waiting…",
+                        isActive = !canRequestVideo,
+                        onClick = { if (canRequestVideo) onToggleVideo() },
                     )
                 }
             }
@@ -608,3 +637,13 @@ private fun formatDuration(totalSeconds: Long): String {
     val seconds = totalSeconds % 60
     return "%02d:%02d".format(minutes, seconds)
 }
+
+private fun CallState.peerName(): String =
+    when (this) {
+        is CallState.Active -> remoteUserName
+        is CallState.Reconnecting -> remoteUserName
+        is CallState.Incoming -> callerName
+        is CallState.Outgoing -> recipientName
+        is CallState.Ringing -> recipientName
+        is CallState.Ended, CallState.Idle -> ""
+    }.ifBlank { "Your contact" }
