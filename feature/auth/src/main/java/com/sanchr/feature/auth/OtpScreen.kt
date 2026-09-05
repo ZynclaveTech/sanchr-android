@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -185,6 +189,12 @@ fun OtpScreen(
                 },
             )
 
+            RegistrationLockPrompt(
+                visible = otpEntry.pinRequired,
+                pin = otpEntry.pin,
+                onPinChanged = viewModel::onRegistrationLockPinChanged,
+            )
+
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 Text(
@@ -234,10 +244,37 @@ fun OtpScreen(
                     if (state is AuthState.Error) viewModel.retry()
                     viewModel.submitOtp()
                 },
-                enabled = otpEntry.otp.length == 6 && !otpEntry.isSubmitting,
+                enabled = otpEntry.canSubmit,
                 isLoading = otpEntry.isSubmitting,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
     }
+}
+
+/** Shown once the server says the number has Registration Lock: the PIN goes along with the next verify. */
+@Composable
+private fun RegistrationLockPrompt(
+    visible: Boolean,
+    pin: String,
+    onPinChanged: (String) -> Unit,
+) {
+    if (!visible) return
+    Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
+    Text(
+        text = "This number has Registration Lock. Enter your PIN to continue.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
+    Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+    OutlinedTextField(
+        value = pin,
+        onValueChange = onPinChanged,
+        singleLine = true,
+        label = { Text("Registration Lock PIN") },
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }

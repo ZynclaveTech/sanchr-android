@@ -13,6 +13,7 @@ import com.sanchr.proto.notifications.NotificationServiceClient
 import com.sanchr.proto.notifications.UpdateNotificationPrefsRequest
 import com.sanchr.proto.settings.GetSettingsRequest
 import com.sanchr.proto.settings.GetStorageUsageRequest
+import com.sanchr.proto.settings.SetRegistrationLockRequest
 import com.sanchr.proto.settings.SettingsServiceClient
 import com.sanchr.proto.settings.StorageUsageResponse
 import com.sanchr.proto.settings.ToggleSanchrModeRequest
@@ -21,6 +22,7 @@ import com.sanchr.proto.settings.UserSettings
 import com.sanchr.sync.backup.ChatBackupManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +61,8 @@ data class SettingsUiState(
     val screenLockTimeout: String = "immediately",
     val screenshotProtection: Boolean = false,
     val sanchrModeEnabled: Boolean = false,
+    /** Registration Lock: re-registering this number on a new device needs the PIN. */
+    val registrationLockEnabled: Boolean = false,
     val mediaAutoDownload: String = "wifi",
     val lowDataMode: Boolean = false,
     val storageUsage: StorageUsageResponse? = null,
@@ -171,6 +175,7 @@ class SettingsViewModel
                     screenLockEnabled = extras.screenLockEnabled,
                     screenshotProtection = extras.screenshotProtection,
                     sanchrModeEnabled = remote?.sanchrModeEnabled ?: false,
+                    registrationLockEnabled = remote?.registrationLockEnabled ?: false,
                     mediaAutoDownload = remote?.autoDownloadMedia?.let { if (it) "always" else "wifi" } ?: "wifi",
                     lowDataMode = extras.lowDataMode,
                     storageUsage = storage,
@@ -357,6 +362,35 @@ class SettingsViewModel
                 triggerDebouncedSync()
             }
         }
+
+        /**
+         * Enables, changes or disables Registration Lock, as iOS
+         * RegistrationLockView: enabling sends the new PIN; changing sends the
+         * new PIN plus the one in force; disabling sends the current PIN. The
+         * server verifies the current PIN, so a stolen unlocked phone cannot
+         * silently re-key the lock. Returns null on success, else a message.
+         */
+        suspend fun setRegistrationLock(
+            enabled: Boolean,
+            pin: String,
+            currentPin: String = "",
+        ): String? =
+            try {
+                val response =
+                    settingsServiceClient.setRegistrationLock(
+                        SetRegistrationLockRequest(enabled = enabled, pin = pin, currentPin = currentPin),
+                    )
+                if (!response.success) {
+                    "The PIN was not accepted"
+                } else {
+                    _remoteSettings.update { it?.copy(registrationLockEnabled = enabled) }
+                    null
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.message ?: "Could not update Registration Lock"
+            }
 
         /** Local-only, like iOS's app-storage flag; nothing to sync. */
         val linkPreviewsEnabled: StateFlow<Boolean> =

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -30,6 +32,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 @Composable
 fun SecurityScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToRegistrationLock: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -145,6 +148,20 @@ fun SecurityScreen(
                 subtitle = "Prevent screenshots and app preview in recent apps (FLAG_SECURE)",
                 checked = uiState.screenshotProtection,
                 onCheckedChange = viewModel::setScreenshotProtection,
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))
+
+            SettingsItem(
+                icon = Icons.Filled.Lock,
+                title = "Registration Lock",
+                subtitle =
+                    if (uiState.registrationLockEnabled) {
+                        "On: a PIN is needed to re-register"
+                    } else {
+                        "Off: anyone with your number could re-register"
+                    },
+                onClick = onNavigateToRegistrationLock,
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))

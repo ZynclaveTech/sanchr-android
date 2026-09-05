@@ -360,4 +360,48 @@ class AuthViewModelStateTest {
             assertEquals("+1", s.countryCode)
             assertEquals("", s.phone)
         }
+
+    /** A locked number: the server refuses the code until the PIN rides along, as on iOS. */
+    @Test
+    fun submitOtp_registrationLocked_asksForPinThenResendsWithIt() =
+        runTest {
+            coEvery { authServiceClient.requestOtp(any()) } returns RequestOtpResponse(expiresInSeconds = 300, existingUser = true)
+            val sent = mutableListOf<VerifyOTPRequest>()
+            coEvery { authServiceClient.verifyOtp(capture(sent)) } answers {
+                val request = firstArg<VerifyOTPRequest>()
+                if (request.registrationLockPin.isEmpty()) {
+                    throw IllegalStateException("FAILED_PRECONDITION: registration_lock_pin_required")
+                }
+                AuthResponse(
+                    accessToken = "at",
+                    refreshToken = "rt",
+                    expiresIn = 3600,
+                    user = User(id = "user-42", displayName = "Alice"),
+                    deviceId = 7,
+                )
+            }
+
+            val vm = newViewModel()
+            vm.onSplashComplete()
+            vm.onLoginPhoneChanged("+1", "4155551234")
+            vm.submitLoginPhone()
+            advanceUntilIdle()
+            vm.onOtpChanged("123456")
+            vm.submitOtp()
+            advanceUntilIdle()
+
+            val locked = assertIs<AuthState.OtpEntry>(vm.state.value)
+            assertTrue(locked.pinRequired)
+            assertEquals("123456", locked.otp, "the code is kept; only the PIN is missing")
+
+            vm.submitOtp()
+            assertIs<AuthState.Error>(vm.state.value)
+            vm.retry()
+            vm.onRegistrationLockPinChanged("24680x1")
+            vm.submitOtp()
+            advanceUntilIdle()
+
+            assertIs<AuthState.Done>(vm.state.value)
+            assertEquals("246801", sent.last().registrationLockPin)
+        }
 }

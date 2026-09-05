@@ -116,6 +116,7 @@ internal fun Settings.UserSettings.toModel(): UserSettings =
         // The model's single boolean means "also over mobile data"; Wi-Fi is
         // always allowed. Read the mobile policy back accordingly.
         autoDownloadMedia = autoDownloadMobile == AUTO_DOWNLOAD_ALWAYS,
+        registrationLockEnabled = registrationLockEnabled,
     )
 
 /** Writes only the fields this model carries onto [current]; every other wire field is preserved. */
