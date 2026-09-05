@@ -71,6 +71,9 @@ data class VaultUiState(
     val items: List<VaultItem> = emptyList(),
     val filter: VaultFilter = VaultFilter.ALL,
     val sort: VaultSort = VaultSort.NEWEST,
+    /** Multi-select (iOS's select mode): tapping a card picks it instead of opening it. */
+    val isSelectMode: Boolean = false,
+    val selectedIds: Set<String> = emptySet(),
     val stats: VaultStats = VaultStats(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -103,6 +106,7 @@ class VaultViewModel
         private val _isLoading = MutableStateFlow(true)
         private val _isRefreshing = MutableStateFlow(false)
         private val _sort = MutableStateFlow(VaultSort.NEWEST)
+        private val _selection = MutableStateFlow<Set<String>?>(null)
         private val _isUploading = MutableStateFlow(false)
         private val _errorMessage = MutableStateFlow<String?>(null)
         private val _nextCursor = MutableStateFlow("")
@@ -115,14 +119,20 @@ class VaultViewModel
         val uiState: StateFlow<VaultUiState> =
             combine(
                 combine(_allItems, _filter, _sort) { items, filter, sort -> Triple(items, filter, sort) },
-                _isLoading,
-                _isRefreshing,
-                _isUploading,
-            ) { (items, filter, sort), loading, refreshing, uploading ->
+                combine(
+                    _isLoading,
+                    _isRefreshing,
+                    _isUploading,
+                ) { loading, refreshing, uploading -> Triple(loading, refreshing, uploading) },
+                _selection,
+            ) { (items, filter, sort), (loading, refreshing, uploading), selection ->
                 VaultUiState(
                     items = sort.sort(items.filter(filter::accepts)),
                     filter = filter,
                     sort = sort,
+                    isSelectMode = selection != null,
+                    // Items can vanish under a selection (a delete, a refresh); keep only what is still on screen.
+                    selectedIds = selection.orEmpty().intersect(items.map { it.id }.toSet()),
                     stats =
                         VaultStats(
                             photoCount = items.count { it.type == VaultItemType.PHOTO },
@@ -151,6 +161,77 @@ class VaultViewModel
 
         fun setSort(sort: VaultSort) {
             _sort.value = sort
+        }
+
+        // --- Multi-select, as iOS's select mode ---
+
+        fun enterSelectMode() {
+            _selection.value = emptySet()
+        }
+
+        fun exitSelectMode() {
+            _selection.value = null
+        }
+
+        /** Picks or unpicks [itemId]; does nothing outside select mode. */
+        fun toggleSelection(itemId: String) {
+            _selection.update { current -> current?.let { if (itemId in it) it - itemId else it + itemId } }
+        }
+
+        /**
+         * Selects everything the current filter shows, not the whole vault.
+         * Computed from the items and the filter rather than from `uiState`,
+         * which is derived and lags a filter changed in the same frame: the
+         * stale snapshot would select rows no longer on screen.
+         */
+        fun selectAllVisible() {
+            if (_selection.value == null) return
+            val filter = _filter.value
+            _selection.value =
+                _allItems.value
+                    .filter(filter::accepts)
+                    .map { it.id }
+                    .toSet()
+        }
+
+        /**
+         * Deletes every selected item through the same repository call the
+         * single-item path uses. One failure does not abort the rest: the
+         * others still go, and the last error is reported at the end (as iOS).
+         */
+        fun deleteSelected() {
+            val ids = _selection.value.orEmpty()
+            if (ids.isEmpty()) return
+            viewModelScope.launch {
+                var failures = 0
+                ids.forEach { id ->
+                    try {
+                        vaultRepository.deleteItem(id)
+                        _allItems.update { items -> items.filter { it.id != id } }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        failures++
+                        Log.e(TAG, "Failed to delete vault item $id", e)
+                    }
+                }
+                _selection.value = null
+                if (failures > 0) {
+                    _events.emit(
+                        VaultEvent.Error(
+                            if (failures ==
+                                1
+                            ) {
+                                "One item could not be deleted"
+                            } else {
+                                "$failures items could not be deleted"
+                            },
+                        ),
+                    )
+                } else {
+                    _events.emit(VaultEvent.ItemDeleted)
+                }
+            }
         }
 
         fun refresh() {
