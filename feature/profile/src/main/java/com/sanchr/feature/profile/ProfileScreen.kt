@@ -1,11 +1,13 @@
 package com.sanchr.feature.profile
 
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.sanchr.core.designsystem.component.QrCodes
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
@@ -282,8 +286,12 @@ fun ProfileScreen(
 
             // QR Share button (own profile)
             if (uiState.isOwnProfile && !uiState.isEditing) {
+                var showQr by remember { mutableStateOf(false) }
+                if (showQr) {
+                    ProfileQrDialog(userId = uiState.userId, displayName = uiState.displayName, onDismiss = { showQr = false })
+                }
                 SanchrButton(
-                    onClick = { /* show QR code */ },
+                    onClick = { showQr = true },
                 ) {
                     Icon(
                         imageVector = Icons.Filled.QrCode,
@@ -493,3 +501,63 @@ private fun ProfileEvents(
         }
     }
 }
+
+/**
+ * The profile's QR, carrying the same `sanchr.com/u/<id>` link iOS encodes,
+ * so either app can read a code shown by the other. Share hands the link to
+ * the system sheet, which is what a recipient without a scanner can use.
+ */
+@Composable
+private fun ProfileQrDialog(
+    userId: String,
+    displayName: String,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val link = QrCodes.profileLink(userId)
+    val qr =
+        remember(userId) {
+            if (userId.isBlank()) null else QrCodes.bitmap(link, QR_SIZE_PX)?.asImageBitmap()
+        }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(displayName.ifBlank { "My code" }) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                if (qr != null) {
+                    Image(
+                        bitmap = qr,
+                        contentDescription = "Profile QR code",
+                        modifier = Modifier.size(220.dp),
+                    )
+                    Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
+                    Text(
+                        text = "Scan this to open my Sanchr profile.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                } else {
+                    Text(text = "This code isn't ready yet.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val intent =
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, link)
+                        }
+                    runCatching { context.startActivity(Intent.createChooser(intent, null)) }
+                    onDismiss()
+                },
+                enabled = qr != null,
+            ) { Text("Share link") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+private const val QR_SIZE_PX = 512

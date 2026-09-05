@@ -52,6 +52,7 @@ class ProfileViewModelAvatarTest {
             profileUpdater,
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
         )
 
     @Test
