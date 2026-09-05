@@ -81,4 +81,62 @@ class MediaContentEnvelopeTest {
         assertEquals(MediaKind.DOCUMENT, MediaKind.forMimeType("application/zip"))
         assertEquals(MediaKind.AUDIO, MediaKind.fromWire("voice"))
     }
+
+    /**
+     * Every key Android emits, pinned against the property names Swift's
+     * `Message.MediaAttachment` encodes. These are not declared anywhere
+     * shared: iOS uses Codable's default keys, Android its property names
+     * (plus one `@SerialName` for `thumbnailURL`), so a rename on one side
+     * is silent until a real message fails to decode on the other.
+     */
+    @Test
+    fun `every attachment key Android emits matches iOS's property name`() {
+        val everything =
+            MediaAttachment(
+                url = "sanchr-media://m1",
+                encryptionKey = "AQID",
+                encryptionIV = "BAUG",
+                mimeType = "audio/mp4",
+                sizeBytes = 1234,
+                thumbnailUrl = "https://cdn/t.jpg",
+                caption = "hi",
+                width = 640,
+                height = 480,
+                durationSeconds = 12.5,
+                blurHash = "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+                filename = "a.m4a",
+                isVoiceMessage = true,
+                audioDurationMs = 4200,
+                audioWaveform = listOf(0.25f, 1.0f),
+                isViewOnce = true,
+            )
+
+        val json = MediaContentEnvelope.encode(MediaKind.AUDIO, listOf(everything))
+
+        listOf(
+            "url",
+            "encryptionKey",
+            "encryptionIV",
+            "mimeType",
+            "sizeBytes",
+            "thumbnailURL",
+            "caption",
+            "width",
+            "height",
+            "durationSeconds",
+            "blurHash",
+            "filename",
+            "isVoiceMessage",
+            "audioDurationMs",
+            "audioWaveform",
+            "isViewOnce",
+        ).forEach { key ->
+            assertTrue(json.contains("\"$key\":"), "missing key $key in $json")
+        }
+        // The Kotlin-side spellings must not leak onto the wire.
+        assertTrue(!json.contains("\"thumbnailUrl\""), json)
+        // Everything round-trips, so the pinned names are the ones we also read.
+        val decoded = requireNotNull(MediaContentEnvelope.decode(json, null)).attachments.single()
+        assertEquals(everything, decoded)
+    }
 }
