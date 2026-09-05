@@ -240,6 +240,15 @@ jobs:
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Build the app and test APKs before the emulator exists. Compiling and
+      # dexing the whole app while a google_apis emulator holds several GB
+      # of the runner's 7 GB has twice ended the job with "The runner has
+      # received a shutdown signal" mid-build (run 33941424851 and its
+      # rerun). With the APKs built, the emulator step's Gradle invocation
+      # is up to date and only installs and runs.
+      - name: Build app + androidTest APKs (before the emulator)
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+
       - name: Enable KVM on runner
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
