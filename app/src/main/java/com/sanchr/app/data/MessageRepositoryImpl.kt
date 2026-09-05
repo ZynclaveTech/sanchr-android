@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 import org.json.JSONArray
-import org.json.JSONObject
 
 @Singleton
 class MessageRepositoryImpl
@@ -329,74 +328,7 @@ class MessageRepositoryImpl
                 failureReason = failureReason,
             )
 
-        private fun String.toMessageContent(body: String): MessageContent =
-            when (this) {
-                "text" -> MessageContent.Text(body)
-                "image", "video" ->
-                    parseMediaContent(body)?.let { payload ->
-                        MessageContent.Image(
-                            url = payload.url,
-                            thumbnailUrl = payload.thumbnailUrl,
-                            width = payload.width,
-                            height = payload.height,
-                            caption = payload.caption,
-                        )
-                    } ?: MessageContent.Text(body)
-                "voice", "audio" ->
-                    parseMediaContent(body)?.let { payload ->
-                        MessageContent.Voice(
-                            url = payload.url,
-                            durationMs = payload.durationMs,
-                        )
-                    } ?: MessageContent.Text("[Voice message]")
-                "file", "document" ->
-                    parseMediaContent(body)?.let { payload ->
-                        MessageContent.File(
-                            url = payload.url,
-                            fileName = payload.fileName ?: payload.url.substringAfterLast('/'),
-                            mimeType = payload.mimeType ?: "application/octet-stream",
-                            sizeBytes = payload.sizeBytes,
-                        )
-                    } ?: MessageContent.Text(body)
-                "location" ->
-                    runCatching {
-                        val json = JSONObject(body)
-                        MessageContent.Location(
-                            latitude = json.getDouble("latitude"),
-                            longitude = json.getDouble("longitude"),
-                            label = json.optString("label").takeIf { it.isNotBlank() },
-                        )
-                    }.getOrElse { MessageContent.Text("[Location]") }
-                else -> MessageContent.Text(body) // Fallback; richer types handled when needed
-            }
-
-        private data class MediaPayload(
-            val url: String,
-            val thumbnailUrl: String?,
-            val mimeType: String?,
-            val sizeBytes: Long,
-            val caption: String?,
-            val width: Int,
-            val height: Int,
-            val durationMs: Long,
-            val fileName: String?,
-        )
-
-        private fun parseMediaContent(body: String): MediaPayload? =
-            runCatching {
-                val json = JSONObject(body)
-                MediaPayload(
-                    url = json.getString("url"),
-                    thumbnailUrl = json.optString("thumbnailURL").takeIf { it.isNotBlank() },
-                    mimeType = json.optString("mimeType").takeIf { it.isNotBlank() },
-                    sizeBytes = json.optLong("sizeBytes", 0L),
-                    caption = json.optString("caption").takeIf { it.isNotBlank() },
-                    width = json.optInt("width", 0),
-                    height = json.optInt("height", 0),
-                    durationMs = json.optLong("durationMs", 0L),
-                    fileName = json.optString("fileName").takeIf { it.isNotBlank() },
-                )
-            }.getOrNull()
+        private fun String.toMessageContent(body: String): MessageContent = MessageContentCodec.fromStored(this, body)
 
         private fun parseParticipantIds(raw: String): List<String> {
             val trimmed = raw.trim()

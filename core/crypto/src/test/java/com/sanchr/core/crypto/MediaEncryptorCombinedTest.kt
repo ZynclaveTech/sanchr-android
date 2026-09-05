@@ -25,3 +25,29 @@ class MediaEncryptorCombinedTest {
         assertFailsWith<IllegalArgumentException> { MediaEncryptor.openCombined(ByteArray(10), key) }
     }
 }
+
+class MediaEncryptorChunkedTest {
+    private val key = ByteArray(32) { (it * 3).toByte() }
+
+    @Test
+    fun `sealAny stays single-shot up to 1 MiB and chunks above, and openAny reads both`() {
+        val small = ByteArray(MediaEncryptor.CHUNK_SIZE) { it.toByte() }
+        val sealedSmall = MediaEncryptor.sealAny(small, key)
+        assertEquals(12 + small.size + 16, sealedSmall.size)
+        assertContentEquals(small, MediaEncryptor.openAny(sealedSmall, key))
+
+        val big = ByteArray(MediaEncryptor.CHUNK_SIZE * 2 + 12345) { (it % 251).toByte() }
+        val sealedBig = MediaEncryptor.sealAny(big, key)
+        // Three chunks, each carrying its own nonce and tag — the iOS layout.
+        assertEquals(big.size + 3 * (12 + 16), sealedBig.size)
+        assertContentEquals(big, MediaEncryptor.openAny(sealedBig, key))
+        assertContentEquals(big, MediaEncryptor.openChunked(sealedBig, key))
+    }
+
+    @Test
+    fun `a corrupted chunk fails closed`() {
+        val big = ByteArray(MediaEncryptor.CHUNK_SIZE + 10)
+        val sealed = MediaEncryptor.sealAny(big, key).also { it[it.lastIndex] = (it[it.lastIndex] + 1).toByte() }
+        assertFailsWith<Exception> { MediaEncryptor.openAny(sealed, key) }
+    }
+}

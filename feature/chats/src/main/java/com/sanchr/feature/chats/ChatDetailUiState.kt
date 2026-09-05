@@ -1,6 +1,7 @@
 package com.sanchr.feature.chats
 
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.MediaAttachment
 
 /**
  * UI state for the chat detail (conversation) screen.
@@ -37,6 +38,8 @@ data class MessageUiModel(
      * Null when [status] is not FAILED.
      */
     val failureReason: String? = null,
+    /** The encrypted media behind an image/voice/file row; null for text. */
+    val attachment: MediaAttachment? = null,
 )
 
 enum class MessageStatus {

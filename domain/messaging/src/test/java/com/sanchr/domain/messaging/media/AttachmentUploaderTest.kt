@@ -1,0 +1,82 @@
+package com.sanchr.domain.messaging.media
+
+import com.sanchr.core.crypto.MediaEncryptor
+import com.sanchr.core.network.media.BlobStore
+import com.sanchr.proto.media.ConfirmUploadRequest
+import com.sanchr.proto.media.ConfirmUploadResponse
+import com.sanchr.proto.media.GetDownloadUrlRequest
+import com.sanchr.proto.media.GetUploadUrlRequest
+import com.sanchr.proto.media.MediaPurpose
+import com.sanchr.proto.media.MediaServiceClient
+import com.sanchr.proto.media.PresignedUrlResponse
+import java.util.Base64
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
+
+class AttachmentUploaderTest {
+    private class Client : MediaServiceClient {
+        var upload: GetUploadUrlRequest? = null
+        var confirmed: ConfirmUploadRequest? = null
+
+        override suspend fun getUploadUrl(request: GetUploadUrlRequest): PresignedUrlResponse {
+            upload = request
+            return PresignedUrlResponse("https://bucket/put", "media-7", 900, "")
+        }
+
+        override suspend fun getDownloadUrl(request: GetDownloadUrlRequest): PresignedUrlResponse = error("not used")
+
+        override suspend fun confirmUpload(request: ConfirmUploadRequest): ConfirmUploadResponse {
+            confirmed = request
+            return ConfirmUploadResponse(request.mediaId)
+        }
+    }
+
+    private class Store : BlobStore {
+        var put: ByteArray? = null
+
+        override suspend fun put(
+            url: String,
+            bytes: ByteArray,
+            contentType: String,
+            headers: Map<String, String>,
+        ) {
+            put = bytes
+        }
+
+        override suspend fun get(url: String): ByteArray = error("not used")
+    }
+
+    @Test
+    fun `uploads ciphertext only and returns an iOS-shaped attachment whose key opens it`() =
+        runTest {
+            val client = Client()
+            val store = Store()
+            val plaintext = "photo bytes".toByteArray()
+
+            val attachment =
+                AttachmentUploader(client, store).upload(
+                    AttachmentUploader.Prepared(plaintext, "image/jpeg", "a.jpg", caption = "c", width = 10, height = 20),
+                )
+
+            val uploaded = requireNotNull(store.put)
+            assertFalse(uploaded.contentEquals(plaintext))
+            assertEquals(MediaPurpose.ATTACHMENT, client.upload!!.purpose)
+            assertEquals(uploaded.size.toLong(), client.upload!!.fileSize)
+            assertEquals(ConfirmUploadRequest("media-7", uploaded.size.toLong()), client.confirmed)
+
+            assertEquals("sanchr-media://media-7", attachment.url)
+            assertEquals("media-7", attachment.mediaId)
+            assertEquals("image/jpeg", attachment.mimeType)
+            assertEquals(plaintext.size.toLong(), attachment.sizeBytes)
+            assertEquals("a.jpg", attachment.filename)
+            assertEquals(10, attachment.width)
+            val key = requireNotNull(attachment.keyBytes())
+            assertEquals(32, key.size)
+            assertContentEquals(uploaded.copyOfRange(0, 12), Base64.getDecoder().decode(attachment.encryptionIV))
+            assertTrue(plaintext.contentEquals(MediaEncryptor.openAny(uploaded, key)))
+        }
+}

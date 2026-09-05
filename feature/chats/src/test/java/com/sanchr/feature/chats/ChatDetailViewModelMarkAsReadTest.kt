@@ -74,6 +74,8 @@ class ChatDetailViewModelMarkAsReadTest {
             savedStateHandle = SavedStateHandle(mapOf("conversationId" to conversationId)),
             messageRepository = messageRepository,
             sendMessageUseCase = sendMessageUseCase,
+            sendAttachmentUseCase = mockk(relaxed = true),
+            attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = sendReadReceiptUseCase,
             sessionManager = sessionManager,
             realtimeManager = realtimeManager,

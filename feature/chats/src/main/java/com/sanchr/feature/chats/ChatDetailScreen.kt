@@ -1,6 +1,17 @@
 package com.sanchr.feature.chats
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.widget.Toast
+import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +47,7 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -54,17 +66,24 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
@@ -76,9 +95,14 @@ import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
+import com.sanchr.domain.messaging.media.AttachmentUploader
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +114,9 @@ fun ChatDetailScreen(
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val pickAttachment = rememberAttachmentPicker(onPicked = viewModel::sendAttachment)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -176,7 +203,7 @@ fun ChatDetailScreen(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
                     onSend = viewModel::sendMessage,
-                    onAttach = { /* TODO: attachment picker */ },
+                    onAttach = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     isSending = uiState.isSending,
                 )
             }
@@ -271,10 +298,23 @@ fun ChatDetailScreen(
                     items = uiState.messages.reversed(),
                     key = { it.id },
                 ) { message ->
-                    when (message.contentType) {
-                        "image" ->
+                    when {
+                        message.contentType == "image" ->
                             ImageMessageBubble(
                                 message = message,
+                                openAttachment = viewModel::openAttachment,
+                            )
+
+                        message.attachment != null ->
+                            MessageBubble(
+                                message = message,
+                                modifier =
+                                    Modifier.clickable {
+                                        scope.launch {
+                                            val file = viewModel.openAttachment(message) ?: return@launch
+                                            presentAttachment(context, file, message.attachment.mimeType)
+                                        }
+                                    },
                             )
 
                         else ->
@@ -528,6 +568,7 @@ private fun MessageStatusIcon(message: MessageUiModel) {
 @Composable
 private fun ImageMessageBubble(
     message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
     modifier: Modifier = Modifier,
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
@@ -547,21 +588,14 @@ private fun ImageMessageBubble(
                         containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
                     ),
             ) {
-                // TODO: Load image with AsyncImage/Coil
-                Box(
+                AttachmentImage(
+                    message = message,
+                    openAttachment = openAttachment,
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(150.dp)
-                            .background(SanchrGray100),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "[Image]",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SanchrGray400,
-                    )
-                }
+                            .height(150.dp),
+                )
                 if (message.text.isNotEmpty() && message.text != "[Image]") {
                     Text(
                         text = message.text,
@@ -701,4 +735,86 @@ private fun formatTimestamp(epochMillis: Long): String {
     if (epochMillis == 0L) return ""
     val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
     return sdf.format(Date(epochMillis))
+}
+
+/**
+ * Downloads and decrypts the message's image on first composition, then
+ * renders it from the private cache. Shows a placeholder while fetching
+ * and a broken-image label if the media is gone or fails to decrypt.
+ */
+@Composable
+private fun AttachmentImage(
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+    modifier: Modifier = Modifier,
+) {
+    var file by remember(message.id) { mutableStateOf<File?>(null) }
+    var failed by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(message.id) {
+        val f = openAttachment(message)
+        if (f == null) failed = true else file = f
+    }
+    Box(modifier = modifier.background(SanchrGray100), contentAlignment = Alignment.Center) {
+        when {
+            file != null ->
+                AsyncImage(
+                    model = file,
+                    contentDescription = message.text,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            failed -> Text(text = "Image unavailable", style = MaterialTheme.typography.bodySmall, color = SanchrGray400)
+            else -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+        }
+    }
+}
+
+/** The system document picker; reads the file off the main thread and measures images. */
+@Composable
+private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> Unit): ManagedActivityResultLauncher<Array<String>, Uri?> {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val prepared =
+                withContext(Dispatchers.IO) {
+                    val resolver = context.contentResolver
+                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+                    val mime = resolver.getType(uri) ?: "application/octet-stream"
+                    val name =
+                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                            if (c.moveToFirst()) c.getString(0) else null
+                        } ?: uri.lastPathSegment
+                    var width: Int? = null
+                    var height: Int? = null
+                    if (mime.startsWith("image/")) {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                        if (bounds.outWidth > 0) width = bounds.outWidth
+                        if (bounds.outHeight > 0) height = bounds.outHeight
+                    }
+                    AttachmentUploader.Prepared(bytes, mime, name, width = width, height = height)
+                }
+            if (prepared != null) onPicked(prepared)
+        }
+    }
+}
+
+/** Hands a decrypted attachment in the private cache to a viewer through the app's FileProvider. */
+private fun presentAttachment(
+    context: Context,
+    file: File,
+    mimeType: String,
+) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent =
+        Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mimeType)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No app can open $mimeType", Toast.LENGTH_SHORT).show()
+    }
 }
