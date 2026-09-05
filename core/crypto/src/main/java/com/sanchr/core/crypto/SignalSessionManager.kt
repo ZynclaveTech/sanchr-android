@@ -10,6 +10,7 @@ import com.sanchr.proto.keys.KeyServiceClient
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import org.signal.libsignal.protocol.InvalidKeyException
 import org.signal.libsignal.protocol.NoSessionException
@@ -342,6 +343,80 @@ class SignalSessionManager
         // Session Management
         // ------------------------------------------------------------------
 
+        // ------------------------------------------------------------------
+        // Call payloads (SDP offers / answers)
+        // ------------------------------------------------------------------
+
+        /**
+         * Encrypts a call payload for one device the way iOS does: no padding,
+         * and the ciphertext framed with a leading type byte
+         * ([CallCiphertextFraming]). Establishes a session first if none.
+         */
+        suspend fun encryptForCall(
+            plaintext: ByteArray,
+            userId: String,
+            deviceId: Int,
+        ): ByteArray {
+            if (!hasSession(userId, deviceId)) establishSession(userId, deviceId)
+            return withContext(dispatchers.signalDispatcher) {
+                val cipher = SessionCipher(store, SignalProtocolAddress(userId, deviceId))
+                CallCiphertextFraming.frame(cipher.encrypt(plaintext))
+            }
+        }
+
+        /** Inverse of [encryptForCall]; dispatches on the type byte instead of parsing speculatively. */
+        suspend fun decryptForCall(
+            framed: ByteArray,
+            senderId: String,
+            senderDevice: Int,
+        ): ByteArray =
+            withContext(dispatchers.signalDispatcher) {
+                val (type, body) = CallCiphertextFraming.unframe(framed)
+                val cipher = SessionCipher(store, SignalProtocolAddress(senderId, senderDevice))
+                if (type == CallCiphertextFraming.PREKEY) {
+                    cipher.decrypt(PreKeySignalMessage(body))
+                } else {
+                    cipher.decrypt(SignalMessage(body))
+                }
+            }
+
+        /**
+         * One ciphertext per key-capable device of [recipientId], for
+         * `CallOffer.device_offers`. Mirrors iOS `encryptCallOffers`: the
+         * session with each device is reset first so the offer is always a
+         * fresh PreKeySignalMessage — a stale ratchet the callee can no
+         * longer decrypt would otherwise kill the call, and the next
+         * message on the new session heals messaging too.
+         *
+         * A device that cannot be encrypted for is skipped and logged; if
+         * none can be, this throws so the caller does not place a call
+         * nobody can answer.
+         */
+        suspend fun encryptCallOffers(
+            plaintext: ByteArray,
+            recipientId: String,
+        ): List<DeviceCallCiphertext> {
+            val devices =
+                keyServiceClient
+                    .getUserDevices(GetUserDevicesRequest(userId = recipientId))
+                    .devices
+                    .filter { it.keyCapable }
+            val results =
+                devices.mapNotNull { device ->
+                    try {
+                        resetSession(recipientId, device.deviceId)
+                        DeviceCallCiphertext(device.deviceId, encryptForCall(plaintext, recipientId, device.deviceId))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "call offer encrypt failed for device ${device.deviceId}", e)
+                        null
+                    }
+                }
+            if (results.isEmpty()) throw EncryptFanOutEmptyException(recipientId, devices.size)
+            return results
+        }
+
         /**
          * Resets/deletes the session with a specific device.
          * Used for session recovery when decryption fails persistently,
@@ -370,9 +445,16 @@ class SignalSessionManager
             }
     }
 
+/** One `CallOffer.device_offers` entry: an iOS-framed call ciphertext for a device. */
+class DeviceCallCiphertext(
+    val deviceId: Int,
+    val ciphertext: ByteArray,
+)
+
 /**
  * Result of encrypting plaintext for a single device.
  */
+
 data class EncryptResult(
     /** Serialized ciphertext bytes. */
     val ciphertext: ByteArray,
