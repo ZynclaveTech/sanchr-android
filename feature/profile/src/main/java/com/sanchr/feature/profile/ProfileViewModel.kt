@@ -5,12 +5,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
-import com.sanchr.proto.media.GetUploadUrlRequest
-import com.sanchr.proto.media.MediaServiceClient
+import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.proto.settings.GetSettingsRequest
 import com.sanchr.proto.settings.SettingsServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +29,7 @@ data class ProfileUiState(
     val isEditing: Boolean = false,
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
+    val isUploadingAvatar: Boolean = false,
     val editDisplayName: String = "",
     val editBio: String = "",
     val errorMessage: String? = null,
@@ -40,7 +41,7 @@ class ProfileViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val settingsServiceClient: SettingsServiceClient,
-        private val mediaServiceClient: MediaServiceClient,
+        private val avatarUploader: AvatarUploader,
         private val profileUpdater: EncryptedProfileUpdater,
     ) : ViewModel() {
         companion object {
@@ -152,43 +153,35 @@ class ProfileViewModel
             }
         }
 
+        /**
+         * Uploads a new photo and points the profile at it. The two steps
+         * are one operation to the user: if the profile write fails the
+         * photo is still up on the CDN but nobody is told about it, so the
+         * old avatar stays and an error is shown, rather than the UI
+         * flipping to a photo the server does not know about.
+         */
         fun uploadAvatar(
-            fileName: String,
+            bytes: ByteArray,
             contentType: String,
-            sizeBytes: Long,
         ) {
+            if (_uiState.value.isUploadingAvatar) return
+            _uiState.update { it.copy(isUploadingAvatar = true, errorMessage = null) }
             viewModelScope.launch {
                 try {
-                    val presigned =
-                        mediaServiceClient.getUploadUrl(
-                            GetUploadUrlRequest(
-                                fileName = fileName,
-                                contentType = contentType,
-                                sizeBytes = sizeBytes,
-                                purpose = "avatar",
-                            ),
-                        )
-                    _events.emit(ProfileEvent.AvatarUploadReady(presigned.url, presigned.mediaId))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to get avatar upload URL", e)
-                    _events.emit(ProfileEvent.Error("Avatar upload failed"))
-                }
-            }
-        }
-
-        fun onAvatarUploaded(avatarUrl: String) {
-            _uiState.update { it.copy(avatarUrl = avatarUrl) }
-            // Also update backend
-            viewModelScope.launch {
-                try {
+                    val avatarUrl = avatarUploader.upload(bytes, contentType)
                     val current = _uiState.value
                     profileUpdater.update(
                         displayName = current.displayName,
                         bio = current.bio,
                         avatarUrl = avatarUrl,
                     )
+                    _uiState.update { it.copy(avatarUrl = avatarUrl, isUploadingAvatar = false) }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update avatar on backend", e)
+                    Log.e(TAG, "Avatar upload failed", e)
+                    _uiState.update { it.copy(isUploadingAvatar = false, errorMessage = "Avatar upload failed") }
+                    _events.emit(ProfileEvent.Error("Avatar upload failed"))
                 }
             }
         }
@@ -196,11 +189,6 @@ class ProfileViewModel
 
 sealed interface ProfileEvent {
     data object ProfileSaved : ProfileEvent
-
-    data class AvatarUploadReady(
-        val url: String,
-        val mediaId: String,
-    ) : ProfileEvent
 
     data class Error(
         val message: String,

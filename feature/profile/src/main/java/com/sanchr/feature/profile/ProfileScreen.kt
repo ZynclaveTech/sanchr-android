@@ -1,5 +1,10 @@
 package com.sanchr.feature.profile
 
+import android.net.Uri
+import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,11 +41,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,6 +59,9 @@ import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ProfileScreen(
@@ -63,6 +73,7 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val pickAvatar = rememberAvatarPicker(onPicked = viewModel::uploadAvatar)
 
     Scaffold(
         topBar = {
@@ -177,17 +188,27 @@ fun ProfileScreen(
                                 .background(
                                     MaterialTheme.colorScheme.primary,
                                     CircleShape,
-                                ).clickable {
-                                    viewModel.uploadAvatar("avatar.jpg", "image/jpeg", 0)
+                                ).clickable(enabled = !uiState.isUploadingAvatar) {
+                                    pickAvatar.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                    )
                                 },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.CameraAlt,
-                            contentDescription = "Change avatar",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        if (uiState.isUploadingAvatar) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.CameraAlt,
+                                contentDescription = "Change avatar",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -373,5 +394,32 @@ private fun ProfileInfoRow(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
         )
+    }
+}
+
+/**
+ * The system photo picker: needs no storage permission, and the app never
+ * sees anything but the one image the user chose. Reads the bytes off the
+ * main thread and hands them to [onPicked] with their MIME type.
+ */
+@Composable
+private fun rememberAvatarPicker(
+    onPicked: (bytes: ByteArray, contentType: String) -> Unit,
+): ManagedActivityResultLauncher<PickVisualMediaRequest, Uri?> {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    return rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val picked =
+                withContext(Dispatchers.IO) {
+                    val type = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    context.contentResolver
+                        .openInputStream(uri)
+                        ?.use { it.readBytes() }
+                        ?.let { it to type }
+                }
+            if (picked != null) onPicked(picked.first, picked.second)
+        }
     }
 }

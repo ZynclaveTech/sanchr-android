@@ -26,6 +26,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        // android.util.Log in the view model's error paths must not throw
+        // "not mocked" under JVM unit tests.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -33,6 +39,7 @@ dependencies {
     implementation(projects.core.crypto)
     implementation(projects.core.designsystem)
     implementation(projects.core.model)
+    implementation(projects.core.network)
     implementation(projects.proto)
 
     implementation(libs.hilt.android)
@@ -49,4 +56,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.activity.compose)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockk)
 }

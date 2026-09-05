@@ -4,6 +4,8 @@ import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.network.GrpcChannelProvider
 import com.sanchr.core.network.SessionRefresher
 import com.sanchr.core.network.UnauthenticatedRefreshInterceptor
+import com.sanchr.core.network.media.BlobStore
+import com.sanchr.core.network.media.OkHttpBlobStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -42,4 +44,8 @@ object NetworkModule {
         @ApplicationScope scope: CoroutineScope,
     ): UnauthenticatedRefreshInterceptor.OnUnauthenticated =
         UnauthenticatedRefreshInterceptor.OnUnauthenticated { scope.launch { refresher.get().refresh() } }
+
+    @Provides
+    @Singleton
+    fun provideBlobStore(store: OkHttpBlobStore): BlobStore = store
 }

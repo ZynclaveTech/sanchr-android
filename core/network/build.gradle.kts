@@ -61,6 +61,14 @@ android {
             "GRPC_USE_TLS",
             sanchrOverride("sanchr.grpc.tls", "SANCHR_GRPC_TLS", "true"),
         )
+        // Where avatars are served from once uploaded. The media service may
+        // return a relative `display_url`; it is resolved against this. Same
+        // values as iOS AppConfiguration.mediaBaseURL.
+        buildConfigField(
+            "String",
+            "MEDIA_BASE_URL",
+            "\"${sanchrOverride("sanchr.media.baseUrl", "SANCHR_MEDIA_BASE_URL", "https://sanchr-media.sfo3.digitaloceanspaces.com")}\"",
+        )
         buildConfigField(
             "String",
             "DEV_BACKEND_URL",
