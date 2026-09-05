@@ -146,6 +146,7 @@ class ChatDetailViewModel
                                 isLoading = false,
                             )
                         }
+                        markReadIfNewInbound(messages)
                     }
             }
         }
@@ -170,6 +171,19 @@ class ChatDetailViewModel
          * receipt for them. Widening the trigger (e.g. re-firing per new
          * message) is a behaviour change beyond this task's scope.
          */
+        private var newestInboundSeen: String? = null
+
+        /** While the chat is on screen, a message that just arrived is read: clear the badge the way iOS does on append. */
+        private suspend fun markReadIfNewInbound(messages: List<Message>) {
+            val self = sessionManager.getUserId() ?: return
+            val newestInbound = messages.lastOrNull { it.senderId != self }?.id ?: return
+            if (newestInbound == newestInboundSeen) return
+            val first = newestInboundSeen == null
+            newestInboundSeen = newestInbound
+            if (first) return // the initial load is handled by markAsRead() in init
+            runCatching { messageRepository.markAsRead(conversationId) }
+        }
+
         private fun markAsRead() {
             viewModelScope.launch {
                 try {

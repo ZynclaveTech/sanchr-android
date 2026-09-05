@@ -21,6 +21,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
@@ -218,5 +219,35 @@ class ChatDetailViewModelMarkAsReadTest {
 
             coVerify(exactly = 0) { sendReadReceiptUseCase(any(), any()) }
             coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
+        }
+
+    @Test
+    fun `a message arriving while the chat is open marks it read again, an outbound one does not`() =
+        runTest(testDispatcher) {
+            val stream = MutableSharedFlow<List<Message>>(replay = 1)
+            every { messageRepository.observeMessages(conversationId) } returns stream
+            stream.emit(listOf(message(id = "m1", senderId = "user-peer", timestampMillis = 1_000L)))
+
+            newViewModel()
+            advanceUntilIdle()
+            coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
+
+            stream.emit(
+                listOf(
+                    message(id = "m1", senderId = "user-peer", timestampMillis = 1_000L),
+                    message(id = "mine", senderId = currentUserId, timestampMillis = 2_000L),
+                ),
+            )
+            advanceUntilIdle()
+            coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
+
+            stream.emit(
+                listOf(
+                    message(id = "m1", senderId = "user-peer", timestampMillis = 1_000L),
+                    message(id = "m2", senderId = "user-peer", timestampMillis = 3_000L),
+                ),
+            )
+            advanceUntilIdle()
+            coVerify(exactly = 2) { messageRepository.markAsRead(conversationId) }
         }
 }

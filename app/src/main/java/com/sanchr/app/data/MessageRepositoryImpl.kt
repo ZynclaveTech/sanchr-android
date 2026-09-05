@@ -54,9 +54,20 @@ class MessageRepositoryImpl
             const val TAG = "MessageRepositoryImpl"
         }
 
+        /**
+         * Conversations with their newest message attached, pinned first and
+         * then by that message's time (falling back to the row's `updated_at`
+         * for empty chats), as the iOS chat list orders them.
+         */
         override fun observeConversations(): Flow<List<Conversation>> =
-            conversationDao.observeConversations().map { entities ->
-                entities.map { it.toDomain() }
+            combine(conversationDao.observeConversations(), messageDao.observeLatestPerConversation()) { entities, latest ->
+                val newestByConversation = latest.groupBy { it.conversationId }.mapValues { (_, rows) -> rows.maxBy { it.timestamp } }
+                entities
+                    .map { entity -> entity.toDomain().copy(lastMessage = newestByConversation[entity.id]?.toDomain()) }
+                    .sortedWith(
+                        compareByDescending<Conversation> { it.isPinned }
+                            .thenByDescending { it.lastMessage?.timestamp ?: it.updatedAt },
+                    )
             }
 
         override fun observeConversation(conversationId: String): Flow<Conversation?> =
@@ -313,7 +324,13 @@ class MessageRepositoryImpl
                     expiresAt = expiresAtMillis,
                     replyToId = replyToId,
                 )
+            // A resend replaces the same row (see InnerPayload.messageId) and must
+            // not count twice; our own messages echoed from another device are read.
+            val isNewRow = messageDao.getMessageById(messageId) == null
             messageDao.insertMessage(entity)
+            if (isNewRow && senderId != sessionManager.getUserId()) {
+                conversationDao.incrementUnread(conversationId, timestamp)
+            }
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
         }
 
