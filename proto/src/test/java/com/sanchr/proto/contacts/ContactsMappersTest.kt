@@ -1,5 +1,6 @@
 package com.sanchr.proto.contacts
 
+import com.google.protobuf.ByteString
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -51,6 +52,54 @@ class ContactsMappersTest {
             assertEquals("https://x/a.png", avatarUrl)
             assertEquals("+14155551234", phoneNumber)
         }
+    }
+
+    @Test
+    fun `matched contact carries the encrypted profile fields as raw bytes`() {
+        val name = ByteArray(28) { 7 }
+        val proto =
+            Contacts.SyncContactsResponse
+                .newBuilder()
+                .addMatches(
+                    Contacts.MatchedContact
+                        .newBuilder()
+                        .setUserId("u-1")
+                        .setDisplayName("Sanchr User")
+                        .setEncryptedDisplayName(ByteString.copyFrom(name))
+                        .setStatusText("st"),
+                ).build()
+
+        val m = proto.toModel().matchedContacts.single()
+
+        assertContentEquals(name, m.encryptedDisplayName)
+        assertEquals(0, m.encryptedBio.size)
+        assertEquals("st", m.statusText)
+        // The plaintext column is the server's registration placeholder for
+        // Profile-Key accounts; it is mapped, but must never be displayed.
+        assertEquals("Sanchr User", m.displayName)
+    }
+
+    @Test
+    fun `contact carries the encrypted profile fields as raw bytes`() {
+        val bio = ByteArray(31) { 4 }
+        val c =
+            Contacts.Contact
+                .newBuilder()
+                .setUserId("u-1")
+                .setEncryptedBio(ByteString.copyFrom(bio))
+                .build()
+                .toModel()
+
+        assertContentEquals(bio, c.encryptedBio)
+        assertEquals(0, c.encryptedDisplayName.size)
+    }
+
+    @Test
+    fun `models with ciphertext compare by content, not reference`() {
+        val a = MatchedContact(userId = "u", encryptedDisplayName = byteArrayOf(1, 2))
+        val b = MatchedContact(userId = "u", encryptedDisplayName = byteArrayOf(1, 2))
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
     }
 
     @Test

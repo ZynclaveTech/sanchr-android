@@ -22,7 +22,7 @@ class MigrationTest {
     @Test
     fun migrate_2_to_3_creates_signal_tables() {
         helper.createDatabase("migration-test", 2).close()
-        helper.runMigrationsAndValidate("migration-test", 3, true).use { db ->
+        helper.runMigrationsAndValidate("migration-test", 3, true, DatabaseModule.migration2To3).use { db ->
             val tables =
                 listOf(
                     "accounts",
@@ -35,6 +35,23 @@ class MigrationTest {
             tables.forEach { name ->
                 db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='$name'").use { c ->
                     check(c.moveToFirst()) { "missing table $name" }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun migrate_6_to_7_creates_contact_profiles() {
+        helper.createDatabase("migration-test-7", 6).close()
+        // validateMigration = true diffs the migrated schema against the
+        // exported 7.json, so a hand-written CREATE TABLE that drifts from
+        // the entity fails here rather than on a user's device. The
+        // migration under test is the production one from DatabaseModule.
+        helper.runMigrationsAndValidate("migration-test-7", 7, true, DatabaseModule.migration6To7).use { db ->
+            db.query("PRAGMA table_info(`contact_profiles`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(columns == listOf("user_id", "display_name", "bio", "avatar_url", "updated_at")) {
+                    "unexpected contact_profiles columns: $columns"
                 }
             }
         }

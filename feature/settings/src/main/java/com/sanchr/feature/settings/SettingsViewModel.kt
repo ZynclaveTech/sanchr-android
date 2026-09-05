@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.crypto.RecoveryKeyManager
+import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.domain.messaging.DeleteAccountUseCase
@@ -15,7 +16,6 @@ import com.sanchr.proto.settings.GetStorageUsageRequest
 import com.sanchr.proto.settings.SettingsServiceClient
 import com.sanchr.proto.settings.StorageUsageResponse
 import com.sanchr.proto.settings.ToggleSanchrModeRequest
-import com.sanchr.proto.settings.UpdateProfileRequest
 import com.sanchr.proto.settings.UpdateSettingsRequest
 import com.sanchr.proto.settings.UserSettings
 import com.sanchr.sync.backup.ChatBackupManager
@@ -85,6 +85,7 @@ class SettingsViewModel
         private val settingsServiceClient: SettingsServiceClient,
         private val chatBackupManager: ChatBackupManager,
         private val deleteAccountUseCase: DeleteAccountUseCase,
+        private val profileUpdater: EncryptedProfileUpdater,
     ) : ViewModel() {
         companion object {
             private const val TAG = "SettingsViewModel"
@@ -544,12 +545,11 @@ class SettingsViewModel
         ) {
             viewModelScope.launch {
                 try {
-                    settingsServiceClient.updateProfile(
-                        UpdateProfileRequest(
-                            displayName = displayName,
-                            bio = bio,
-                            avatarUrl = _remoteSettings.value?.avatarUrl ?: "",
-                        ),
+                    // Encrypted under our Profile Key — see EncryptedProfileUpdater.
+                    profileUpdater.update(
+                        displayName = displayName,
+                        bio = bio,
+                        avatarUrl = _remoteSettings.value?.avatarUrl ?: "",
                     )
                     _remoteSettings.update {
                         it?.copy(displayName = displayName, bio = bio)

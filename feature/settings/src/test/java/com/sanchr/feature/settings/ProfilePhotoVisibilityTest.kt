@@ -64,6 +64,7 @@ class ProfilePhotoVisibilityTest {
             settingsServiceClient = mockk<SettingsServiceClient>(relaxed = true),
             chatBackupManager = mockk<ChatBackupManager>(relaxed = true),
             deleteAccountUseCase = deleteAccountUseCase,
+            profileUpdater = mockk(relaxed = true),
         )
 
     @Test

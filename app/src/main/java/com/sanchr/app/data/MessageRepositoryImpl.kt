@@ -1,6 +1,7 @@
 package com.sanchr.app.data
 
 import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
@@ -14,6 +15,7 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.model.User
+import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
@@ -38,6 +40,8 @@ class MessageRepositoryImpl
         private val conversationDao: ConversationDao,
         private val pendingMessageAckDao: PendingMessageAckDao,
         private val contactDao: ContactDao,
+        private val contactProfileDao: ContactProfileDao,
+        private val contactProfileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
     ) : MessageRepository {
         override fun observeConversations(): Flow<List<Conversation>> =
@@ -452,24 +456,35 @@ class MessageRepositoryImpl
             )
         }
 
-        private fun ProtoConversation.toEntity(): ConversationEntity =
-            ConversationEntity(
+        /**
+         * A DIRECT conversation is titled with what *we* call the peer
+         * ([ContactProfileResolver.displayNameFor]: address-book name, phone
+         * number, or their decrypted profile name), never with the
+         * plaintext `display_name` the server sends for participants — that
+         * is a placeholder or a name uploaded before profiles were
+         * encrypted. Group titles are the server's.
+         */
+        private suspend fun ProtoConversation.toEntity(): ConversationEntity {
+            val ids = participantIds.ifEmpty { participants.map { it.userId } }
+            val selfId = sessionManager.getUserId()
+            val peerId = ids.firstOrNull { it != selfId }.takeIf { type.equals("DIRECT", ignoreCase = true) }
+            val peerProfile = peerId?.let { contactProfileDao.getByUserId(it) }
+            return ConversationEntity(
                 id = id,
                 type = type.uppercase(),
                 title =
-                    title
-                        .ifEmpty {
-                            participants.firstOrNull { it.displayName.isNotBlank() }?.displayName.orEmpty()
-                        }.ifEmpty { null },
+                    if (peerId != null) {
+                        contactProfileResolver.displayNameFor(peerId)
+                    } else {
+                        title.ifEmpty { null }
+                    },
                 avatarUrl =
                     avatarUrl
+                        .ifEmpty { peerProfile?.avatarUrl.orEmpty() }
                         .ifEmpty {
                             participants.firstOrNull { it.avatarUrl.isNotBlank() }?.avatarUrl.orEmpty()
                         }.ifEmpty { null },
-                participantIds =
-                    JSONArray(
-                        (participantIds.ifEmpty { participants.map { it.userId } }).toTypedArray(),
-                    ).toString(),
+                participantIds = JSONArray(ids.toTypedArray()).toString(),
                 lastMessagePreview = lastMessagePreview.ifEmpty { null },
                 lastMessageTimestamp = lastMessageTimestamp.takeIf { it > 0 },
                 unreadCount = unreadCount,
@@ -478,6 +493,7 @@ class MessageRepositoryImpl
                 updatedAt = updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
                 createdAt = createdAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
             )
+        }
     }
 
 /** Conversation timers are stored in millis; the wire carries seconds. */

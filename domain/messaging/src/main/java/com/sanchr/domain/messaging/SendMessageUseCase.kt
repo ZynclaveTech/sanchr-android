@@ -6,6 +6,7 @@ import com.sanchr.core.common.Result
 import com.sanchr.core.common.runCatchingResult
 import com.sanchr.core.crypto.EncryptFanOutEmptyException
 import com.sanchr.core.crypto.SignalSessionManager
+import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
@@ -64,6 +65,7 @@ class SendMessageUseCase
         private val deliveryTokenStore: DeliveryTokenStore,
         private val userPreferences: UserPreferences,
         private val dispatcherProvider: DispatcherProvider,
+        private val profileKeyStore: ProfileKeyStore,
     ) {
         /**
          * First-attempt send from the UI. Inserts a QUEUED row, runs one
@@ -272,6 +274,11 @@ class SendMessageUseCase
                         // whichever attempt lands, so the absolute deadlines
                         // stay aligned across retries.
                         expiresAfterSecs = entity.expiresAt?.let { remainingSecondsUntil(it) },
+                        // Our Profile Key rides every sealed payload, as on iOS:
+                        // delivery is then idempotent and self-healing, and a key
+                        // that changed (a reinstall) reaches the peer on our very
+                        // next message with no dedicated exchange.
+                        senderProfileKey = profileKeyStore.ownProfileKey(),
                     )
                 val plaintext = payload.encode()
                 encryptAndWrapDeviceMessages(
