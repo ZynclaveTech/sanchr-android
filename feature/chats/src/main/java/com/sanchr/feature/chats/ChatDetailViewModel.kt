@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
@@ -233,11 +234,23 @@ class ChatDetailViewModel
         fun sendMessage() {
             val content = _uiState.value.inputText.trim()
             if (content.isBlank()) return
+            _uiState.update { it.copy(inputText = "") }
+            dispatchSend(content, contentType = "text")
+        }
 
-            _uiState.update { it.copy(inputText = "", isSending = true) }
+        /** Shares a contact card the way iOS does: a bare `{"name","phoneNumber"}` body typed `contact`. */
+        fun sendContact(card: ContactCard) {
+            if (_uiState.value.isSending) return
+            dispatchSend(card.encode(), contentType = ContactCard.CONTENT_TYPE)
+        }
 
+        private fun dispatchSend(
+            content: String,
+            contentType: String,
+        ) {
+            _uiState.update { it.copy(isSending = true) }
             viewModelScope.launch {
-                when (val result = sendMessageUseCase(conversationId, content)) {
+                when (val result = sendMessageUseCase(conversationId, content, contentType)) {
                     is Result.Success -> {
                         _uiState.update { it.copy(isSending = false) }
                     }
@@ -323,6 +336,7 @@ class ChatDetailViewModel
                 failureKind = failureClass.toFailureKind(uiStatus),
                 failureReason = failureReason.takeIf { uiStatus == MessageStatus.FAILED },
                 attachment = content.attachmentOrNull(),
+                contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
             )
         }
 
@@ -347,6 +361,7 @@ class ChatDetailViewModel
                 is MessageContent.Voice -> "[Voice message]"
                 is MessageContent.File -> fileName
                 is MessageContent.Location -> label ?: "[Location]"
+                is MessageContent.Contact -> name.ifBlank { phoneNumber }
             }
 
         private fun MessageContent.attachmentOrNull(): MediaAttachment? =
@@ -354,7 +369,7 @@ class ChatDetailViewModel
                 is MessageContent.Image -> attachment
                 is MessageContent.Voice -> attachment
                 is MessageContent.File -> attachment
-                is MessageContent.Text, is MessageContent.Location -> null
+                is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact -> null
             }
 
         private fun MessageContent.contentTypeTag(): String =
@@ -364,6 +379,7 @@ class ChatDetailViewModel
                 is MessageContent.Voice -> "voice"
                 is MessageContent.File -> "file"
                 is MessageContent.Location -> "location"
+                is MessageContent.Contact -> ContactCard.CONTENT_TYPE
             }
 
         private fun com.sanchr.core.model.MessageStatus.toUiStatus(): MessageStatus =

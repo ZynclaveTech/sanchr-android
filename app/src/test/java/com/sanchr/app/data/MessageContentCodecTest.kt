@@ -43,4 +43,11 @@ class MessageContentCodecTest {
         assertTrue(MessageContentCodec.fromStored("image", "not json") is MessageContent.Text)
         assertTrue(MessageContentCodec.fromStored("sticker/v9", "{}") is MessageContent.Text)
     }
+
+    @Test
+    fun `an iOS contact card decodes to Contact and a malformed one stays a visible placeholder`() {
+        val contact = MessageContentCodec.fromStored("contact", """{"name":"Ada","phoneNumber":"+15550100"}""")
+        assertEquals(MessageContent.Contact(name = "Ada", phoneNumber = "+15550100"), contact)
+        assertEquals(MessageContent.Text("[Contact]"), MessageContentCodec.fromStored("contact", "{}"))
+    }
 }

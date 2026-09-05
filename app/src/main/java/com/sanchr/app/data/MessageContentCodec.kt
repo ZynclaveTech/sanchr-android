@@ -1,5 +1,6 @@
 package com.sanchr.app.data
 
+import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.MediaContentEnvelope
 import com.sanchr.core.model.MediaKind
 import com.sanchr.core.model.MessageContent
@@ -20,6 +21,7 @@ object MessageContentCodec {
         when (contentType) {
             "text" -> MessageContent.Text(body)
             "location" -> location(body)
+            ContactCard.CONTENT_TYPE -> contact(body)
             else -> MediaKind.fromWire(contentType)?.let { media(body, it) } ?: MessageContent.Text(body)
         }
 
@@ -56,6 +58,9 @@ object MessageContentCodec {
                 )
         }
     }
+
+    private fun contact(body: String): MessageContent =
+        ContactCard.decode(body)?.let { MessageContent.Contact(it.name, it.phoneNumber) } ?: MessageContent.Text("[Contact]")
 
     private fun location(body: String): MessageContent =
         runCatching {

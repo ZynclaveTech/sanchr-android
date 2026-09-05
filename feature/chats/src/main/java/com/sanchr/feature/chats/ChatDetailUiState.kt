@@ -1,5 +1,6 @@
 package com.sanchr.feature.chats
 
+import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.MediaAttachment
 
@@ -42,6 +43,8 @@ data class MessageUiModel(
     val failureReason: String? = null,
     /** The encrypted media behind an image/voice/file row; null for text. */
     val attachment: MediaAttachment? = null,
+    /** The shared card behind a contact row; null otherwise. */
+    val contact: ContactCard? = null,
 )
 
 enum class MessageStatus {
