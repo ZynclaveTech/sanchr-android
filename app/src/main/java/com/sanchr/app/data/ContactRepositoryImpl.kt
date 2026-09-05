@@ -2,8 +2,11 @@ package com.sanchr.app.data
 
 import android.util.Log
 import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.entity.ContactEntity
+import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.ContactDisplayName
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.contacts.DiscoveryRepository
@@ -18,7 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.datetime.Instant
 
 @Singleton
@@ -27,22 +30,25 @@ class ContactRepositoryImpl
     constructor(
         private val contactClient: ContactServiceClient,
         private val contactDao: ContactDao,
+        private val contactProfileDao: ContactProfileDao,
         private val discoveryRepository: DiscoveryRepository,
         private val sessionManager: SessionManager,
     ) : ContactRepository {
-        override fun observeRegisteredContacts(): Flow<List<User>> =
-            contactDao.observeRegisteredContacts().map { entities ->
-                entities.map { it.toDomain() }
-            }
+        override fun observeRegisteredContacts(): Flow<List<User>> = withProfiles(contactDao.observeRegisteredContacts())
 
-        override fun observeAllContacts(): Flow<List<User>> =
-            contactDao.observeContacts().map { entities ->
-                entities.map { it.toDomain() }
-            }
+        override fun observeAllContacts(): Flow<List<User>> = withProfiles(contactDao.observeContacts())
 
-        override fun searchContacts(query: String): Flow<List<User>> =
-            contactDao.searchContacts(query).map { entities ->
-                entities.map { it.toDomain() }
+        override fun searchContacts(query: String): Flow<List<User>> = withProfiles(contactDao.searchContacts(query))
+
+        /**
+         * Joins each contact with the profile they published under their
+         * Profile Key (if we have received it), so a name shows up as soon as
+         * a first message from them has been decrypted — without a re-sync.
+         */
+        private fun withProfiles(contacts: Flow<List<ContactEntity>>): Flow<List<User>> =
+            combine(contacts, contactProfileDao.observeAll()) { entities, profiles ->
+                val byUserId = profiles.associateBy { it.userId }
+                entities.map { it.toDomain(byUserId[it.userId ?: it.id]) }
             }
 
         override suspend fun syncContacts() {
@@ -185,7 +191,16 @@ class ContactRepositoryImpl
             User(
                 id = userId,
                 phoneNumber = phoneNumber.ifEmpty { phoneE164 },
-                displayName = displayName,
+                // The server's display_name is plaintext it should not have
+                // (a placeholder, or a name uploaded before profiles were
+                // encrypted) and is never shown; a lookup by number knows the
+                // number, and the profile arrives with their first message.
+                displayName =
+                    ContactDisplayName.resolve(
+                        addressBookName = null,
+                        phoneNumber = phoneNumber.ifEmpty { phoneE164 },
+                        profileName = null,
+                    ),
                 avatarUrl = avatarUrl.ifEmpty { null },
                 bio = null,
                 isOnline = false,
@@ -194,13 +209,13 @@ class ContactRepositoryImpl
                 createdAt = Instant.fromEpochMilliseconds(0L),
             )
 
-        private fun ContactEntity.toDomain(): User =
+        private fun ContactEntity.toDomain(profile: ContactProfileEntity?): User =
             User(
                 id = userId ?: id,
                 phoneNumber = phoneNumber,
-                displayName = displayName,
-                avatarUrl = avatarUrl,
-                bio = null,
+                displayName = ContactDisplayName.resolve(displayName, phoneNumber, profile?.displayName),
+                avatarUrl = profile?.avatarUrl ?: avatarUrl,
+                bio = profile?.bio,
                 isOnline = false,
                 lastSeen = null,
                 publicKeyFingerprint = null,

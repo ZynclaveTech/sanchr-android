@@ -20,6 +20,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.network.RefreshResult
 import com.sanchr.core.network.SessionRefresher
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
@@ -74,6 +75,7 @@ class SyncWorker
         private val messageRepository: MessageRepository,
         private val chatBackupManager: ChatBackupManager,
         private val syncState: SyncState,
+        private val contactProfileResolver: ContactProfileResolver,
     ) : CoroutineWorker(appContext, params) {
         companion object {
             private const val TAG = "SyncWorker"
@@ -314,12 +316,22 @@ class SyncWorker
                     GetConversationsRequest(),
                 )
 
+            val selfId = sessionManager.getUserId()
             val entities =
                 response.conversations.map { conv ->
+                    // DIRECT: what we call the peer, never the server's
+                    // plaintext (see MessageRepositoryImpl.toEntity). This
+                    // refresh REPLACEs the row, so a title resolved from the
+                    // peer's Profile Key must be recomputed here or it would
+                    // be wiped every 15 minutes.
+                    val peerId =
+                        conv.participantIds
+                            .firstOrNull { it != selfId }
+                            .takeIf { conv.type.equals("DIRECT", ignoreCase = true) }
                     ConversationEntity(
                         id = conv.id,
                         type = conv.type.uppercase(),
-                        title = conv.title.ifEmpty { null },
+                        title = peerId?.let { contactProfileResolver.displayNameFor(it) } ?: conv.title.ifEmpty { null },
                         avatarUrl = conv.avatarUrl.ifEmpty { null },
                         participantIds = JSONArray(conv.participantIds.toTypedArray()).toString(),
                         lastMessagePreview = conv.lastMessagePreview.ifEmpty { null },
