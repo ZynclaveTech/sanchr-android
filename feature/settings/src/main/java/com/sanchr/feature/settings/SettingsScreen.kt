@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.HelpCenter
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
@@ -63,6 +64,7 @@ fun SettingsScreen(
     onNavigateToChatSettings: () -> Unit,
     onNavigateToEncryptionKeys: () -> Unit,
     onNavigateToHelp: () -> Unit,
+    onNavigateToLegal: () -> Unit,
     onNavigateToProfile: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -234,6 +236,13 @@ fun SettingsScreen(
                 title = "Help Center",
                 subtitle = "FAQ, contact support, documentation",
                 onClick = onNavigateToHelp,
+            )
+
+            SettingsItem(
+                icon = Icons.Filled.Gavel,
+                title = "Terms & Privacy",
+                subtitle = "Privacy policy, terms of service",
+                onClick = onNavigateToLegal,
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.sm))

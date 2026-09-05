@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sanchr.core.designsystem.component.SanchrButton
@@ -48,6 +49,7 @@ fun HelpCenterScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             SanchrTopBar(
@@ -130,7 +132,17 @@ fun HelpCenterScreen(
 
             SanchrButton(
                 text = "Send Message",
-                onClick = { /* submit contact form */ },
+                onClick = {
+                    SupportLinks.sendEmail(
+                        context = context,
+                        to = SupportLinks.SUPPORT_EMAIL,
+                        subject = "[Support] $subject",
+                        // Device and app details help support reproduce; nothing about the account or its messages.
+                        body = "$message\n\n${SupportLinks.deviceReport(context)}",
+                    )
+                    subject = ""
+                    message = ""
+                },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = subject.isNotBlank() && message.isNotBlank(),
             )
@@ -142,14 +154,21 @@ fun HelpCenterScreen(
                 icon = Icons.Filled.Description,
                 title = "Documentation",
                 subtitle = "Read the full Sanchr documentation",
-                onClick = { /* open docs URL */ },
+                onClick = { SupportLinks.openUrl(context, SupportLinks.DOCUMENTATION) },
             )
 
             SettingsItem(
                 icon = Icons.Filled.BugReport,
                 title = "Report a Problem",
                 subtitle = "Help us improve Sanchr",
-                onClick = { /* open bug report */ },
+                onClick = {
+                    SupportLinks.sendEmail(
+                        context = context,
+                        to = SupportLinks.SUPPORT_EMAIL,
+                        subject = "[Bug] ",
+                        body = "What happened:\n\nWhat you expected:\n\n${SupportLinks.deviceReport(context)}",
+                    )
+                },
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))
@@ -186,7 +205,15 @@ fun HelpCenterScreen(
                         Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable { /* open emergency support */ },
+                            modifier =
+                                Modifier.clickable {
+                                    SupportLinks.sendEmail(
+                                        context = context,
+                                        to = SupportLinks.SECURITY_EMAIL,
+                                        subject = "[Security] Possible account compromise",
+                                        body = "Describe what happened:\n\n${SupportLinks.deviceReport(context)}",
+                                    )
+                                },
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Email,
