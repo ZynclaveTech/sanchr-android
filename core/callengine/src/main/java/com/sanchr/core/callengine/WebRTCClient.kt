@@ -288,14 +288,26 @@ class WebRTCClient
             isUsingFrontCamera = !isUsingFrontCamera
         }
 
-        fun toggleVideo(): Boolean {
-            isVideoEnabled = !isVideoEnabled
-            localVideoTrack?.setEnabled(isVideoEnabled)
+        fun toggleVideo(): Boolean = setVideoEnabled(!isVideoEnabled)
 
-            if (!isVideoEnabled) {
-                videoCapturer?.stopCapture()
-            } else {
+        /**
+         * Turns the camera on or off. Turning it on in a call that started as
+         * voice creates the capturer and adds the video track to the peer
+         * connection, which is what a mid-call upgrade's renegotiation offer
+         * then advertises. Returns the resulting state.
+         */
+        fun setVideoEnabled(enabled: Boolean): Boolean {
+            if (enabled && videoCapturer == null) {
+                startVideoCapture()
+                isVideoEnabled = localVideoTrack != null
+                return isVideoEnabled
+            }
+            isVideoEnabled = enabled
+            localVideoTrack?.setEnabled(enabled)
+            if (enabled) {
                 videoCapturer?.startCapture(VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS)
+            } else {
+                videoCapturer?.stopCapture()
             }
             return isVideoEnabled
         }
