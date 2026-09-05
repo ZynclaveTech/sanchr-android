@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +35,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 @Composable
 fun PrivacyScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToBlockedContacts: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -91,6 +94,13 @@ fun PrivacyScreen(
                 subtitle = "Show a preview of links in chats. The site can see your IP address",
                 checked = linkPreviewsEnabled,
                 onCheckedChange = viewModel::setLinkPreviewsEnabled,
+            )
+
+            SettingsItem(
+                icon = Icons.Filled.Block,
+                title = "Blocked Contacts",
+                subtitle = "People who can't message or call you",
+                onClick = onNavigateToBlockedContacts,
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = SanchrTheme.spacing.default))

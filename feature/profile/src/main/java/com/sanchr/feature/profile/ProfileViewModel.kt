@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.network.media.AvatarUploader
+import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.proto.settings.GetSettingsRequest
 import com.sanchr.proto.settings.SettingsServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,6 +34,8 @@ data class ProfileUiState(
     val editDisplayName: String = "",
     val editBio: String = "",
     val errorMessage: String? = null,
+    /** Whether we have blocked this person (other users' profiles only). */
+    val isBlocked: Boolean = false,
 )
 
 @HiltViewModel
@@ -43,6 +46,7 @@ class ProfileViewModel
         private val settingsServiceClient: SettingsServiceClient,
         private val avatarUploader: AvatarUploader,
         private val profileUpdater: EncryptedProfileUpdater,
+        private val contactRepository: ContactRepository,
     ) : ViewModel() {
         companion object {
             private const val TAG = "ProfileViewModel"
@@ -65,6 +69,7 @@ class ProfileViewModel
                 _uiState.update { it.copy(isLoading = true, errorMessage = null) }
                 try {
                     val isOwn = userId == "me"
+                    val blocked = if (isOwn) false else runCatching { contactRepository.isBlocked(userId) }.getOrDefault(false)
                     val settings =
                         settingsServiceClient.getSettings(
                             GetSettingsRequest(userId = if (isOwn) "" else userId),
@@ -77,6 +82,7 @@ class ProfileViewModel
                             avatarUrl = settings.avatarUrl,
                             bio = settings.bio,
                             isOwnProfile = isOwn,
+                            isBlocked = blocked,
                             isLoading = false,
                             editDisplayName = settings.displayName,
                             editBio = settings.bio,
@@ -91,6 +97,21 @@ class ProfileViewModel
                             isOwnProfile = userId == "me",
                         )
                     }
+                }
+            }
+        }
+
+        /** Blocks or unblocks this person; enforced locally at once and told to the server (best effort). */
+        fun setBlocked(blocked: Boolean) {
+            if (_uiState.value.isOwnProfile) return
+            viewModelScope.launch {
+                try {
+                    contactRepository.setBlocked(userId, blocked)
+                    _uiState.update { it.copy(isBlocked = blocked) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(errorMessage = e.message ?: "Could not update block") }
                 }
             }
         }

@@ -9,6 +9,7 @@ import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.BlockContactResponse
+import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.GetBlockedListRequest
 import com.sanchr.proto.contacts.GetBlockedListResponse
@@ -19,6 +20,7 @@ import com.sanchr.proto.contacts.SyncContactsRequest
 import com.sanchr.proto.contacts.SyncContactsResponse
 import com.sanchr.proto.contacts.UnblockContactRequest
 import com.sanchr.proto.contacts.UnblockContactResponse
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import java.security.MessageDigest
@@ -566,5 +568,36 @@ class ContactRepositoryImplTest {
                 ).observeAllContacts().first()
 
             assertEquals("+15550001", users.single().displayName)
+        }
+
+    // ── Blocked list ──────────────────────────────────────────────────────
+
+    @Test
+    fun `blockedContacts pages through the server list and names people the way the app does`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "", pageSize = 50)) } returns
+                GetBlockedListResponse(blockedUsers = listOf(Contact(userId = "u-known", phoneNumber = "+15550100")), nextPageToken = "p2")
+            coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "p2", pageSize = 50)) } returns
+                GetBlockedListResponse(
+                    blockedUsers = listOf(Contact(userId = "u-stranger-with-a-long-id", phoneNumber = "")),
+                    nextPageToken = "",
+                )
+            val dao = mockk<ContactDao>(relaxed = true)
+            coEvery { dao.getContactById("u-known") } returns
+                ContactEntity(
+                    id = "u-known",
+                    userId = "u-known",
+                    phoneNumber = "+15550100",
+                    displayName = "Ada Lovelace",
+                    isRegistered = true,
+                )
+            coEvery { dao.getContactById("u-stranger-with-a-long-id") } returns null
+            val profiles = mockk<ContactProfileDao>(relaxed = true) { coEvery { getByUserId(any()) } returns null }
+
+            val blocked = repo(client = client, dao = dao, profiles = profiles).blockedContacts()
+
+            assertEquals(listOf("Ada Lovelace", "u-stranger-w..."), blocked.map { it.displayName })
+            assertEquals(listOf("u-known", "u-stranger-with-a-long-id"), blocked.map { it.userId })
         }
 }

@@ -8,12 +8,14 @@ import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ContactDisplayName
 import com.sanchr.core.model.User
+import com.sanchr.domain.contacts.BlockedContact
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.domain.contacts.PhoneNumberNormalizer
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.ContactServiceClient
+import com.sanchr.proto.contacts.GetBlockedListRequest
 import com.sanchr.proto.contacts.MatchedContact
 import com.sanchr.proto.contacts.SyncContactsRequest
 import com.sanchr.proto.contacts.UnblockContactRequest
@@ -163,6 +165,33 @@ class ContactRepositoryImpl
             contactDao.setFavorite(userId, favorite)
         }
 
+        override suspend fun isBlocked(userId: String): Boolean = contactDao.isBlocked(userId) == true
+
+        override suspend fun blockedContacts(): List<BlockedContact> {
+            val entries = mutableListOf<BlockedContact>()
+            var pageToken = ""
+            do {
+                val page = contactClient.getBlockedList(GetBlockedListRequest(pageToken = pageToken, pageSize = BLOCKED_PAGE_SIZE))
+                page.blockedUsers.forEach { server ->
+                    val local = contactDao.getContactById(server.userId)
+                    val profile = contactProfileDao.getByUserId(server.userId)
+                    val name =
+                        ContactDisplayName
+                            .resolve(
+                                local?.displayName,
+                                local?.phoneNumber?.ifBlank { null } ?: server.phoneNumber.ifBlank { null },
+                                profile?.displayName,
+                            ).takeIf { it != ContactDisplayName.UNKNOWN }
+                            ?: shortId(server.userId)
+                    entries += BlockedContact(userId = server.userId, displayName = name)
+                }
+                pageToken = page.nextPageToken
+            } while (pageToken.isNotEmpty())
+            return entries.distinctBy { it.userId }
+        }
+
+        private fun shortId(userId: String): String = if (userId.length > SHORT_ID_LENGTH) userId.take(SHORT_ID_LENGTH) + "..." else userId
+
         /**
          * Phone-based user lookup via SyncContacts(phoneHashes = [SHA-256(phone)]).
          *
@@ -248,6 +277,8 @@ class ContactRepositoryImpl
             )
 
         private companion object {
+            const val BLOCKED_PAGE_SIZE = 50
+            const val SHORT_ID_LENGTH = 12
             private const val TAG = "ContactRepository"
         }
     }

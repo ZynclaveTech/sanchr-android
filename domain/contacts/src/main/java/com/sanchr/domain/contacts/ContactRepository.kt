@@ -51,6 +51,16 @@ interface ContactRepository {
         blocked: Boolean,
     )
 
+    /** Whether we have blocked [userId], from the local contact row. */
+    suspend fun isBlocked(userId: String): Boolean
+
+    /**
+     * The server's blocked list (every page), each named by our own
+     * resolution of the person, falling back to the number the server
+     * knows and finally a shortened id, as iOS `BlockedContactsView`.
+     */
+    suspend fun blockedContacts(): List<BlockedContact>
+
     /** Adds a contact to favorites. */
     suspend fun setFavorite(
         userId: String,
