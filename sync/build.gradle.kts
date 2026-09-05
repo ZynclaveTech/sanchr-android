@@ -47,6 +47,7 @@ dependencies {
     // WorkManager + Hilt integration
     implementation(libs.work.runtime)
     implementation(libs.work.hilt)
+    ksp(libs.androidx.hilt.compiler)
 
     // App Startup
     implementation(libs.startup.runtime)
