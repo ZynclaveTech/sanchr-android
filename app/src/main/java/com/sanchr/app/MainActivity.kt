@@ -40,6 +40,9 @@ import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.feature.chats.share.ShareTargetScreen
+import com.sanchr.feature.chats.share.SharedContent
+import com.sanchr.feature.chats.share.toSharedContent
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
@@ -68,6 +71,13 @@ class MainActivity : FragmentActivity() {
     private val bootstrapViewModel: AppBootstrapViewModel by viewModels()
 
     /**
+     * Content handed to us by the system share sheet, cleared once the share
+     * flow finishes. Held as Compose state so a share arriving on an already
+     * running task (launchMode is singleTop) recomposes into the flow.
+     */
+    private var sharedContent by mutableStateOf<SharedContent?>(null)
+
+    /**
      * Launcher for the POST_NOTIFICATIONS runtime permission dialog (Android 13+).
      * The result is intentionally ignored -- if the user denies the permission,
      * notifications simply will not appear and the app continues to function.
@@ -90,6 +100,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         handleNotificationIntent(intent)
+        sharedContent = intent.toSharedContent()
         bootstrapSignalKeysWhenAuthenticated()
         observeScreenshotProtectionPreference()
 
@@ -140,15 +151,27 @@ class MainActivity : FragmentActivity() {
                         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                     }
 
-                    if (locked) {
+                    val startDestination by bootstrapViewModel.startDestination.collectAsStateWithLifecycle()
+                    val pendingShare = sharedContent.takeIf { startDestination is StartDestination.Main }
+
+                    when {
                         // The nav host is not composed while locked, so no chat is
                         // behind this and none reaches the recents thumbnail.
-                        AppLockGate(onUnlocked = { locked = false })
-                    } else {
-                        SanchrNavHost(
-                            pendingDestination = bootstrapViewModel.pendingDestination,
-                            onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
-                        )
+                        locked -> AppLockGate(onUnlocked = { locked = false })
+                        // Shown after the lock gate, never instead of it: sharing
+                        // into a locked app must not be a way past the lock. Only
+                        // once signed in, since there are no chats to share into
+                        // before that.
+                        pendingShare != null ->
+                            ShareTargetScreen(
+                                content = pendingShare,
+                                onFinished = { sharedContent = null },
+                            )
+                        else ->
+                            SanchrNavHost(
+                                pendingDestination = bootstrapViewModel.pendingDestination,
+                                onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
+                            )
                     }
                 }
             }
@@ -244,6 +267,7 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleNotificationIntent(intent)
+        sharedContent = intent.toSharedContent()
     }
 
     // ------------------------------------------------------------------

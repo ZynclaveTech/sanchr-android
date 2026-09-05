@@ -4,10 +4,8 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
-import android.provider.OpenableColumns
 import android.view.WindowManager
 import android.widget.Toast
 import android.widget.VideoView
@@ -145,6 +143,7 @@ import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.emoji.EmojiPickerSheet
+import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.media.GallerySelection
 import com.sanchr.feature.chats.media.GalleryState
@@ -1478,27 +1477,7 @@ private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> 
     return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            val prepared =
-                withContext(Dispatchers.IO) {
-                    val resolver = context.contentResolver
-                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-                    val mime = resolver.getType(uri) ?: "application/octet-stream"
-                    val name =
-                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                            if (c.moveToFirst()) c.getString(0) else null
-                        } ?: uri.lastPathSegment
-                    var width: Int? = null
-                    var height: Int? = null
-                    var blurHash: String? = null
-                    if (mime.startsWith("image/")) {
-                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                        if (bounds.outWidth > 0) width = bounds.outWidth
-                        if (bounds.outHeight > 0) height = bounds.outHeight
-                        blurHash = BlurHashImages.encode(bytes)
-                    }
-                    AttachmentUploader.Prepared(bytes, mime, name, width = width, height = height, blurHash = blurHash)
-                }
+            val prepared = withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, uri) }
             if (prepared != null) onPicked(prepared)
         }
     }
