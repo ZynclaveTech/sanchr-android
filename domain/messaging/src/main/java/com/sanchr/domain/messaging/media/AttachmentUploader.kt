@@ -44,6 +44,26 @@ class AttachmentUploader
             /** The recipient may open it once; their client then wipes it (iOS `isViewOnce`). */
             val isViewOnce: Boolean? = null,
         ) {
+            /**
+             * The same file with [caption] attached. Used by the share sheet,
+             * where the caption is typed after the file has been read.
+             */
+            fun withCaption(caption: String?): Prepared =
+                Prepared(
+                    bytes,
+                    mimeType,
+                    fileName,
+                    caption,
+                    width,
+                    height,
+                    durationSeconds,
+                    isVoiceMessage,
+                    audioDurationMs,
+                    audioWaveform,
+                    blurHash,
+                    isViewOnce,
+                )
+
             fun asViewOnce(): Prepared =
                 Prepared(
                     bytes,

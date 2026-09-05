@@ -40,6 +40,8 @@ import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.feature.chats.share.ShareTargetScreen
+import com.sanchr.feature.chats.share.toSharedContent
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
@@ -90,6 +92,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         handleNotificationIntent(intent)
+        consumeShareIntent(intent)
         bootstrapSignalKeysWhenAuthenticated()
         observeScreenshotProtectionPreference()
 
@@ -140,15 +143,28 @@ class MainActivity : FragmentActivity() {
                         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                     }
 
-                    if (locked) {
+                    val startDestination by bootstrapViewModel.startDestination.collectAsStateWithLifecycle()
+                    val shared by bootstrapViewModel.sharedContent.collectAsStateWithLifecycle()
+                    val pendingShare = shared.takeIf { startDestination is StartDestination.Main }
+
+                    when {
                         // The nav host is not composed while locked, so no chat is
                         // behind this and none reaches the recents thumbnail.
-                        AppLockGate(onUnlocked = { locked = false })
-                    } else {
-                        SanchrNavHost(
-                            pendingDestination = bootstrapViewModel.pendingDestination,
-                            onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
-                        )
+                        locked -> AppLockGate(onUnlocked = { locked = false })
+                        // Shown after the lock gate, never instead of it: sharing
+                        // into a locked app must not be a way past the lock. Only
+                        // once signed in, since there are no chats to share into
+                        // before that.
+                        pendingShare != null ->
+                            ShareTargetScreen(
+                                content = pendingShare,
+                                onFinished = { bootstrapViewModel.setSharedContent(null) },
+                            )
+                        else ->
+                            SanchrNavHost(
+                                pendingDestination = bootstrapViewModel.pendingDestination,
+                                onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
+                            )
                     }
                 }
             }
@@ -244,6 +260,27 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleNotificationIntent(intent)
+        consumeShareIntent(intent)
+    }
+
+    /**
+     * Hands a share to the view model, then strips it from the Activity's
+     * Intent.
+     *
+     * The Intent outlives the Activity instance: a configuration change
+     * recreates the Activity and redelivers the same Intent, so a share left
+     * on it would be read a second time and reopen the picker for something
+     * the user had already sent. Reading it once and clearing it makes the
+     * view model the only source of truth, and it survives recreation.
+     */
+    private fun consumeShareIntent(source: android.content.Intent) {
+        val content = source.toSharedContent() ?: return
+        bootstrapViewModel.setSharedContent(content)
+        source.action = android.content.Intent.ACTION_MAIN
+        source.removeExtra(android.content.Intent.EXTRA_STREAM)
+        source.removeExtra(android.content.Intent.EXTRA_TEXT)
+        source.removeExtra(android.content.Intent.EXTRA_SUBJECT)
+        setIntent(source)
     }
 
     // ------------------------------------------------------------------
