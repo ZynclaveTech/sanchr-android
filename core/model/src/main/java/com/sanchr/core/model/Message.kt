@@ -72,6 +72,13 @@ sealed interface MessageContent {
         val longitude: Double,
         val label: String? = null,
     ) : MessageContent
+
+    /** A shared contact card (`contact` content type, see [ContactCard]). */
+    @Serializable
+    data class Contact(
+        val name: String,
+        val phoneNumber: String,
+    ) : MessageContent
 }
 
 @Serializable

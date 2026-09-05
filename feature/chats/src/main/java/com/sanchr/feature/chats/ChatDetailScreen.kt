@@ -1,14 +1,17 @@
 package com.sanchr.feature.chats
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.ContactsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,12 +45,15 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -95,6 +101,7 @@ import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
+import com.sanchr.core.model.ContactCard
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
@@ -118,6 +125,7 @@ fun ChatDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pickAttachment = rememberAttachmentPicker(onPicked = viewModel::sendAttachment)
+    val pickContact = rememberContactPicker(viewModel::sendContact)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -206,7 +214,8 @@ fun ChatDetailScreen(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
                     onSend = viewModel::sendMessage,
-                    onAttach = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                    onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                    onAttachContact = { pickContact.launch(Unit) },
                     onVoiceClip = { clip ->
                         scope.launch {
                             val prepared = withContext(Dispatchers.IO) { clip.toPrepared() }
@@ -319,6 +328,8 @@ fun ChatDetailScreen(
                                 message = message,
                                 openAttachment = viewModel::openAttachment,
                             )
+
+                        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
 
                         message.attachment != null ->
                             MessageBubble(
@@ -651,7 +662,8 @@ private fun MessageInputBar(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
-    onAttach: () -> Unit,
+    onAttachFile: () -> Unit,
+    onAttachContact: () -> Unit,
     onVoiceClip: (VoiceClip) -> Unit,
     isSending: Boolean,
     modifier: Modifier = Modifier,
@@ -671,7 +683,7 @@ private fun MessageInputBar(
         ) {
             // "+" attach button
             IconButton(
-                onClick = onAttach,
+                onClick = onAttachFile,
                 modifier = Modifier.size(40.dp),
             ) {
                 Icon(
@@ -712,16 +724,37 @@ private fun MessageInputBar(
 
             Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
 
-            // Paperclip / attach file
-            IconButton(
-                onClick = onAttach,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AttachFile,
-                    contentDescription = "Attach file",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // Paperclip: file or contact
+            var attachMenuOpen by remember { mutableStateOf(false) }
+            Box {
+                IconButton(
+                    onClick = { attachMenuOpen = true },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AttachFile,
+                        contentDescription = "Attach",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("File") },
+                        leadingIcon = { Icon(Icons.Filled.AttachFile, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachFile()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Contact") },
+                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachContact()
+                        },
+                    )
+                }
             }
 
             if (value.isBlank()) {
@@ -788,6 +821,143 @@ private fun AttachmentImage(
             failed -> Text(text = "Image unavailable", style = MaterialTheme.typography.bodySmall, color = SanchrGray400)
             else -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         }
+    }
+}
+
+/**
+ * Picks one phone number from the device address book. `ACTION_PICK` on the
+ * phone table grants read access to just the chosen row, so this works
+ * without `READ_CONTACTS` having been granted at runtime.
+ */
+private object PickPhoneNumber : ActivityResultContract<Unit, Uri?>() {
+    override fun createIntent(
+        context: Context,
+        input: Unit,
+    ): Intent = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+
+    override fun parseResult(
+        resultCode: Int,
+        intent: Intent?,
+    ): Uri? = if (resultCode == Activity.RESULT_OK) intent?.data else null
+}
+
+@Composable
+private fun rememberContactPicker(onPicked: (ContactCard) -> Unit): ManagedActivityResultLauncher<Unit, Uri?> {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    return rememberLauncherForActivityResult(PickPhoneNumber) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val card = withContext(Dispatchers.IO) { readPhoneRow(context, uri) }
+            if (card != null) {
+                onPicked(card)
+            } else {
+                Toast.makeText(context, "Could not read that contact", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+private fun readPhoneRow(
+    context: Context,
+    uri: Uri,
+): ContactCard? {
+    val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER)
+    return runCatching {
+        context.contentResolver.query(uri, projection, null, null, null)?.use { c ->
+            if (!c.moveToFirst()) return@use null
+            val name = c.getString(0).orEmpty().trim()
+            val number = c.getString(1).orEmpty().trim()
+            ContactCard(name = name, phoneNumber = number).takeIf { number.isNotEmpty() }
+        }
+    }.getOrNull()
+}
+
+// --- Contact card bubble ---
+@Composable
+private fun ContactMessageBubble(
+    message: MessageUiModel,
+    card: ContactCard,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    val foreground = if (message.isFromMe) SanchrWhite else SanchrGray900
+
+    Box(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = alignment,
+    ) {
+        Column(horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
+            Card(
+                modifier =
+                    Modifier
+                        .widthIn(max = 260.dp)
+                        .clickable { addToContacts(context, card) },
+                shape = SanchrShapeTokens.CornerLarge,
+                colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100),
+            ) {
+                Row(
+                    modifier = Modifier.padding(SanchrTheme.spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = "Contact",
+                        tint = foreground,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
+                    Column {
+                        Text(
+                            text = card.name.ifBlank { card.phoneNumber },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = foreground,
+                        )
+                        if (card.name.isNotBlank()) {
+                            Text(
+                                text = card.phoneNumber,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = foreground.copy(alpha = 0.8f),
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+            ) {
+                Text(
+                    text = formatTimestamp(message.timestamp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SanchrGray400,
+                )
+                if (message.isFromMe) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    MessageStatusIcon(message)
+                }
+            }
+        }
+    }
+}
+
+/** Opens the system "new contact" form pre-filled with the card. */
+private fun addToContacts(
+    context: Context,
+    card: ContactCard,
+) {
+    val intent =
+        Intent(ContactsContract.Intents.Insert.ACTION).apply {
+            type = ContactsContract.RawContacts.CONTENT_TYPE
+            putExtra(ContactsContract.Intents.Insert.NAME, card.name)
+            putExtra(ContactsContract.Intents.Insert.PHONE, card.phoneNumber)
+        }
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "No contacts app available", Toast.LENGTH_SHORT).show()
     }
 }
 
