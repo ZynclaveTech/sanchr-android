@@ -509,4 +509,26 @@ class SendMessageUseCaseTest {
             coVerify(exactly = 0) { messageRepository.requeueAfterFailure(any()) }
             coVerify(exactly = 0) { messageRepository.markSendFailed(any(), any(), any()) }
         }
+
+    @Test
+    fun `a reply carries the quoted id onto the row and into the sealed payload as reply_to_message_id`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { messageRepository.conversationDisappearingSeconds("conv-1") } returns null
+            every { userPreferences.disappearingDefaultSeconds } returns flowOf(0)
+            coEvery { deliveryTokenStore.acquire() } returns byteArrayOf(9)
+            val plaintextSlot = slot<ByteArray>()
+            coEvery {
+                signalSessionManager.encryptForAllDevices(capture(plaintextSlot), "peer-uuid")
+            } returns listOf(DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1), messageType = 3, registrationId = 42))
+            coEvery { messagingClient.sendSealedMessage(any()) } returns SendSealedMessageResponse(serverTimestamp = 5_000L)
+            coEvery { messageRepository.enqueueOutboundMessage(any(), any(), any(), any(), any()) } returns
+                entity.copy(contentBody = "yes", replyToId = "m-quoted")
+
+            useCase("conv-1", "yes", replyToId = "m-quoted")
+
+            coVerify { messageRepository.enqueueOutboundMessage("conv-1", "yes", "text", isNull(), "m-quoted") }
+            val payload = InnerPayload.decode(plaintextSlot.captured)
+            assertEquals("m-quoted", payload!!.replyToMessageId)
+        }
 }

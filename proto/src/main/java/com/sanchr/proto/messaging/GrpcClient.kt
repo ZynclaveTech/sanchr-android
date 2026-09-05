@@ -34,6 +34,8 @@ interface MessagingServiceClient {
     suspend fun getDeliveryTokens(request: DeliveryTokenRequest): DeliveryTokenResponse
 
     suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse
+
+    suspend fun sendReaction(request: Reaction): Reaction
 }
 
 class MessagingServiceGrpcClient(
@@ -85,7 +87,30 @@ class MessagingServiceGrpcClient(
 
     override suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse =
         stub.sendSealedMessage(request.toProto()).toManual()
+
+    override suspend fun sendReaction(request: Reaction): Reaction = stub.sendReaction(request.toProto()).toManual()
 }
+
+internal fun Reaction.toProto(): Messaging.Reaction =
+    Messaging.Reaction
+        .newBuilder()
+        .setMessageId(messageId)
+        .setConversationId(conversationId)
+        .setUserId(userId)
+        .setEmoji(emoji)
+        .setRemoved(removed)
+        .setTimestamp(timestamp)
+        .build()
+
+internal fun Messaging.Reaction.toManual(): Reaction =
+    Reaction(
+        messageId = messageId,
+        conversationId = conversationId,
+        userId = userId,
+        emoji = emoji,
+        removed = removed,
+        timestamp = timestamp,
+    )
 
 private fun StartDirectConversationRequest.toProto(): Messaging.StartDirectConversationRequest =
     Messaging.StartDirectConversationRequest
@@ -252,7 +277,7 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent? =
         Messaging.ServerEvent.EventCase.CALL_OFFER -> ServerEvent.CallOffer(callOffer.toManual())
         Messaging.ServerEvent.EventCase.CALL_LIFECYCLE ->
             ServerEvent.CallLifecycle(callLifecycle.toManual())
-        Messaging.ServerEvent.EventCase.REACTION,
+        Messaging.ServerEvent.EventCase.REACTION -> ServerEvent.Reaction(reaction.toManual())
         Messaging.ServerEvent.EventCase.SEALED_MESSAGE,
         Messaging.ServerEvent.EventCase.MESSAGE_EDITED,
         Messaging.ServerEvent.EventCase.EVENT_NOT_SET,

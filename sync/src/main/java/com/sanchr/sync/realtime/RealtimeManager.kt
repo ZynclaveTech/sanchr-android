@@ -11,6 +11,8 @@ import com.sanchr.core.common.calls.IncomingCallOffer
 import com.sanchr.core.common.calls.StreamWaker
 import com.sanchr.core.common.di.ApplicationScope
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.MessageReactionDao
+import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
@@ -25,6 +27,7 @@ import com.sanchr.proto.messaging.CallOfferEvent
 import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.EncryptedEnvelope
 import com.sanchr.proto.messaging.MessagingServiceClient
+import com.sanchr.proto.messaging.Reaction
 import com.sanchr.proto.messaging.ServerEvent
 import com.sanchr.proto.messaging.TypingIndicator
 import com.sanchr.sync.rotation.PreKeyReplenishWorker
@@ -53,6 +56,7 @@ class RealtimeManager
         private val messagingClient: MessagingServiceClient,
         private val sessionManager: SessionManager,
         private val messageDao: MessageDao,
+        private val reactionDao: MessageReactionDao,
         private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val incomingCallEvents: IncomingCallEvents,
         private val sendPresence: SendPresenceUseCase,
@@ -279,7 +283,20 @@ class RealtimeManager
                 is ServerEvent.PreKeyCountLow -> PreKeyReplenishWorker.enqueueOneTime(appContext)
                 is ServerEvent.CallOffer -> event.offer?.let { deliverCallOffer(it) }
                 is ServerEvent.CallLifecycle -> event.event?.let { deliverCallLifecycle(it) }
+                is ServerEvent.Reaction -> event.reaction?.let { handleReaction(it) }
             }
+        }
+
+        /** A peer (or our other device) added or removed an emoji on a message. */
+        private suspend fun handleReaction(reaction: Reaction) {
+            if (reaction.messageId.isBlank() || reaction.userId.isBlank() || reaction.emoji.isBlank()) return
+            runCatching {
+                if (reaction.removed) {
+                    reactionDao.delete(reaction.messageId, reaction.userId, reaction.emoji)
+                } else {
+                    reactionDao.upsert(MessageReactionEntity(reaction.messageId, reaction.userId, reaction.emoji, reaction.timestamp))
+                }
+            }.onFailure { error -> Log.w(TAG, "Failed to apply reaction", error) }
         }
 
         /**

@@ -3,6 +3,7 @@ package com.sanchr.domain.messaging
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
+import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -37,6 +38,8 @@ interface MessageRepository {
          * is governed by the timer stamped into the envelope, not by this.
          */
         expiresAtMillis: Long? = null,
+        /** The message this one quotes, or null. Rides the envelope as `reply_to_message_id`. */
+        replyToId: String? = null,
     ): MessageEntity
 
     /**
@@ -162,10 +165,22 @@ interface MessageRepository {
      * caller that needs the same "ack/complete regardless" property must
      * guard its own call the same way.
      */
+
     suspend fun applyReceiptStatus(
         messageId: String,
         status: MessageStatus,
     )
+
+    /** Adds or removes one user's emoji on a message; a no-op when the row already matches. */
+    suspend fun applyReaction(
+        messageId: String,
+        userId: String,
+        emoji: String,
+        removed: Boolean,
+        timestampMillis: Long,
+    )
+
+    suspend fun reactionsFor(messageId: String): List<MessageReaction>
 
     /** Deletes a message locally (and requests remote deletion if own message). */
     suspend fun deleteMessage(
@@ -253,6 +268,8 @@ interface MessageRepository {
          * is not anchored to local arrival time.
          */
         expiresAtMillis: Long? = null,
+        /** The message the sender quoted, or null. */
+        replyToId: String? = null,
     )
 
     /**

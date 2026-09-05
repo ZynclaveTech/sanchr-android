@@ -309,6 +309,7 @@ class ReceiveMessageUseCase
                                 routed.expiresAfterSecs?.let {
                                     success.serverTimestamp + it * MILLIS_PER_SECOND
                                 },
+                            replyToId = routed.replyToMessageId,
                         )
                         messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
                     }

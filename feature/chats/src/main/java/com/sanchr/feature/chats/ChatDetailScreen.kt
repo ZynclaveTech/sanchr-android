@@ -13,14 +13,19 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,10 +41,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -214,6 +221,21 @@ fun ChatDetailScreen(
                 }
 
                 // --- Message input bar ---
+                uiState.replyingTo?.let { replying ->
+                    ReplyBanner(
+                        authorName =
+                            if (replying.isFromMe) {
+                                "You"
+                            } else {
+                                uiState.conversation
+                                    ?.title
+                                    .orEmpty()
+                                    .ifBlank { "Contact" }
+                            },
+                        preview = replying.text,
+                        onClear = viewModel::clearReply,
+                    )
+                }
                 MessageInputBar(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
@@ -338,18 +360,21 @@ fun ChatDetailScreen(
                         message.attachment != null ->
                             MessageBubble(
                                 message = message,
-                                modifier =
-                                    Modifier.clickable {
-                                        scope.launch {
-                                            val file = viewModel.openAttachment(message) ?: return@launch
-                                            presentAttachment(context, file, message.attachment.mimeType)
-                                        }
-                                    },
+                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                                onReply = { viewModel.setReply(message) },
+                                onClick = {
+                                    scope.launch {
+                                        val file = viewModel.openAttachment(message) ?: return@launch
+                                        presentAttachment(context, file, message.attachment.mimeType)
+                                    }
+                                },
                             )
 
                         else ->
                             MessageBubble(
                                 message = message,
+                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                                onReply = { viewModel.setReply(message) },
                             )
                     }
                 }
@@ -448,11 +473,16 @@ private fun ChatDetailTopBar(
 
 // --- Message bubble ---
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun MessageBubble(
     message: MessageUiModel,
+    onToggleReaction: (String) -> Unit,
+    onReply: () -> Unit,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    var pickerOpen by remember(message.id) { mutableStateOf(false) }
 
     val bubbleShape =
         if (message.isFromMe) {
@@ -478,39 +508,59 @@ private fun MessageBubble(
         Column(
             horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start,
         ) {
-            Surface(
-                shape = bubbleShape,
-                color = Color.Transparent,
-                modifier = Modifier.widthIn(max = 280.dp),
-            ) {
-                Box(
+            Box {
+                ReactionPicker(
+                    open = pickerOpen,
+                    onDismiss = { pickerOpen = false },
+                    onReply = {
+                        pickerOpen = false
+                        onReply()
+                    },
+                ) { emoji ->
+                    pickerOpen = false
+                    onToggleReaction(emoji)
+                }
+                Surface(
+                    shape = bubbleShape,
+                    color = Color.Transparent,
                     modifier =
-                        if (message.isFromMe) {
-                            Modifier.background(
-                                brush =
-                                    Brush.linearGradient(
-                                        colors = listOf(SanchrIndigo500, SanchrIndigo900),
+                        Modifier
+                            .widthIn(max = 280.dp)
+                            .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { pickerOpen = true }),
+                ) {
+                    Box(
+                        modifier =
+                            if (message.isFromMe) {
+                                Modifier.background(
+                                    brush =
+                                        Brush.linearGradient(
+                                            colors = listOf(SanchrIndigo500, SanchrIndigo900),
+                                        ),
+                                )
+                            } else {
+                                Modifier.background(SanchrGray100)
+                            },
+                    ) {
+                        Column {
+                            if (message.replyToId != null) {
+                                QuoteCard(message.quote, textColor = if (message.isFromMe) SanchrWhite else SanchrGray900)
+                            }
+                            Text(
+                                text = message.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = SanchrTheme.spacing.md,
+                                        vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
-                        } else {
-                            Modifier.background(SanchrGray100)
-                        },
-                ) {
-                    Column(
-                        modifier =
-                            Modifier.padding(
-                                horizontal = SanchrTheme.spacing.md,
-                                vertical = SanchrTheme.spacing.sm,
-                            ),
-                    ) {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (message.isFromMe) SanchrWhite else SanchrGray900,
-                        )
+                        }
                     }
                 }
             }
+
+            ReactionChips(message.reactions, onToggleReaction)
 
             // --- Timestamp + read receipts ---
             Row(
@@ -527,6 +577,150 @@ private fun MessageBubble(
                     Spacer(modifier = Modifier.width(4.dp))
                     MessageStatusIcon(message)
                 }
+            }
+        }
+    }
+}
+
+/** iOS's quick reactions, shown on long-press above the bubble. */
+private val QUICK_REACTIONS = listOf("❤️", "👍", "😂", "😮", "😢", "🙏")
+
+@Composable
+private fun ReactionPicker(
+    open: Boolean,
+    onDismiss: () -> Unit,
+    onReply: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    DropdownMenu(expanded = open, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text("Reply") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null) },
+            onClick = onReply,
+        )
+        Row(modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xs)) {
+            QUICK_REACTIONS.forEach { emoji ->
+                Text(
+                    text = emoji,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier =
+                        Modifier
+                            .clickable { onPick(emoji) }
+                            .padding(horizontal = SanchrTheme.spacing.xs, vertical = SanchrTheme.spacing.xs),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The quoted message inside a reply bubble, after iOS / Signal: a stripe
+ * down the leading edge, a tint over the bubble's fill, the author in
+ * semibold above one line of what they said. Falls back to "Replied to a
+ * message" when the quoted row is not in the loaded transcript.
+ */
+@Composable
+private fun QuoteCard(
+    quote: ReplyQuote?,
+    textColor: Color,
+) {
+    Row(
+        modifier =
+            Modifier
+                .padding(start = 6.dp, end = 6.dp, top = 6.dp)
+                .background(textColor.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
+                .height(IntrinsicSize.Min),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(textColor.copy(alpha = 0.8f)),
+        )
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Text(
+                text = quote?.authorName ?: "Reply",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = textColor,
+                maxLines = 1,
+            )
+            Text(
+                text = quote?.preview ?: "Replied to a message",
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** Above the input bar while composing a reply (iOS `ChatInputBarView` reply banner). */
+@Composable
+private fun ReplyBanner(
+    authorName: String,
+    preview: String,
+    onClear: () -> Unit,
+) {
+    Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = SanchrTheme.spacing.md, vertical = SanchrTheme.spacing.xs),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .width(3.dp)
+                        .height(36.dp)
+                        .background(SanchrIndigo500, SanchrShapeTokens.CornerFull),
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = authorName,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SanchrIndigo500,
+                    maxLines = 1,
+                )
+                Text(
+                    text = preview,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SanchrGray400,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "Cancel reply", tint = SanchrGray400)
+            }
+        }
+    }
+}
+
+/** Grouped emoji counts under a bubble; the viewer's own are outlined, tapping one toggles it. */
+@Composable
+private fun ReactionChips(
+    chips: List<ReactionChip>,
+    onToggle: (String) -> Unit,
+) {
+    if (chips.isEmpty()) return
+    Row(modifier = Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        chips.forEach { chip ->
+            Surface(
+                shape = SanchrShapeTokens.CornerFull,
+                color = if (chip.mine) SanchrIndigo500.copy(alpha = 0.15f) else SanchrGray100,
+                border = if (chip.mine) BorderStroke(1.dp, SanchrIndigo500) else null,
+                modifier = Modifier.clickable { onToggle(chip.emoji) },
+            ) {
+                Text(
+                    text = if (chip.count > 1) "${chip.emoji} ${chip.count}" else chip.emoji,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = SanchrGray900,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                )
             }
         }
     }

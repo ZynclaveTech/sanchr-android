@@ -46,6 +46,7 @@ class MessageRepositoryImplConversationTitleTest {
             contactProfileDao = contactProfileDao,
             contactProfileResolver = resolver,
             sessionManager = sessionManager,
+            reactionDao = mockk(relaxed = true),
         )
 
     private fun serverDirectConversation(serverPeerName: String) =
