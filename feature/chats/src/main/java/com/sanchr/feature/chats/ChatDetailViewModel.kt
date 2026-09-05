@@ -100,6 +100,7 @@ class ChatDetailViewModel
                 val peer = runCatching { messageRepository.oneToOneRecipient(conversationId, self) }.getOrNull()
                 if (peer.isNullOrEmpty()) return@launch
                 presencePeer = peer
+                _uiState.update { it.copy(directPeerId = peer) }
                 realtimeManager.trackPresencePeer(peer)
                 presenceStore.presence
                     .map { it[peer] }

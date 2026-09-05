@@ -19,7 +19,11 @@ const val CHAT_DETAIL_ROUTE = "chats/detail/{conversationId}"
  * Routes:
  *   chats/list -> chats/detail/{conversationId}
  */
-fun NavGraphBuilder.chatsGraph(navController: NavController) {
+fun NavGraphBuilder.chatsGraph(
+    navController: NavController,
+    /** Opens the call screen for [peerId]; the calls graph owns that route. */
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
+) {
     navigation(startDestination = CHATS_LIST_ROUTE, route = CHATS_TAB_ROUTE) {
         composable(CHATS_LIST_ROUTE) {
             ChatsListScreen(
@@ -48,6 +52,7 @@ fun NavGraphBuilder.chatsGraph(navController: NavController) {
                 onNavigateToProfile = { userId ->
                     navController.navigate("profile/$userId")
                 },
+                onStartCall = onStartCall,
             )
         }
     }

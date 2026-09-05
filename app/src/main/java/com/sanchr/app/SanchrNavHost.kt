@@ -41,6 +41,7 @@ import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.app.navigation.PendingDestination
 import com.sanchr.feature.auth.navigation.authGraph
 import com.sanchr.feature.calls.navigation.callsGraph
+import com.sanchr.feature.calls.navigation.outgoingCallRoute
 import com.sanchr.feature.chats.navigation.chatsGraph
 import com.sanchr.feature.contacts.navigation.contactsGraph
 import com.sanchr.feature.onboarding.navigation.ONBOARDING_GRAPH_ROUTE
@@ -265,7 +266,10 @@ private fun ResolvedNavHost(
 
             // Main authenticated flow with bottom navigation
             navigation(startDestination = TopLevelDestination.CHATS.route, route = "main") {
-                chatsGraph(navController = navController)
+                chatsGraph(
+                    navController = navController,
+                    onStartCall = { peerId, peerName, isVideo -> navController.navigate(outgoingCallRoute(peerId, peerName, isVideo)) },
+                )
                 callsGraph(navController = navController)
                 contactsGraph(navController = navController)
                 settingsGraph(navController = navController)

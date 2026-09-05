@@ -77,6 +77,7 @@ class ChatDetailViewModelPresenceTest {
             val vm = newViewModel()
             runCurrent()
             verify { realtimeManager.trackPresencePeer("peer") }
+            assertEquals("peer", vm.uiState.value.directPeerId)
             assertNull(vm.uiState.value.peerPresence)
 
             presenceStore.update("peer", PresenceStatus.ONLINE, null)

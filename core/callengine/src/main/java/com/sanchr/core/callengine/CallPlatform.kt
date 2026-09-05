@@ -31,6 +31,30 @@ class CallPlatform
             audioManager.isSpeakerphoneOn = false
         }
 
+        /**
+         * Places a call from inside the foreground [CallService], as the
+         * incoming path does, so the microphone and connection survive the
+         * app leaving the foreground. The service calls [CallManager.startCall].
+         */
+        fun startOutgoingCallService(
+            recipientId: String,
+            recipientName: String,
+            isVideo: Boolean,
+        ) {
+            val intent =
+                Intent(context, CallService::class.java).apply {
+                    action = CallService.ACTION_START_CALL
+                    putExtra(CallService.EXTRA_RECIPIENT_ID, recipientId)
+                    putExtra(CallService.EXTRA_RECIPIENT_NAME, recipientName)
+                    putExtra(CallService.EXTRA_IS_VIDEO, isVideo)
+                }
+            try {
+                ContextCompat.startForegroundService(context, intent)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Could not start the call service for an outgoing call", e)
+            }
+        }
+
         fun startIncomingCallService(
             callId: String,
             callerId: String,

@@ -53,4 +53,9 @@ dependencies {
 
     implementation(libs.webrtc)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.core.ktx)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
 }

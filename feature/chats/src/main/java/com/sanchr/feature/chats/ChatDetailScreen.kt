@@ -148,6 +148,7 @@ fun ChatDetailScreen(
     conversationId: String,
     onNavigateBack: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
@@ -202,9 +203,10 @@ fun ChatDetailScreen(
                 title = uiState.conversation?.title ?: "Chat",
                 statusText = if (uiState.peerTyping) "Typing..." else uiState.peerPresence,
                 onNavigateBack = onNavigateBack,
-                onVideoCall = { /* TODO */ },
-                onVoiceCall = { /* TODO */ },
-                onMenu = { /* TODO */ },
+                canCall = uiState.directPeerId != null,
+                onVideoCall = { uiState.directPeerId?.let { onStartCall(it, uiState.conversation?.title.orEmpty(), true) } },
+                onVoiceCall = { uiState.directPeerId?.let { onStartCall(it, uiState.conversation?.title.orEmpty(), false) } },
+                onMenu = { uiState.directPeerId?.let(onNavigateToProfile) },
             )
         },
         bottomBar = {
@@ -402,48 +404,66 @@ fun ChatDetailScreen(
                     items = uiState.messages.reversed(),
                     key = { it.id },
                 ) { message ->
-                    when {
-                        message.contentType == "system" -> SystemNote(message.text)
-
-                        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { viewOnceOpen = message })
-
-                        message.contentType == "image" ->
-                            ImageMessageBubble(
-                                message = message,
-                                openAttachment = viewModel::openAttachment,
-                            )
-
-                        message.contentType == "voice" && message.attachment != null ->
-                            VoiceMessageBubble(
-                                message = message,
-                                openAttachment = viewModel::openAttachment,
-                            )
-
-                        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
-
-                        message.attachment != null ->
-                            MessageBubble(
-                                message = message,
-                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                actions = actions,
-                                onClick = {
-                                    scope.launch {
-                                        val file = viewModel.openAttachment(message) ?: return@launch
-                                        presentAttachment(context, file, message.attachment.mimeType)
-                                    }
-                                },
-                            )
-
-                        else ->
-                            MessageBubble(
-                                message = message,
-                                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                actions = actions,
-                            )
-                    }
+                    MessageRow(
+                        message = message,
+                        viewModel = viewModel,
+                        actions = actions,
+                        onOpenViewOnce = { viewOnceOpen = it },
+                    )
                 }
             }
         }
+    }
+}
+
+/** Picks the bubble for one transcript row. */
+@Composable
+private fun MessageRow(
+    message: MessageUiModel,
+    viewModel: ChatDetailViewModel,
+    actions: MessageActions,
+    onOpenViewOnce: (MessageUiModel) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    when {
+        message.contentType == "system" -> SystemNote(message.text)
+
+        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
+
+        message.contentType == "image" ->
+            ImageMessageBubble(
+                message = message,
+                openAttachment = viewModel::openAttachment,
+            )
+
+        message.contentType == "voice" && message.attachment != null ->
+            VoiceMessageBubble(
+                message = message,
+                openAttachment = viewModel::openAttachment,
+            )
+
+        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
+
+        message.attachment != null ->
+            MessageBubble(
+                message = message,
+                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                actions = actions,
+                onClick = {
+                    scope.launch {
+                        val file = viewModel.openAttachment(message) ?: return@launch
+                        presentAttachment(context, file, message.attachment.mimeType)
+                    }
+                },
+            )
+
+        else ->
+            MessageBubble(
+                message = message,
+                onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
+                actions = actions,
+            )
     }
 }
 
@@ -454,6 +474,7 @@ private fun ChatDetailTopBar(
     title: String,
     statusText: String?,
     onNavigateBack: () -> Unit,
+    canCall: Boolean,
     onVideoCall: () -> Unit,
     onVoiceCall: () -> Unit,
     onMenu: () -> Unit,
@@ -509,13 +530,13 @@ private fun ChatDetailTopBar(
             }
         },
         actions = {
-            IconButton(onClick = onVideoCall) {
+            IconButton(onClick = onVideoCall, enabled = canCall) {
                 Icon(
                     imageVector = Icons.Filled.Videocam,
                     contentDescription = "Video call",
                 )
             }
-            IconButton(onClick = onVoiceCall) {
+            IconButton(onClick = onVoiceCall, enabled = canCall) {
                 Icon(
                     imageVector = Icons.Filled.Call,
                     contentDescription = "Voice call",
