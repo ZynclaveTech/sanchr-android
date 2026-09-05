@@ -1,5 +1,6 @@
 package com.sanchr.core.crypto.profile
 
+import com.sanchr.core.crypto.Hkdf
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -101,25 +102,7 @@ object ProfileCrypto {
         salt: ByteArray,
         info: ByteArray,
         length: Int,
-    ): ByteArray {
-        require(length in 1..(255 * HASH_LEN))
-        // RFC 5869: an absent salt is HashLen zero bytes. JCE refuses an empty
-        // HMAC key outright, so normalise here rather than at each caller —
-        // this is the spelling CryptoKit's salt-less derive resolves to.
-        val prk = hmac(if (salt.isEmpty()) ByteArray(HASH_LEN) else salt, ikm)
-        val out = ByteArray(length)
-        var previous = ByteArray(0)
-        var filled = 0
-        var counter = 1
-        while (filled < length) {
-            previous = hmac(prk, previous + info + byteArrayOf(counter.toByte()))
-            val n = minOf(previous.size, length - filled)
-            System.arraycopy(previous, 0, out, filled, n)
-            filled += n
-            counter++
-        }
-        return out
-    }
+    ): ByteArray = Hkdf.sha256(ikm, salt, info, length)
 
     private fun hmac(
         key: ByteArray,

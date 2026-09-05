@@ -1,5 +1,10 @@
 package com.sanchr.feature.vault
 
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,16 +26,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,10 +51,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,7 +69,11 @@ import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
-import com.sanchr.proto.vault.VaultItem
+import com.sanchr.core.model.VaultItem
+import com.sanchr.core.model.VaultItemType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +84,7 @@ fun VaultScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val pickFile = rememberVaultFilePicker(onPicked = viewModel::addToVault)
 
     // Pagination: load more when near end
     val shouldLoadMore by remember {
@@ -108,7 +117,7 @@ fun VaultScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { /* open add bottom sheet */ },
+                onClick = { pickFile.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
                 Row(
@@ -199,7 +208,6 @@ fun VaultScreen(
                         if (uiState.isUploading) {
                             item(key = "upload_progress") {
                                 LinearProgressIndicator(
-                                    progress = { uiState.uploadProgress },
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
@@ -216,8 +224,7 @@ fun VaultScreen(
                         ) { item ->
                             VaultItemCard(
                                 item = item,
-                                onSave = { /* save action */ },
-                                onShare = { viewModel.shareItem(item.id, emptyList()) },
+                                onDelete = { viewModel.deleteItem(item.id) },
                                 modifier =
                                     Modifier.padding(
                                         horizontal = SanchrTheme.spacing.default,
@@ -367,13 +374,11 @@ private fun FilterChipsRow(
 @Composable
 private fun VaultItemCard(
     item: VaultItem,
-    onSave: () -> Unit,
-    onShare: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SanchrCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Thumbnail area
             Box(
                 modifier =
                     Modifier
@@ -381,10 +386,12 @@ private fun VaultItemCard(
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
             ) {
-                if (item.thumbnailUrl.isNotEmpty()) {
+                val thumbnail = item.thumbnailJpeg
+                if (thumbnail != null) {
+                    // Decrypted on this device from the metadata envelope; never a server URL.
                     AsyncImage(
-                        model = item.thumbnailUrl,
-                        contentDescription = item.title,
+                        model = thumbnail,
+                        contentDescription = item.name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                     )
@@ -396,28 +403,19 @@ private fun VaultItemCard(
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
                     ) {
-                        val icon =
-                            when {
-                                item.category.equals("photo", ignoreCase = true) -> Icons.Filled.Image
-                                item.category.equals("video", ignoreCase = true) -> Icons.Filled.Videocam
-                                else -> Icons.Filled.Description
-                            }
                         Icon(
-                            imageVector = icon,
+                            imageVector =
+                                when (item.type) {
+                                    VaultItemType.PHOTO -> Icons.Filled.Image
+                                    VaultItemType.VIDEO -> Icons.Filled.Videocam
+                                    else -> Icons.Filled.Description
+                                },
                             contentDescription = null,
                             modifier = Modifier.size(48.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-
-                // Type badge (top-left)
-                val typeBadge =
-                    when {
-                        item.category.equals("photo", ignoreCase = true) -> "Photo"
-                        item.category.equals("video", ignoreCase = true) -> "Video"
-                        else -> "File"
-                    }
                 Box(
                     modifier =
                         Modifier
@@ -429,95 +427,32 @@ private fun VaultItemCard(
                             ).padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Text(
-                        text = typeBadge,
+                        text =
+                            when (item.type) {
+                                VaultItemType.PHOTO -> "Photo"
+                                VaultItemType.VIDEO -> "Video"
+                                VaultItemType.AUDIO -> "Audio"
+                                VaultItemType.NOTE -> "Note"
+                                VaultItemType.DOCUMENT -> "File"
+                            },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
-
-                // Timer badge (top-right) -- placeholder
-                Box(
+                Text(
+                    text = formatFileSize(item.sizeBytes),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier =
                         Modifier
-                            .align(Alignment.TopEnd)
+                            .align(Alignment.BottomEnd)
                             .padding(SanchrTheme.spacing.sm)
                             .background(
-                                SanchrWarning.copy(alpha = 0.9f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                                 SanchrShapeTokens.CornerSmall,
-                            ).padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Timer,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "72h",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                }
-
-                // Play icon overlay for video
-                if (item.category.equals("video", ignoreCase = true)) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayCircle,
-                        contentDescription = "Play video",
-                        modifier =
-                            Modifier
-                                .size(48.dp)
-                                .align(Alignment.Center),
-                        tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
-                    )
-
-                    // Duration badge (bottom-right)
-                    Box(
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(SanchrTheme.spacing.sm)
-                                .background(
-                                    MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f),
-                                    SanchrShapeTokens.CornerSmall,
-                                ).padding(horizontal = 6.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = formatDuration(item.sizeBytes),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                }
-
-                // File: type icon + size for non-media
-                if (item.category.equals("file", ignoreCase = true)) {
-                    Column(
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(SanchrTheme.spacing.sm),
-                        horizontalAlignment = Alignment.End,
-                    ) {
-                        Text(
-                            text = formatFileSize(item.sizeBytes),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier =
-                                Modifier
-                                    .background(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                                        SanchrShapeTokens.CornerSmall,
-                                    ).padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                }
+                            ).padding(horizontal = 6.dp, vertical = 2.dp),
+                )
             }
-
-            // Info section
             Column(
                 modifier =
                     Modifier
@@ -525,57 +460,31 @@ private fun VaultItemCard(
                         .padding(SanchrTheme.spacing.md),
             ) {
                 Text(
-                    text = item.title,
+                    text = item.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
-
-                // Sender info row (placeholder - shared_with)
-                if (item.sharedWith.isNotEmpty()) {
-                    Text(
-                        text = "Shared with ${item.sharedWith.size} people",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                // Expires in text
                 Text(
-                    text = "Expires in 72h",
+                    text = item.expiresAt?.let { "Expires ${formatExpiry(it.toEpochMilliseconds())}" } ?: "Encrypted on this device",
                     style = MaterialTheme.typography.labelSmall,
-                    color = SanchrWarning,
+                    color = if (item.expiresAt != null) SanchrWarning else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
-
-                // Action icons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     IconButton(
-                        onClick = onSave,
+                        onClick = onDelete,
                         modifier = Modifier.size(36.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.Save,
-                            contentDescription = "Save",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = onShare,
-                        modifier = Modifier.size(36.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = "Share",
-                            tint = MaterialTheme.colorScheme.primary,
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -644,10 +553,36 @@ private fun formatFileSize(bytes: Long): String =
         else -> "${bytes / (1024 * 1024 * 1024)} GB"
     }
 
-private fun formatDuration(sizeBytes: Long): String {
-    // Placeholder: in a real app, duration would be a separate field
-    val seconds = (sizeBytes / 1024).coerceAtLeast(1)
-    val minutes = seconds / 60
-    val secs = seconds % 60
-    return "%d:%02d".format(minutes, secs)
+private fun formatExpiry(epochMillis: Long): String {
+    val hours = ((epochMillis - System.currentTimeMillis()) / (60L * 60 * 1000)).coerceAtLeast(0)
+    return if (hours >= 48) "in ${hours / 24}d" else "in ${hours}h"
+}
+
+/**
+ * The system document picker (no storage permission; the app sees only the
+ * chosen file). Reads bytes, name and type off the main thread and builds a
+ * preview for images before handing everything to [onPicked].
+ */
+@Composable
+private fun rememberVaultFilePicker(onPicked: (PickedFile) -> Unit): ManagedActivityResultLauncher<Array<String>, Uri?> {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val picked =
+                withContext(Dispatchers.IO) {
+                    val resolver = context.contentResolver
+                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+                    val mime = resolver.getType(uri) ?: "application/octet-stream"
+                    val name =
+                        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                            if (c.moveToFirst()) c.getString(0) else null
+                        } ?: uri.lastPathSegment ?: "file"
+                    val thumbnail = if (mime.startsWith("image/")) VaultThumbnails.forImage(bytes) else null
+                    PickedFile(name = name, mimeType = mime, bytes = bytes, thumbnailJpeg = thumbnail)
+                }
+            if (picked != null) onPicked(picked)
+        }
+    }
 }

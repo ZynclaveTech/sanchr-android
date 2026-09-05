@@ -9,6 +9,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
+import com.sanchr.core.database.dao.AccessKeyDao
 import com.sanchr.core.database.dao.AccountDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
@@ -21,6 +22,7 @@ import com.sanchr.core.database.dao.SignalIdentityDao
 import com.sanchr.core.database.dao.SignalPreKeyDao
 import com.sanchr.core.database.dao.SignalSessionDao
 import com.sanchr.core.database.dao.SignalSignedPreKeyDao
+import com.sanchr.core.database.entity.AccessKeyEntity
 import com.sanchr.core.database.entity.AccountEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
@@ -55,8 +57,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         EnvelopeQueueEntity::class,
         QuarantinedEnvelopeEntity::class,
         ContactProfileEntity::class,
+        AccessKeyEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -84,6 +87,8 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun quarantinedEnvelopeDao(): QuarantinedEnvelopeDao
 
     abstract fun contactProfileDao(): ContactProfileDao
+
+    abstract fun accessKeyDao(): AccessKeyDao
 }
 
 /**
@@ -272,6 +277,25 @@ object DatabaseModule {
             }
         }
 
+    // Access keys: per-item AccessK for vault items (and later, media
+    // attachments), kept only on the device that derived them. iOS keeps
+    // the same table (`AccessKeyEntry`).
+    internal val migration7To8 =
+        object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `access_keys` (" +
+                        "`media_id` TEXT NOT NULL, " +
+                        "`access_key` BLOB NOT NULL, " +
+                        "`conversation_id` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`created_at` INTEGER NOT NULL, " +
+                        "`last_accessed_at` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`media_id`))",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -295,7 +319,7 @@ object DatabaseModule {
                     SanchrDatabase::class.java,
                     "sanchr-database",
                 ).openHelperFactory(SupportOpenHelperFactory(passphrase.copyOf()))
-                .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7)
+                .addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7, migration7To8)
                 .build()
         }
     }
@@ -335,4 +359,7 @@ object DatabaseModule {
 
     @Provides
     fun provideContactProfileDao(database: SanchrDatabase): ContactProfileDao = database.contactProfileDao()
+
+    @Provides
+    fun provideAccessKeyDao(database: SanchrDatabase): AccessKeyDao = database.accessKeyDao()
 }

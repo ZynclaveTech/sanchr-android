@@ -56,4 +56,17 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_7_to_8_creates_access_keys() {
+        helper.createDatabase("migration-test-8", 7).close()
+        helper.runMigrationsAndValidate("migration-test-8", 8, true, DatabaseModule.migration7To8).use { db ->
+            db.query("PRAGMA table_info(`access_keys`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(columns == listOf("media_id", "access_key", "conversation_id", "kind", "created_at", "last_accessed_at")) {
+                    "unexpected access_keys columns: $columns"
+                }
+            }
+        }
+    }
 }

@@ -18,6 +18,9 @@ interface DeviceSecretProvider {
 
     fun mediaWrapKey(): ByteArray
 
+    /** IKM for per-item vault keys (`VaultKeyDerivation`); iOS `mediaAccessSecret()`. Device-local by design. */
+    fun mediaAccessSecret(): ByteArray
+
     fun clearDeviceSecrets()
 }
 
@@ -33,6 +36,7 @@ class AndroidDeviceSecretProvider
             val SQL_CIPHER_INFO = "sanchr.device.sqlcipher.v1".toByteArray()
             val HMAC_INFO = "sanchr.device.local-hmac.v1".toByteArray()
             val MEDIA_WRAP_INFO = "sanchr.device.media-wrap.v1".toByteArray()
+            val MEDIA_ACCESS_INFO = "sanchr.device.media-access.v1".toByteArray()
         }
 
         override fun getDeviceMasterSecret(): ByteArray? = sessionManager.getDeviceMasterSecret()
@@ -51,6 +55,8 @@ class AndroidDeviceSecretProvider
         override fun localHmacKey(): ByteArray = deriveKey(HMAC_INFO)
 
         override fun mediaWrapKey(): ByteArray = deriveKey(MEDIA_WRAP_INFO)
+
+        override fun mediaAccessSecret(): ByteArray = deriveKey(MEDIA_ACCESS_INFO)
 
         override fun clearDeviceSecrets() {
             sessionManager.clearDeviceSecrets()
