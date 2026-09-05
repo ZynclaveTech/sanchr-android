@@ -136,4 +136,28 @@ class VaultViewModelTest {
             )
             collector.cancel()
         }
+
+    @Test
+    fun `opening an item emits its decrypted bytes, and a failure an error`() =
+        runTest(dispatcher) {
+            val a = item("a", VaultItemType.DOCUMENT)
+            coEvery { repo.listItems(any(), "") } returns VaultPage(listOf(a), "")
+            coEvery { repo.download(a) } returns byteArrayOf(7, 7)
+            val vm = VaultViewModel(repo)
+            val events = mutableListOf<VaultEvent>()
+            val eventJob = launch { vm.events.collect { events += it } }
+            advanceUntilIdle()
+
+            vm.openItem(a)
+            advanceUntilIdle()
+            val opened = events.single() as VaultEvent.Opened
+            assertEquals("a", opened.item.id)
+            assertTrue(byteArrayOf(7, 7).contentEquals(opened.bytes))
+
+            coEvery { repo.download(a) } throws IllegalStateException("sealed")
+            vm.openItem(a)
+            advanceUntilIdle()
+            assertEquals(VaultEvent.Error("Could not open item"), events.last())
+            eventJob.cancel()
+        }
 }

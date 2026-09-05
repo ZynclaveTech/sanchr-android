@@ -23,6 +23,13 @@ interface BlobStore {
         contentType: String,
         headers: Map<String, String> = emptyMap(),
     )
+
+    /**
+     * GETs a presigned object-storage URL into memory.
+     * @throws BlobStoreException on a non-2xx status.
+     * @throws IOException on transport failure.
+     */
+    suspend fun get(url: String): ByteArray
 }
 
 class BlobStoreException(
@@ -67,6 +74,29 @@ class OkHttpBlobStore
                 }
             }
         }
+
+        override suspend fun get(url: String): ByteArray =
+            withContext(Dispatchers.IO) {
+                client
+                    .newCall(
+                        Request
+                            .Builder()
+                            .url(url)
+                            .get()
+                            .build(),
+                    ).execute()
+                    .use { response ->
+                        if (!response.isSuccessful) {
+                            val body =
+                                response.body
+                                    ?.string()
+                                    .orEmpty()
+                                    .take(MAX_ERROR_BODY)
+                            throw BlobStoreException(response.code, "GET failed: HTTP ${response.code} $body")
+                        }
+                        response.body?.bytes() ?: ByteArray(0)
+                    }
+            }
 
         private companion object {
             const val MAX_ERROR_BODY = 512

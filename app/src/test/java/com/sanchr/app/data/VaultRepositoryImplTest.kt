@@ -61,7 +61,12 @@ class VaultRepositoryImplTest {
             return PresignedUrlResponse("https://bucket/put?sig=1", "media-1", 900, "")
         }
 
-        override suspend fun getDownloadUrl(request: GetDownloadUrlRequest): PresignedUrlResponse = error("not used")
+        var downloadRequest: GetDownloadUrlRequest? = null
+
+        override suspend fun getDownloadUrl(request: GetDownloadUrlRequest): PresignedUrlResponse {
+            downloadRequest = request
+            return PresignedUrlResponse("https://bucket/get?sig=2", request.mediaId, 900, "")
+        }
 
         override suspend fun confirmUpload(request: ConfirmUploadRequest): ConfirmUploadResponse {
             confirmed = request
@@ -72,6 +77,13 @@ class VaultRepositoryImplTest {
     private class RecordingBlobStore : BlobStore {
         var bytes: ByteArray? = null
         var url: String? = null
+        var served: ByteArray = ByteArray(0)
+        var gotUrl: String? = null
+
+        override suspend fun get(url: String): ByteArray {
+            gotUrl = url
+            return served
+        }
 
         override suspend fun put(
             url: String,
@@ -172,4 +184,40 @@ class VaultRepositoryImplTest {
         assertTrue(out.toByteArray().size <= 4096)
         assertEquals("short.jpg", VaultRepositoryImpl.truncateFileName("short.jpg", 4096))
     }
+
+    @Test
+    fun `download fetches the object by media id and decrypts it under the stored key`() =
+        runTest {
+            val item = repo.createItem("secret.txt", plaintext, "text/plain")
+            blobStore.served = requireNotNull(blobStore.bytes) // what was uploaded is what the store serves back
+
+            val out = repo.download(item)
+
+            assertEquals(item.mediaId, mediaClient.downloadRequest?.mediaId)
+            assertEquals("https://bucket/get?sig=2", blobStore.gotUrl)
+            assertTrue(plaintext.contentEquals(out))
+        }
+
+    @Test
+    fun `download of a sealed item, or tampered bytes, fails as a VaultException`() =
+        runTest {
+            val item = repo.createItem("secret.txt", plaintext, "text/plain")
+            blobStore.served = requireNotNull(blobStore.bytes).copyOf().also { it[it.lastIndex] = (it[it.lastIndex] + 1).toByte() }
+            try {
+                repo.download(item)
+                error("expected failure")
+            } catch (e: VaultException) {
+                assertTrue(e.message!!.contains("decrypt"))
+            }
+
+            storedKeys.remove(item.id)
+            try {
+                repo.download(item)
+                error("expected failure")
+            } catch (e: VaultException) {
+                assertTrue(e.message!!.contains("sealed"))
+            }
+            // No fetch happens for a sealed item.
+            assertEquals("https://bucket/get?sig=2", blobStore.gotUrl)
+        }
 }

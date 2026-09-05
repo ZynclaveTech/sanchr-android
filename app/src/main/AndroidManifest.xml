@@ -100,6 +100,17 @@
             WorkManager initialization via HiltWorkerFactory, the default
             WorkManagerInitializer is removed to prevent double-init.
         -->
+        <!-- Read-only, per-URI grants for decrypted vault items handed to a viewer. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
