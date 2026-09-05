@@ -61,7 +61,11 @@ class AttachmentUploader
                 )
         }
 
-        suspend fun upload(prepared: Prepared): MediaAttachment {
+        suspend fun upload(
+            prepared: Prepared,
+            /** Fraction of the encrypted body written, 0..1. */
+            onProgress: ((Float) -> Unit)? = null,
+        ): MediaAttachment {
             require(prepared.bytes.isNotEmpty()) { "attachment is empty" }
             val key = MediaEncryptor.generateMediaKey()
             val ciphertext = MediaEncryptor.sealAny(prepared.bytes, key)
@@ -75,7 +79,9 @@ class AttachmentUploader
                         purpose = MediaPurpose.ATTACHMENT,
                     ),
                 )
-            blobStore.put(presigned.url, ciphertext, contentType)
+            blobStore.put(presigned.url, ciphertext, contentType) { sent, total ->
+                if (onProgress != null && total > 0) onProgress((sent.toFloat() / total).coerceIn(0f, 1f))
+            }
             mediaClient.confirmUpload(ConfirmUploadRequest(mediaId = presigned.mediaId, fileSize = ciphertext.size.toLong()))
             val nonce = ciphertext.copyOfRange(0, NONCE_SIZE)
             return MediaAttachment(

@@ -28,6 +28,8 @@ data class ChatDetailUiState(
     val search: ChatSearchState? = null,
     /** Whether text bubbles fetch a card for their first link (privacy setting). */
     val linkPreviewsEnabled: Boolean = true,
+    /** Fraction of the attachment upload in flight, 0..1; null when nothing is uploading. */
+    val uploadProgress: Float? = null,
     /** Every conversation, for the forward picker. */
     val forwardTargets: List<Conversation> = emptyList(),
     /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */

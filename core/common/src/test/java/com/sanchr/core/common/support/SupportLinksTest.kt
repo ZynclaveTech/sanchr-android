@@ -1,4 +1,4 @@
-package com.sanchr.feature.settings
+package com.sanchr.core.common.support
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

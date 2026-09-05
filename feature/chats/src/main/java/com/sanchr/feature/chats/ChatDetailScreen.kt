@@ -79,6 +79,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -310,6 +311,14 @@ fun ChatDetailScreen(
                     viewOnceOpen = viewOnceOpen,
                     onViewOnceClosed = { viewOnceOpen = null },
                 )
+                uiState.uploadProgress?.let { fraction ->
+                    // Bytes actually written, so a stalled upload stops rather than sliding to full.
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = SanchrIndigo500,
+                    )
+                }
                 uiState.replyingTo?.let { replying ->
                     ReplyBanner(
                         authorName =

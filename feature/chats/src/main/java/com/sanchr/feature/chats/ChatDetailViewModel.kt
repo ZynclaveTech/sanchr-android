@@ -321,13 +321,22 @@ class ChatDetailViewModel
         fun sendAttachment(prepared: AttachmentUploader.Prepared) {
             if (_uiState.value.isSending) return
             val replyToId = takePendingReply()
-            _uiState.update { it.copy(isSending = true) }
+            _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
             viewModelScope.launch {
-                when (val result = sendAttachmentUseCase(conversationId, prepared, replyToId)) {
-                    is Result.Success -> _uiState.update { it.copy(isSending = false) }
+                val result =
+                    sendAttachmentUseCase(conversationId, prepared, replyToId) { fraction ->
+                        _uiState.update { it.copy(uploadProgress = fraction) }
+                    }
+                when (result) {
+                    is Result.Success -> _uiState.update { it.copy(isSending = false, uploadProgress = null) }
                     is Result.Error ->
                         _uiState.update {
-                            it.copy(isSending = false, error = result.exception.message ?: "Failed to send attachment")
+                            it.copy(
+                                isSending = false,
+                                uploadProgress = null,
+                                error =
+                                    result.exception.message ?: "Failed to send attachment",
+                            )
                         }
                     is Result.Loading -> Unit
                 }

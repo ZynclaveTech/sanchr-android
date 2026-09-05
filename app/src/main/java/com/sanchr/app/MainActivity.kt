@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,18 +12,28 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkManager
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
+import com.sanchr.app.lock.AppLockGate
 import com.sanchr.app.navigation.PendingDestination
+import com.sanchr.core.common.lock.AppLockPolicy
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
@@ -40,7 +49,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     @Inject
     lateinit var notificationHandler: NotificationHandler
 
@@ -88,10 +97,59 @@ class MainActivity : ComponentActivity() {
             val themeMode by userPreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
             SanchrTheme(darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme())) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    SanchrNavHost(
-                        pendingDestination = bootstrapViewModel.pendingDestination,
-                        onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
-                    )
+                    val screenLockEnabled by userPreferences.screenLockEnabled.collectAsStateWithLifecycle(initialValue = false)
+                    val biometricEnabled by userPreferences.biometricEnabled.collectAsStateWithLifecycle(initialValue = false)
+                    val timeoutSeconds by userPreferences.screenLockTimeoutSeconds.collectAsStateWithLifecycle(initialValue = 0)
+                    val configured = AppLockPolicy.isConfigured(screenLockEnabled, biometricEnabled)
+
+                    // Cold launch with the lock on starts locked; the preferences
+                    // arrive a frame later, so arm it as soon as they say so.
+                    var locked by rememberSaveable { mutableStateOf(false) }
+                    var everConfigured by rememberSaveable { mutableStateOf(false) }
+                    var backgroundedAt by rememberSaveable { mutableStateOf<Long?>(null) }
+                    LaunchedEffect(configured) {
+                        if (configured && !everConfigured) {
+                            everConfigured = true
+                            locked = true
+                        }
+                        if (!configured) locked = false
+                    }
+
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    DisposableEffect(lifecycleOwner, configured, timeoutSeconds) {
+                        val observer =
+                            LifecycleEventObserver { _, event ->
+                                when (event) {
+                                    Lifecycle.Event.ON_STOP -> backgroundedAt = System.currentTimeMillis()
+                                    Lifecycle.Event.ON_START -> {
+                                        if (AppLockPolicy.shouldLockOnResume(
+                                                configured,
+                                                backgroundedAt,
+                                                System.currentTimeMillis(),
+                                                timeoutSeconds,
+                                            )
+                                        ) {
+                                            locked = true
+                                        }
+                                        backgroundedAt = null
+                                    }
+                                    else -> Unit
+                                }
+                            }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                    }
+
+                    if (locked) {
+                        // The nav host is not composed while locked, so no chat is
+                        // behind this and none reaches the recents thumbnail.
+                        AppLockGate(onUnlocked = { locked = false })
+                    } else {
+                        SanchrNavHost(
+                            pendingDestination = bootstrapViewModel.pendingDestination,
+                            onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
+                        )
+                    }
                 }
             }
         }

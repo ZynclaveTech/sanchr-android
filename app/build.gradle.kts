@@ -127,6 +127,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.androidx.biometric)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // Core modules

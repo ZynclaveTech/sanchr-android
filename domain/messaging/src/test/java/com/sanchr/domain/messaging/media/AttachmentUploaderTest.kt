@@ -43,8 +43,11 @@ class AttachmentUploaderTest {
             bytes: ByteArray,
             contentType: String,
             headers: Map<String, String>,
+            onProgress: ((Long, Long) -> Unit)?,
         ) {
             put = bytes
+            onProgress?.invoke(bytes.size.toLong() / 2, bytes.size.toLong())
+            onProgress?.invoke(bytes.size.toLong(), bytes.size.toLong())
         }
 
         override suspend fun get(url: String): ByteArray = error("not used")
@@ -78,6 +81,20 @@ class AttachmentUploaderTest {
             assertEquals(32, key.size)
             assertContentEquals(uploaded.copyOfRange(0, 12), Base64.getDecoder().decode(attachment.encryptionIV))
             assertTrue(plaintext.contentEquals(MediaEncryptor.openAny(uploaded, key)))
+        }
+
+    @Test
+    fun `reports upload progress as a fraction that ends at one`() =
+        runTest {
+            val seen = mutableListOf<Float>()
+
+            AttachmentUploader(Client(), Store()).upload(
+                AttachmentUploader.Prepared("photo bytes".toByteArray(), "image/jpeg", "a.jpg"),
+            ) { seen += it }
+
+            assertEquals(2, seen.size)
+            assertTrue(seen.first() > 0f && seen.first() < 1f)
+            assertEquals(1f, seen.last())
         }
 
     @Test

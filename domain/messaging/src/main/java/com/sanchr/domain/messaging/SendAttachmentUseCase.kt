@@ -28,10 +28,12 @@ class SendAttachmentUseCase
             prepared: AttachmentUploader.Prepared,
             /** The message this attachment answers, or null; travels in the sealed payload as for text. */
             replyToId: String? = null,
+            /** Fraction of the upload written, 0..1, for the composer's progress. */
+            onProgress: ((Float) -> Unit)? = null,
         ): Result<Message> =
             withContext(dispatcherProvider.io) {
                 runCatchingResult {
-                    val attachment = uploader.upload(prepared)
+                    val attachment = uploader.upload(prepared, onProgress)
                     val kind = MediaKind.forMimeType(attachment.mimeType)
                     val body = MediaContentEnvelope.encode(kind, listOf(attachment))
                     when (val sent = sendMessageUseCase(conversationId, body, contentType = kind.wire, replyToId = replyToId)) {

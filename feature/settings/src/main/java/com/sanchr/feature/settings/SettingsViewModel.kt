@@ -100,6 +100,7 @@ class SettingsViewModel
         private val _isLoadingSettings = MutableStateFlow(true)
         private val _screenLockEnabled = MutableStateFlow(false)
         private val _screenLockTimeout = MutableStateFlow("immediately")
+
         private val _enterSendsMessage = MutableStateFlow(false)
         private val _mediaAutoSave = MutableStateFlow(true)
         private val _bubbleStyle = MutableStateFlow("default")
@@ -199,6 +200,28 @@ class SettingsViewModel
             loadStorageUsage()
             observeDebouncedSync()
             restoreDisappearingDefault()
+            restoreAppLock()
+        }
+
+        /**
+         * The App Lock toggles were view-model state only, so a restart forgot
+         * them while the gate in MainActivity kept reading the stored value.
+         */
+        private fun restoreAppLock() {
+            viewModelScope.launch {
+                try {
+                    _screenLockEnabled.value = userPreferences.screenLockEnabled.first()
+                    val seconds = userPreferences.screenLockTimeoutSeconds.first()
+                    _screenLockTimeout.value =
+                        SCREEN_LOCK_TIMEOUTS.entries.firstOrNull { it.value == seconds }?.key ?: "immediately"
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Same reasoning as restoreDisappearingDefault: a store read
+                    // that fails or completes empty must not kill the process.
+                    // The gate reads the store itself, so only the switch shows stale.
+                }
+            }
         }
 
         /**
@@ -442,10 +465,12 @@ class SettingsViewModel
 
         fun setScreenLockEnabled(enabled: Boolean) {
             _screenLockEnabled.value = enabled
+            viewModelScope.launch { userPreferences.setScreenLockEnabled(enabled) }
         }
 
         fun setScreenLockTimeout(timeout: String) {
             _screenLockTimeout.value = timeout
+            viewModelScope.launch { userPreferences.setScreenLockTimeoutSeconds(SCREEN_LOCK_TIMEOUTS[timeout] ?: 0) }
         }
 
         /**
@@ -785,3 +810,12 @@ private data class BasicExtrasGroup(
     val lowDataMode: Boolean,
     val disappearingMessagesDefault: String,
 )
+
+/** The Security screen's timeout values, and the grace period each means in seconds. */
+internal val SCREEN_LOCK_TIMEOUTS: Map<String, Int> =
+    mapOf(
+        "immediately" to 0,
+        "1m" to 60,
+        "5m" to 300,
+        "30m" to 1_800,
+    )
