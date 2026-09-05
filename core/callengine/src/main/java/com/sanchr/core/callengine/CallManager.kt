@@ -186,6 +186,26 @@ class CallManager internal constructor(
     private val _callType = MutableStateFlow("voice")
     val callType: StateFlow<String> = _callType.asStateFlow()
 
+    private val videoUpgrade =
+        VideoUpgrade(
+            webRTCClient = webRTCClient,
+            platform = platform,
+            signalingCrypto = signalingCrypto,
+            scope = scope,
+            send = { callId, payload -> stream.send(callId, payload) },
+            peer = { peerId?.let { it to peerDevice } },
+            isActiveCall = { callId -> (_callState.value as? CallState.Active)?.callId == callId },
+            callType = _callType,
+            isVideoEnabled = _isVideoEnabled,
+            isSpeakerOn = _isSpeakerOn,
+        )
+
+    /** See [VideoUpgrade] for the mid-call voice→video handshake these expose. */
+    val peerVideoEnabled: StateFlow<Boolean> get() = videoUpgrade.peerVideoEnabled
+    val hasRemoteVideoTrack: StateFlow<Boolean> get() = videoUpgrade.hasRemoteVideoTrack
+    val incomingVideoUpgradeRequest: StateFlow<Boolean> get() = videoUpgrade.incomingRequest
+    val outgoingVideoUpgradePending: StateFlow<Boolean> get() = videoUpgrade.outgoingPending
+
     private val _callEvents = MutableSharedFlow<CallManagerEvent>(extraBufferCapacity = 16)
     val callEvents: SharedFlow<CallManagerEvent> = _callEvents.asSharedFlow()
 
@@ -467,16 +487,31 @@ class CallManager internal constructor(
         _isSpeakerOn.value = webRTCClient.toggleSpeaker()
     }
 
+    /** In a video call, the camera toggle; in a voice call, a request to upgrade to video (as iOS). */
     fun toggleVideo() {
+        if (_callType.value != "video") {
+            requestVideoUpgrade()
+            return
+        }
         val enabled = webRTCClient.toggleVideo()
         _isVideoEnabled.value = enabled
-        if (_callType.value == "video") {
-            currentCallId()?.let { stream.send(it, CallSignalPayload.Control(if (enabled) "video_on" else "video_off")) }
-        }
+        currentCallId()?.let { stream.send(it, CallSignalPayload.Control(if (enabled) "video_on" else "video_off")) }
     }
 
     fun switchCamera() {
         webRTCClient.switchCamera()
+    }
+
+    fun requestVideoUpgrade() {
+        currentCallId()?.let(videoUpgrade::request)
+    }
+
+    fun acceptVideoUpgrade() {
+        currentCallId()?.let(videoUpgrade::accept)
+    }
+
+    fun declineVideoUpgrade() {
+        currentCallId()?.let(videoUpgrade::decline)
     }
 
     // ------------------------------------------------------------------
@@ -516,18 +551,19 @@ class CallManager internal constructor(
                 Log.e(TAG, "Rejecting SDP answer for $callId: ${e.message}")
                 return
             }
+        peerDevice = CallSignalingCrypto.resolveDevice(fromDevice)
         if (payload.type == "offer") {
-            // A mid-call renegotiation (iOS video upgrade). Not supported here yet.
-            Log.i(TAG, "Ignoring mid-call SDP offer for $callId")
+            // A mid-call renegotiation: the peer's video upgrade offer.
+            videoUpgrade.onRemoteOffer(callId, payload.sdp)
             return
         }
-        peerDevice = CallSignalingCrypto.resolveDevice(fromDevice)
         try {
             webRTCClient.setRemoteDescription(SessionDescription(SessionDescription.Type.ANSWER, payload.sdp))
         } catch (e: WebRTCException) {
             Log.e(TAG, "Failed to apply SDP answer", e)
             return
         }
+        videoUpgrade.onRemoteAnswerApplied()
         Log.i(TAG, "E2EE answer verified for $callId (fingerprint ${payload.dtlsFingerprint})")
         val state = _callState.value
         if (state is CallState.Ringing) onCallConnected(callId, state.recipientId, state.recipientName, state.isVideo)
@@ -556,10 +592,8 @@ class CallManager internal constructor(
             "ended", "cancelled" -> handleCallEnded(callId, CallState.EndReason.NORMAL)
             "missed" -> handleCallEnded(callId, CallState.EndReason.TIMEOUT)
             "failed" -> handleCallEnded(callId, CallState.EndReason.FAILED)
-            "ping", "pong", "muted", "unmuted", "battery_low", "battery_ok",
-            "video_on", "video_off", "video_request", "video_accept", "video_decline", "video_failed",
-            -> Log.d(TAG, "Control '$action' for $callId noted")
-            else -> Log.w(TAG, "Unknown control action '$action' for $callId")
+            "ping", "pong", "muted", "unmuted", "battery_low", "battery_ok" -> Log.d(TAG, "Control '$action' for $callId noted")
+            else -> if (!videoUpgrade.onControl(action, callId)) Log.w(TAG, "Unknown control action '$action' for $callId")
         }
     }
 
@@ -584,7 +618,7 @@ class CallManager internal constructor(
                             }
                         }
                         is WebRTCEvent.ConnectionStateChanged -> handleConnectionStateChange(event.state)
-                        is WebRTCEvent.RemoteVideoTrackReceived -> Unit
+                        is WebRTCEvent.RemoteVideoTrackReceived -> videoUpgrade.onRemoteTrack()
                         is WebRTCEvent.SignalingStateChanged -> Log.d(TAG, "Signaling state: ${event.state}")
                         is WebRTCEvent.IceGatheringComplete -> Log.d(TAG, "ICE gathering complete")
                         is WebRTCEvent.PeerConnectionError -> Log.e(TAG, "PeerConnection error: ${event.message}")
@@ -634,6 +668,7 @@ class CallManager internal constructor(
         if (_callState.value is CallState.Active) return
         cancelTimeout()
         _callState.value = CallState.Active(callId, remoteUserId, remoteUserName, isVideo, System.currentTimeMillis())
+        videoUpgrade.onConnected(isVideo)
         startDurationTimer()
         _callEvents.tryEmit(CallManagerEvent.CallConnected(callId))
     }
@@ -649,6 +684,7 @@ class CallManager internal constructor(
         cancelTimeout()
         webRTCClient.close()
         platform.resetAudioSession()
+        videoUpgrade.onEnded()
         _callState.value = CallState.Ended(callId = callId, reason = reason)
         _callEvents.tryEmit(CallManagerEvent.CallEnded(callId, reason))
         scope.launch {
@@ -683,6 +719,7 @@ class CallManager internal constructor(
         _isVideoEnabled.value = true
         _callDuration.value = 0L
         _callType.value = "voice"
+        videoUpgrade.reset()
     }
 
     private fun startDurationTimer() {

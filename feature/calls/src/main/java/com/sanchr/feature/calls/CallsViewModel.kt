@@ -115,6 +115,18 @@ class CallsViewModel
                     initialValue = "voice",
                 )
 
+        val peerVideoEnabled: StateFlow<Boolean> =
+            callManager.peerVideoEnabled.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+        val hasRemoteVideoTrack: StateFlow<Boolean> =
+            callManager.hasRemoteVideoTrack.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+        val incomingVideoUpgradeRequest: StateFlow<Boolean> =
+            callManager.incomingVideoUpgradeRequest.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+        val outgoingVideoUpgradePending: StateFlow<Boolean> =
+            callManager.outgoingVideoUpgradePending.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
         // -----------------------------------------------------------------------
         // Call history list state
         // -----------------------------------------------------------------------
@@ -246,6 +258,10 @@ class CallsViewModel
         fun toggleVideo() = callManager.toggleVideo()
 
         fun switchCamera() = callManager.switchCamera()
+
+        fun acceptVideoUpgrade() = callManager.acceptVideoUpgrade()
+
+        fun declineVideoUpgrade() = callManager.declineVideoUpgrade()
     }
 
 sealed interface CallsEvent {
