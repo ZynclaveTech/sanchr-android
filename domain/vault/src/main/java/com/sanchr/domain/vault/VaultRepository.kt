@@ -1,28 +1,40 @@
 package com.sanchr.domain.vault
 
 import com.sanchr.core.model.VaultItem
-import kotlinx.coroutines.flow.Flow
+
+/** One page of the vault, already decrypted; sealed items are omitted. */
+data class VaultPage(
+    val items: List<VaultItem>,
+    /** Empty when there is no further page. */
+    val nextCursor: String,
+)
 
 /**
- * Repository interface for encrypted vault storage operations.
+ * The forward-secure vault. Everything descriptive about an item is
+ * encrypted on this device under a per-item key the server never sees;
+ * the implementation owns that key material.
  */
 interface VaultRepository {
-    /** Observes all vault items. */
-    fun observeVaultItems(): Flow<List<VaultItem>>
+    suspend fun listItems(
+        limit: Int = DEFAULT_PAGE_SIZE,
+        cursor: String = "",
+    ): VaultPage
 
-    /** Gets a single vault item by ID. */
-    suspend fun getVaultItem(itemId: String): VaultItem?
-
-    /** Creates a new encrypted vault item. */
+    /**
+     * Encrypts [data] and its metadata, uploads the ciphertext, registers
+     * the item, and keeps the key locally. [thumbnailJpeg] is a small
+     * preview generated on the device (it is encrypted too).
+     */
     suspend fun createItem(
         name: String,
         data: ByteArray,
         mimeType: String,
+        thumbnailJpeg: ByteArray? = null,
     ): VaultItem
 
-    /** Deletes a vault item and its encrypted data. */
     suspend fun deleteItem(itemId: String)
 
-    /** Returns total vault storage used in bytes. */
-    suspend fun getStorageUsed(): Long
+    companion object {
+        const val DEFAULT_PAGE_SIZE = 30
+    }
 }

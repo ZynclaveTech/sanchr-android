@@ -7,10 +7,7 @@ import com.sanchr.core.model.VaultItem
 import javax.inject.Inject
 import kotlinx.coroutines.withContext
 
-/**
- * Creates a new item in the encrypted vault.
- * Encrypts the data with AES-GCM before storing.
- */
+/** Adds an item to the encrypted vault. */
 class CreateVaultItemUseCase
     @Inject
     constructor(
@@ -21,12 +18,13 @@ class CreateVaultItemUseCase
             name: String,
             data: ByteArray,
             mimeType: String,
+            thumbnailJpeg: ByteArray? = null,
         ): Result<VaultItem> =
             withContext(dispatcherProvider.io) {
                 runCatchingResult {
                     require(name.isNotBlank()) { "Vault item name must not be blank" }
                     require(data.isNotEmpty()) { "Vault item data must not be empty" }
-                    vaultRepository.createItem(name, data, mimeType)
+                    vaultRepository.createItem(name, data, mimeType, thumbnailJpeg)
                 }
             }
     }

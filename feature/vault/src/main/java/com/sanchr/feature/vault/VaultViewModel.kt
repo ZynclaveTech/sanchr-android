@@ -3,16 +3,12 @@ package com.sanchr.feature.vault
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sanchr.proto.media.GetUploadUrlRequest
-import com.sanchr.proto.media.MediaPurpose
-import com.sanchr.proto.media.MediaServiceClient
-import com.sanchr.proto.vault.DeleteVaultItemRequest
-import com.sanchr.proto.vault.GetVaultItemsRequest
-import com.sanchr.proto.vault.ShareVaultItemRequest
-import com.sanchr.proto.vault.VaultItem
-import com.sanchr.proto.vault.VaultServiceClient
+import com.sanchr.core.model.VaultItem
+import com.sanchr.core.model.VaultItemType
+import com.sanchr.domain.vault.VaultRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,12 +21,20 @@ import kotlinx.coroutines.launch
 
 enum class VaultFilter(
     val label: String,
-    val category: String,
 ) {
-    ALL("All Media", ""),
-    PHOTOS("Photos", "photo"),
-    VIDEOS("Videos", "video"),
-    FILES("Files", "file"),
+    ALL("All Media"),
+    PHOTOS("Photos"),
+    VIDEOS("Videos"),
+    FILES("Files"),
+    ;
+
+    fun accepts(item: VaultItem): Boolean =
+        when (this) {
+            ALL -> true
+            PHOTOS -> item.type == VaultItemType.PHOTO
+            VIDEOS -> item.type == VaultItemType.VIDEO
+            FILES -> item.type != VaultItemType.PHOTO && item.type != VaultItemType.VIDEO
+        }
 }
 
 data class VaultStats(
@@ -46,21 +50,27 @@ data class VaultUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val isUploading: Boolean = false,
-    val uploadProgress: Float = 0f,
     val errorMessage: String? = null,
     val hasMore: Boolean = false,
+)
+
+/** A file the user picked, read on a background thread by the screen. */
+class PickedFile(
+    val name: String,
+    val mimeType: String,
+    val bytes: ByteArray,
+    /** A ≤ 48 KiB JPEG preview generated on the device, or null. */
+    val thumbnailJpeg: ByteArray?,
 )
 
 @HiltViewModel
 class VaultViewModel
     @Inject
     constructor(
-        private val vaultServiceClient: VaultServiceClient,
-        private val mediaServiceClient: MediaServiceClient,
+        private val vaultRepository: VaultRepository,
     ) : ViewModel() {
         companion object {
             private const val TAG = "VaultViewModel"
-            private const val PAGE_SIZE = 30
         }
 
         private val _allItems = MutableStateFlow<List<VaultItem>>(emptyList())
@@ -68,44 +78,28 @@ class VaultViewModel
         private val _isLoading = MutableStateFlow(true)
         private val _isRefreshing = MutableStateFlow(false)
         private val _isUploading = MutableStateFlow(false)
-        private val _uploadProgress = MutableStateFlow(0f)
         private val _errorMessage = MutableStateFlow<String?>(null)
-        private val _nextPageToken = MutableStateFlow("")
+        private val _nextCursor = MutableStateFlow("")
 
         private val _events = MutableSharedFlow<VaultEvent>()
         val events = _events.asSharedFlow()
 
         val uiState: StateFlow<VaultUiState> =
-            combine(
-                _allItems,
-                _filter,
-                _isLoading,
-                _isRefreshing,
-                _isUploading,
-            ) { items, filter, loading, refreshing, uploading ->
-                val filtered =
-                    when (filter) {
-                        VaultFilter.ALL -> items
-                        else -> items.filter { it.category.equals(filter.category, ignoreCase = true) }
-                    }
-
-                val stats =
-                    VaultStats(
-                        photoCount = items.count { it.category.equals("photo", ignoreCase = true) },
-                        videoCount = items.count { it.category.equals("video", ignoreCase = true) },
-                        fileCount = items.count { it.category.equals("file", ignoreCase = true) },
-                    )
-
+            combine(_allItems, _filter, _isLoading, _isRefreshing, _isUploading) { items, filter, loading, refreshing, uploading ->
                 VaultUiState(
-                    items = filtered,
+                    items = items.filter(filter::accepts),
                     filter = filter,
-                    stats = stats,
+                    stats =
+                        VaultStats(
+                            photoCount = items.count { it.type == VaultItemType.PHOTO },
+                            videoCount = items.count { it.type == VaultItemType.VIDEO },
+                            fileCount = items.count { VaultFilter.FILES.accepts(it) },
+                        ),
                     isLoading = loading,
                     isRefreshing = refreshing,
                     isUploading = uploading,
-                    uploadProgress = _uploadProgress.value,
                     errorMessage = _errorMessage.value,
-                    hasMore = _nextPageToken.value.isNotEmpty(),
+                    hasMore = _nextCursor.value.isNotEmpty(),
                 )
             }.stateIn(
                 scope = viewModelScope,
@@ -114,7 +108,7 @@ class VaultViewModel
             )
 
         init {
-            loadVaultItems()
+            loadPage()
         }
 
         fun setFilter(filter: VaultFilter) {
@@ -123,44 +117,28 @@ class VaultViewModel
 
         fun refresh() {
             _isRefreshing.value = true
-            _nextPageToken.value = ""
-            loadVaultItems()
+            _nextCursor.value = ""
+            loadPage()
         }
 
         fun loadMore() {
-            val token = _nextPageToken.value
-            if (token.isNotEmpty()) {
-                loadVaultItems(pageToken = token)
-            }
+            val cursor = _nextCursor.value
+            if (cursor.isNotEmpty()) loadPage(cursor)
         }
 
-        private fun loadVaultItems(pageToken: String = "") {
+        private fun loadPage(cursor: String = "") {
             viewModelScope.launch {
                 try {
-                    if (pageToken.isEmpty()) {
-                        _isLoading.value = _allItems.value.isEmpty()
-                    }
+                    if (cursor.isEmpty()) _isLoading.value = _allItems.value.isEmpty()
                     _errorMessage.value = null
-
-                    val response =
-                        vaultServiceClient.getVaultItems(
-                            GetVaultItemsRequest(
-                                pageToken = pageToken,
-                                pageSize = PAGE_SIZE,
-                            ),
-                        )
-
-                    if (pageToken.isEmpty()) {
-                        _allItems.value = response.items
-                    } else {
-                        _allItems.update { current -> current + response.items }
-                    }
-                    _nextPageToken.value = response.nextPageToken
+                    val page = vaultRepository.listItems(cursor = cursor)
+                    _allItems.update { current -> if (cursor.isEmpty()) page.items else current + page.items }
+                    _nextCursor.value = page.nextCursor
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to load vault items", e)
-                    if (_allItems.value.isEmpty()) {
-                        _errorMessage.value = e.message ?: "Failed to load vault"
-                    }
+                    if (_allItems.value.isEmpty()) _errorMessage.value = e.message ?: "Failed to load vault"
                 } finally {
                     _isLoading.value = false
                     _isRefreshing.value = false
@@ -168,90 +146,46 @@ class VaultViewModel
             }
         }
 
+        /** Encrypts and uploads [file]; the new item appears at the top on success. */
+        fun addToVault(file: PickedFile) {
+            if (_isUploading.value) return
+            _isUploading.value = true
+            viewModelScope.launch {
+                try {
+                    val item = vaultRepository.createItem(file.name, file.bytes, file.mimeType, file.thumbnailJpeg)
+                    _allItems.update { listOf(item) + it }
+                    _events.emit(VaultEvent.ItemAdded)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to add to vault", e)
+                    _events.emit(VaultEvent.Error("Upload failed"))
+                } finally {
+                    _isUploading.value = false
+                }
+            }
+        }
+
         fun deleteItem(itemId: String) {
             viewModelScope.launch {
                 try {
-                    val response =
-                        vaultServiceClient.deleteVaultItem(
-                            DeleteVaultItemRequest(itemId = itemId),
-                        )
-                    if (response.success) {
-                        _allItems.update { items -> items.filter { it.id != itemId } }
-                        _events.emit(VaultEvent.ItemDeleted)
-                    }
+                    vaultRepository.deleteItem(itemId)
+                    _allItems.update { items -> items.filter { it.id != itemId } }
+                    _events.emit(VaultEvent.ItemDeleted)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to delete vault item", e)
                     _events.emit(VaultEvent.Error("Failed to delete item"))
                 }
             }
         }
-
-        fun shareItem(
-            itemId: String,
-            recipientUserIds: List<String>,
-        ) {
-            viewModelScope.launch {
-                try {
-                    val response =
-                        vaultServiceClient.shareVaultItem(
-                            ShareVaultItemRequest(
-                                itemId = itemId,
-                                recipientUserIds = recipientUserIds,
-                            ),
-                        )
-                    if (response.success) {
-                        _events.emit(VaultEvent.ItemShared(response.sharedCount))
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to share vault item", e)
-                    _events.emit(VaultEvent.Error("Failed to share item"))
-                }
-            }
-        }
-
-        fun requestUploadUrl(
-            fileName: String,
-            contentType: String,
-            sizeBytes: Long,
-        ) {
-            viewModelScope.launch {
-                _isUploading.value = true
-                _uploadProgress.value = 0f
-                try {
-                    val presigned =
-                        mediaServiceClient.getUploadUrl(
-                            GetUploadUrlRequest(
-                                fileSize = sizeBytes,
-                                contentType = contentType,
-                                purpose = MediaPurpose.ATTACHMENT,
-                            ),
-                        )
-                    _uploadProgress.value = 0.3f
-                    // Caller would use presigned.url to upload the actual file,
-                    // then call confirmUpload. For now, emit the URL.
-                    _events.emit(VaultEvent.UploadUrlReady(presigned.url, presigned.mediaId))
-                    _uploadProgress.value = 1f
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to get upload URL", e)
-                    _events.emit(VaultEvent.Error("Upload failed: ${e.message}"))
-                } finally {
-                    _isUploading.value = false
-                }
-            }
-        }
     }
 
 sealed interface VaultEvent {
+    data object ItemAdded : VaultEvent
+
     data object ItemDeleted : VaultEvent
-
-    data class ItemShared(
-        val count: Int,
-    ) : VaultEvent
-
-    data class UploadUrlReady(
-        val url: String,
-        val mediaId: String,
-    ) : VaultEvent
 
     data class Error(
         val message: String,
