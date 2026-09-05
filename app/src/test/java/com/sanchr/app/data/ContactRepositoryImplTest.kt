@@ -5,6 +5,7 @@ import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.proto.contacts.BlockContactRequest
 import com.sanchr.proto.contacts.BlockContactResponse
@@ -229,7 +230,9 @@ class ContactRepositoryImplTest {
             val discovery = FakeDiscovery(registered = setOf("+15550001234"))
 
             repo(client, NoOpContactDao(), discovery)
-                .discoverAndSyncContacts(listOf("(555) 000-1234", "(555) 000-5678", "+44 20 7123 4567"))
+                .discoverAndSyncContacts(
+                    listOf(DeviceContact("(555) 000-1234"), DeviceContact("(555) 000-5678"), DeviceContact("+44 20 7123 4567")),
+                )
 
             assertEquals(
                 "every normalised candidate is blinded and queried",
@@ -251,7 +254,7 @@ class ContactRepositoryImplTest {
                 }
 
             try {
-                repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf("(555) 000-1234"))
+                repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf(DeviceContact("(555) 000-1234")))
                 fail("expected the discovery failure to propagate")
             } catch (e: IllegalStateException) {
                 assertEquals("UNAVAILABLE", e.message)
@@ -265,7 +268,7 @@ class ContactRepositoryImplTest {
             val client = RecordingSyncContactsClient(response = SyncContactsResponse())
             val discovery = FakeDiscovery(registered = emptySet())
 
-            val count = repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf("(555) 000-1234"))
+            val count = repo(client, NoOpContactDao(), discovery).discoverAndSyncContacts(listOf(DeviceContact("(555) 000-1234")))
 
             assertEquals(0, count)
             assertTrue(client.capturedRequests.isEmpty())
@@ -286,11 +289,48 @@ class ContactRepositoryImplTest {
                 )
             val dao = InsertRecordingContactDao()
 
-            val count = repo(client, dao, FakeDiscovery(setOf("+15550001234"))).discoverAndSyncContacts(listOf("555-000-1234"))
+            val count =
+                repo(client, dao, FakeDiscovery(setOf("+15550001234")))
+                    .discoverAndSyncContacts(listOf(DeviceContact("555-000-1234", name = "Ada from work")))
 
             assertEquals(1, count)
             assertEquals(listOf("u-1"), dao.inserted.map { it.userId })
             assertTrue(dao.inserted.single().isRegistered)
+            // The address-book name is what we store; the server's plaintext
+            // "Ada" is never persisted.
+            assertEquals("Ada from work", dao.inserted.single().displayName)
+        }
+
+    @Test
+    fun `a background re-sync keeps the address-book name and local flags`() =
+        runTest {
+            val client =
+                RecordingSyncContactsClient(
+                    response =
+                        SyncContactsResponse(
+                            matchedContacts = listOf(MatchedContact(userId = "u-1", displayName = "Ada", phoneNumber = "+15550001234")),
+                        ),
+                )
+            val dao =
+                object : InsertRecordingContactDao() {
+                    override suspend fun getAllContacts(): List<ContactEntity> =
+                        listOf(
+                            ContactEntity(
+                                id = "u-1",
+                                userId = "u-1",
+                                phoneNumber = "+15550001234",
+                                displayName = "Ada from work",
+                                isRegistered = true,
+                                isFavorite = true,
+                            ),
+                        )
+                }
+
+            repo(client, dao).syncContacts()
+
+            val stored = dao.inserted.single()
+            assertEquals("Ada from work", stored.displayName)
+            assertTrue(stored.isFavorite)
         }
 
     @Test
@@ -346,7 +386,7 @@ class ContactRepositoryImplTest {
         }
     }
 
-    private class InsertRecordingContactDao : NoOpContactDao() {
+    private open class InsertRecordingContactDao : NoOpContactDao() {
         val inserted = mutableListOf<ContactEntity>()
 
         override suspend fun insertContacts(contacts: List<ContactEntity>) {

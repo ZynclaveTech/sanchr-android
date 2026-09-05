@@ -90,6 +90,19 @@ class ContactProfileResolver
             retitleDirectConversations(userId, displayName)
         }
 
+        /**
+         * Re-resolves every peer we hold a key for. Run from the periodic
+         * sync (and so on every launch, via `syncNow`): a peer who renamed
+         * themselves under the same key changes nothing on the wire, so this
+         * is the only way that rename reaches us. One failure does not stop
+         * the rest — [refresh] swallows its own.
+         */
+        suspend fun refreshAll() {
+            val userIds = profileKeyStore.contactUserIds()
+            userIds.forEach { refresh(it) }
+            if (userIds.isNotEmpty()) Log.d(TAG, "re-resolved ${userIds.size} contact profile(s)")
+        }
+
         /** What to call [userId] right now, by [ContactDisplayName] precedence. */
         suspend fun displayNameFor(userId: String): String {
             val contact = contactDao.getContactById(userId)

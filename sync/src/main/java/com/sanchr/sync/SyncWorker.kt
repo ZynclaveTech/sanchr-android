@@ -182,6 +182,10 @@ class SyncWorker
                     conversationsDeferred.await()
                 }
 
+                // Phase 3b: peers' profiles under their Profile Keys. Needs
+                // the conversations above to be in place for retitling.
+                refreshContactProfiles()
+
                 // Phase 4: local cleanup (key rotation/replenishment is now
                 // owned by the dedicated workers under sync/rotation/)
                 cleanExpiredVaultItems()
@@ -347,6 +351,21 @@ class SyncWorker
             if (entities.isNotEmpty()) {
                 conversationDao.insertConversations(entities)
                 Log.d(TAG, "Refreshed ${entities.size} conversation(s)")
+            }
+        }
+
+        /**
+         * Re-resolves every peer we hold a Profile Key for (see
+         * [ContactProfileResolver.refreshAll]). Best-effort: a failure here
+         * must not fail the sync.
+         */
+        private suspend fun refreshContactProfiles() {
+            try {
+                contactProfileResolver.refreshAll()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Contact profile refresh failed", e)
             }
         }
 

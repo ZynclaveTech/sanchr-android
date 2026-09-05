@@ -183,4 +183,29 @@ class ContactProfileResolverTest {
                 ContactEntity(id = "alice", userId = "alice", phoneNumber = "+15550001", displayName = "Mum")
             assertEquals("Mum", resolver.displayNameFor("alice"))
         }
+
+    @Test
+    fun `refreshAll walks every peer we hold a key for and survives one failing`() =
+        runTest {
+            every { profileKeyStore.contactUserIds() } returns listOf("alice", "bob")
+            every { profileKeyStore.contactProfileKey("alice") } returns key
+            every { profileKeyStore.contactProfileKey("bob") } returns key
+            coEvery { settingsClient.getUserProfiles(match { it.userIds == listOf("alice") }) } throws IllegalStateException("UNAVAILABLE")
+            coEvery { settingsClient.getUserProfiles(match { it.userIds == listOf("bob") }) } returns
+                GetUserProfilesResponse(
+                    listOf(
+                        UserProfile(
+                            userId = "bob",
+                            encryptedDisplayName = ProfileCrypto.encryptField("Bob", key, ProfileCrypto.ProfileField.DISPLAY_NAME),
+                            profileKeyVersion = ProfileCrypto.version(key),
+                        ),
+                    ),
+                )
+            coEvery { contactDao.getContactById(any()) } returns null
+            coEvery { conversationDao.directConversationIdsWith(any()) } returns emptyList()
+
+            resolver.refreshAll()
+
+            coVerify { contactProfileDao.upsert(match { it.userId == "bob" && it.displayName == "Bob" }) }
+        }
 }

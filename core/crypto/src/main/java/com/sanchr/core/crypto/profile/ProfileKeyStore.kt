@@ -64,6 +64,12 @@ class ProfileKeyStore
             return true
         }
 
+        /** Every user id we hold a Profile Key for — the set a cold-launch re-resolution walks. */
+        fun contactUserIds(): List<String> =
+            prefs.all.keys
+                .filter { it.startsWith(KEY_CONTACT_PREFIX) }
+                .map { it.removePrefix(KEY_CONTACT_PREFIX) }
+
         fun deleteContactProfileKey(userId: String) {
             prefs.edit().remove(contactKey(userId)).apply()
         }

@@ -9,6 +9,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ContactDisplayName
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.domain.contacts.PhoneNumberNormalizer
 import com.sanchr.proto.contacts.BlockContactRequest
@@ -56,12 +57,24 @@ class ContactRepositoryImpl
             // the previously returned intersection, not the address book.
             val known = contactDao.getAllContacts().filter { it.isRegistered }.map { it.phoneNumber }
             if (known.isEmpty()) return
-            resolveAndStore(known)
+            // No address book in hand: names already on the rows are kept.
+            resolveAndStore(known, addressBookNames = emptyMap())
         }
 
-        override suspend fun discoverAndSyncContacts(deviceNumbers: List<String>): Int {
+        override suspend fun discoverAndSyncContacts(deviceContacts: List<DeviceContact>): Int {
             val own = sessionManager.getStoredPhoneE164()
-            val candidates = deviceNumbers.flatMap { PhoneNumberNormalizer.candidates(it, own) }.distinct()
+            // Every E.164 reading of a raw number maps back to the name the
+            // user gave that entry; a number that appears under several
+            // entries keeps the first non-blank name.
+            val namesByCandidate = linkedMapOf<String, String>()
+            for (contact in deviceContacts) {
+                val name = contact.name?.trim().orEmpty()
+                for (candidate in PhoneNumberNormalizer.candidates(contact.rawNumber, own)) {
+                    if (name.isNotEmpty() && candidate !in namesByCandidate) namesByCandidate[candidate] = name
+                    if (candidate !in namesByCandidate) namesByCandidate.putIfAbsent(candidate, "")
+                }
+            }
+            val candidates = namesByCandidate.keys.toList()
             if (candidates.isEmpty()) return 0
 
             // OPRF-PSI: the server learns which blinded points it evaluated,
@@ -69,7 +82,7 @@ class ContactRepositoryImpl
             val registered = discoveryRepository.discoverRegistered(candidates)
             if (registered.isEmpty()) return 0
 
-            return resolveAndStore(registered)
+            return resolveAndStore(registered, addressBookNames = namesByCandidate.filterValues { it.isNotEmpty() })
         }
 
         /**
@@ -78,19 +91,31 @@ class ContactRepositoryImpl
          * discovery has confirmed (or that are already known to be
          * registered): this is the one call the server can read.
          */
-        private suspend fun resolveAndStore(confirmedE164: List<String>): Int {
+        private suspend fun resolveAndStore(
+            confirmedE164: List<String>,
+            addressBookNames: Map<String, String>,
+        ): Int {
             val response =
                 contactClient.syncContacts(SyncContactsRequest(phoneHashes = confirmedE164.map { phoneHashHex(it) }))
             val now = System.currentTimeMillis()
+            // REPLACE-on-insert would otherwise drop local state on a re-sync.
+            val existing = contactDao.getAllContacts().associateBy { it.id }
             val entities =
                 response.matchedContacts.map { matched ->
+                    val previous = existing[matched.userId]
                     ContactEntity(
                         id = matched.userId,
                         userId = matched.userId,
                         phoneNumber = matched.phoneNumber,
-                        displayName = matched.displayName,
+                        // The address-book name — what *we* call them. The
+                        // server's display_name is plaintext it should not
+                        // have and is never stored; their own name reaches
+                        // us encrypted, with their Profile Key.
+                        displayName = addressBookNames[matched.phoneNumber] ?: previous?.displayName.orEmpty(),
                         avatarUrl = matched.avatarUrl.ifEmpty { null },
                         isRegistered = true,
+                        isBlocked = previous?.isBlocked ?: false,
+                        isFavorite = previous?.isFavorite ?: false,
                         lastSyncedAt = now,
                     )
                 }
