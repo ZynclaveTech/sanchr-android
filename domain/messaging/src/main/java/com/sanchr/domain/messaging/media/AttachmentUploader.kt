@@ -41,7 +41,25 @@ class AttachmentUploader
             val audioWaveform: List<Float>? = null,
             /** Placeholder hash for images/video posters, as iOS `blurHash`. */
             val blurHash: String? = null,
-        )
+            /** The recipient may open it once; their client then wipes it (iOS `isViewOnce`). */
+            val isViewOnce: Boolean? = null,
+        ) {
+            fun asViewOnce(): Prepared =
+                Prepared(
+                    bytes,
+                    mimeType,
+                    fileName,
+                    caption,
+                    width,
+                    height,
+                    durationSeconds,
+                    isVoiceMessage,
+                    audioDurationMs,
+                    audioWaveform,
+                    blurHash,
+                    isViewOnce = true,
+                )
+        }
 
         suspend fun upload(prepared: Prepared): MediaAttachment {
             require(prepared.bytes.isNotEmpty()) { "attachment is empty" }
@@ -75,6 +93,7 @@ class AttachmentUploader
                 audioDurationMs = prepared.audioDurationMs,
                 audioWaveform = prepared.audioWaveform,
                 blurHash = prepared.blurHash,
+                isViewOnce = prepared.isViewOnce,
             )
         }
 

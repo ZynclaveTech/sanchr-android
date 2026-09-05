@@ -188,6 +188,13 @@ interface MessageRepository {
         forEveryone: Boolean,
     )
 
+    /**
+     * Replaces opened view-once media with a "Viewed" tombstone in place (same
+     * id and timestamp) and asks the server to drop the message, best effort,
+     * as iOS `deleteViewOnceMessage`. The cached bytes are the caller's to wipe first.
+     */
+    suspend fun tombstoneViewOnce(messageId: String)
+
     /** Fetches older messages for pagination. */
     suspend fun loadMoreMessages(
         conversationId: String,

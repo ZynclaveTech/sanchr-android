@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.OpenableColumns
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,6 +42,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
@@ -51,6 +53,7 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
@@ -79,6 +82,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,9 +97,13 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -135,8 +143,18 @@ fun ChatDetailScreen(
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val pickAttachment = rememberAttachmentPicker(onPicked = viewModel::sendAttachment)
+    // Set right before launching the picker for a view-once photo; consumed by the result.
+    var viewOnceNext by remember { mutableStateOf(false) }
+    val pickAttachment =
+        rememberAttachmentPicker(
+            onPicked = { prepared ->
+                val once = viewOnceNext
+                viewOnceNext = false
+                viewModel.sendAttachment(if (once) prepared.asViewOnce() else prepared)
+            },
+        )
     val pickContact = rememberContactPicker(viewModel::sendContact)
+    var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -221,6 +239,16 @@ fun ChatDetailScreen(
                 }
 
                 // --- Message input bar ---
+                viewOnceOpen?.let { message ->
+                    ViewOnceViewer(
+                        message = message,
+                        openAttachment = viewModel::openAttachment,
+                        onClose = {
+                            viewOnceOpen = null
+                            viewModel.consumeViewOnce(message)
+                        },
+                    )
+                }
                 uiState.replyingTo?.let { replying ->
                     ReplyBanner(
                         authorName =
@@ -241,6 +269,10 @@ fun ChatDetailScreen(
                     onValueChange = viewModel::onInputTextChanged,
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                    onAttachViewOnce = {
+                        viewOnceNext = true
+                        pickAttachment.launch(arrayOf("image/*"))
+                    },
                     onAttachContact = { pickContact.launch(Unit) },
                     onVoiceClip = { clip ->
                         scope.launch {
@@ -343,6 +375,10 @@ fun ChatDetailScreen(
                     key = { it.id },
                 ) { message ->
                     when {
+                        message.contentType == "system" -> SystemNote(message.text)
+
+                        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { viewOnceOpen = message })
+
                         message.contentType == "image" ->
                             ImageMessageBubble(
                                 message = message,
@@ -861,6 +897,7 @@ private fun MessageInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onAttachFile: () -> Unit,
+    onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
     onVoiceClip: (VoiceClip) -> Unit,
     isSending: Boolean,
@@ -942,6 +979,14 @@ private fun MessageInputBar(
                         onClick = {
                             attachMenuOpen = false
                             onAttachFile()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("View-once photo") },
+                        leadingIcon = { Icon(Icons.Filled.LocalFireDepartment, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachViewOnce()
                         },
                     )
                     DropdownMenuItem(
@@ -1288,3 +1333,105 @@ private fun VoiceClip.toPrepared(): AttachmentUploader.Prepared {
 }
 
 private const val MILLIS_PER_SECOND_D = 1000.0
+
+/** A centred transcript notice, e.g. the "Viewed" tombstone left by view-once media. */
+@Composable
+private fun SystemNote(text: String) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = SanchrGray400,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+    }
+}
+
+/**
+ * Unopened view-once media, after iOS `ViewOnceBubble`: nothing is decoded
+ * or downloaded until the recipient taps, so the transcript never shows a
+ * thumbnail of something meant to be seen once.
+ */
+@Composable
+private fun ViewOnceBubble(
+    message: MessageUiModel,
+    onOpen: () -> Unit,
+) {
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Column(horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
+            Surface(
+                shape = SanchrShapeTokens.CornerLarge,
+                color = SanchrIndigo500.copy(alpha = 0.06f),
+                border = BorderStroke(1.dp, SanchrIndigo500.copy(alpha = 0.35f)),
+                modifier = Modifier.widthIn(min = 190.dp, max = 280.dp).clickable(onClick = onOpen),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                ) {
+                    Icon(Icons.Filled.LocalFireDepartment, contentDescription = null, tint = SanchrIndigo500)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Photo", style = MaterialTheme.typography.bodyMedium, color = SanchrGray900)
+                        Text(text = "View once", style = MaterialTheme.typography.labelSmall, color = SanchrGray400)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = SanchrGray400)
+                }
+            }
+            Text(
+                text = formatTimestamp(message.timestamp),
+                style = MaterialTheme.typography.labelSmall,
+                color = SanchrGray400,
+                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Full-screen, in-app viewer for view-once media. Stays inside the app (no
+ * share sheet, no external viewer) and marks its window secure so it cannot
+ * be captured, as iOS's gallery does; closing it consumes the message.
+ */
+@Composable
+private fun ViewOnceViewer(
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+    onClose: () -> Unit,
+) {
+    var file by remember(message.id) { mutableStateOf<File?>(null) }
+    var failed by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(message.id) {
+        val f = openAttachment(message)
+        if (f == null) failed = true else file = f
+    }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val view = LocalView.current
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE,
+            )
+        }
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                file != null ->
+                    AsyncImage(
+                        model = file,
+                        contentDescription = "View-once photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                failed -> Text(text = "Photo unavailable", color = SanchrWhite)
+                else -> CircularProgressIndicator(color = SanchrWhite)
+            }
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = SanchrWhite)
+            }
+        }
+    }
+}

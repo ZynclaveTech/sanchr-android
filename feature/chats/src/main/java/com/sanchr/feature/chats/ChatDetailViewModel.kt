@@ -13,6 +13,7 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ConsumeViewOnceUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendAttachmentUseCase
@@ -49,6 +50,7 @@ class ChatDetailViewModel
         private val attachmentDownloader: AttachmentDownloader,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val toggleReactionUseCase: ToggleReactionUseCase,
+        private val consumeViewOnceUseCase: ConsumeViewOnceUseCase,
         private val presenceStore: PresenceStore,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
@@ -371,7 +373,22 @@ class ChatDetailViewModel
                 contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
                 reactions = reactions.toChips(currentUser),
                 replyToId = replyToId,
+                isViewOnce = content.attachmentOrNull()?.isViewOnce == true,
             )
+        }
+
+        /** The viewer closed view-once media: wipe the bytes and leave a "Viewed" tombstone (as iOS). */
+        fun consumeViewOnce(message: MessageUiModel) {
+            val attachment = message.attachment ?: return
+            viewModelScope.launch {
+                try {
+                    consumeViewOnceUseCase(message.id, attachment)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not consume view-once ${message.id}: ${e.message}")
+                }
+            }
         }
 
         private fun List<MessageReaction>.toChips(selfUserId: String): List<ReactionChip> =
@@ -415,6 +432,7 @@ class ChatDetailViewModel
                 is MessageContent.File -> fileName
                 is MessageContent.Location -> label ?: "[Location]"
                 is MessageContent.Contact -> name.ifBlank { phoneNumber }
+                is MessageContent.System -> text
             }
 
         private fun MessageContent.attachmentOrNull(): MediaAttachment? =
@@ -422,7 +440,7 @@ class ChatDetailViewModel
                 is MessageContent.Image -> attachment
                 is MessageContent.Voice -> attachment
                 is MessageContent.File -> attachment
-                is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact -> null
+                is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact, is MessageContent.System -> null
             }
 
         private fun MessageContent.contentTypeTag(): String =
@@ -433,6 +451,7 @@ class ChatDetailViewModel
                 is MessageContent.File -> "file"
                 is MessageContent.Location -> "location"
                 is MessageContent.Contact -> ContactCard.CONTENT_TYPE
+                is MessageContent.System -> MessageContent.System.CONTENT_TYPE
             }
 
         private fun com.sanchr.core.model.MessageStatus.toUiStatus(): MessageStatus =

@@ -53,6 +53,8 @@ data class MessageUiModel(
     val replyToId: String? = null,
     /** The quoted message as shown inside the bubble; null when it is not in the loaded transcript. */
     val quote: ReplyQuote? = null,
+    /** Unopened view-once media: never rendered inline, opened in the secure viewer, then wiped. */
+    val isViewOnce: Boolean = false,
 )
 
 /** iOS `ReplyQuote`: who wrote the quoted message and one line of what they said. */

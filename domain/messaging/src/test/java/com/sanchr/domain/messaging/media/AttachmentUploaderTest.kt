@@ -116,4 +116,13 @@ class AttachmentUploaderTest {
                 )
             assertEquals("LEHV6nWB2yk8pyo0adR*.7kCMdnj", attachment.blurHash)
         }
+
+    @Test
+    fun `a view-once photo is stamped isViewOnce for the peer's client`() =
+        runTest {
+            val prepared = AttachmentUploader.Prepared(byteArrayOf(1), "image/jpeg", "p.jpg", width = 4, height = 3).asViewOnce()
+            val attachment = AttachmentUploader(Client(), Store()).upload(prepared)
+            assertEquals(true, attachment.isViewOnce)
+            assertEquals(4, attachment.width)
+        }
 }

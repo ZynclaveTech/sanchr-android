@@ -126,6 +126,14 @@ interface MessageDao {
     @Query("UPDATE messages SET is_deleted = 1 WHERE id = :messageId")
     suspend fun softDeleteMessage(messageId: String)
 
+    /** Swaps a row's content in place, keeping id, sender and timestamp (a view-once tombstone). */
+    @Query("UPDATE messages SET content_type = :contentType, content_body = :contentBody WHERE id = :messageId")
+    suspend fun replaceContent(
+        messageId: String,
+        contentType: String,
+        contentBody: String,
+    )
+
     /**
      * In-place swap of a locally-generated client message id for the server
      * id once `SendMessage` / `SendSealedMessage` returns. Also flips the
