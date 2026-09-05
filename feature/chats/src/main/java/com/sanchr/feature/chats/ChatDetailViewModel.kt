@@ -13,12 +13,15 @@ import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ConsumeViewOnceUseCase
+import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
 import com.sanchr.domain.messaging.ToggleReactionUseCase
+import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.sync.realtime.RealtimeManager
@@ -49,6 +52,8 @@ class ChatDetailViewModel
         private val attachmentDownloader: AttachmentDownloader,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val toggleReactionUseCase: ToggleReactionUseCase,
+        private val consumeViewOnceUseCase: ConsumeViewOnceUseCase,
+        private val forwardMessageUseCase: ForwardMessageUseCase,
         private val presenceStore: PresenceStore,
         private val sessionManager: SessionManager,
         private val realtimeManager: RealtimeManager,
@@ -71,9 +76,13 @@ class ChatDetailViewModel
 
         private var presencePeer: String? = null
 
+        /** The loaded transcript as domain rows, keyed by id, for actions that need more than the UI model. */
+        private var domainMessages: Map<String, Message> = emptyMap()
+
         init {
             observeConversation()
             observeMessages()
+            observeForwardTargets()
             observeTyping()
             observePresence()
             markAsRead()
@@ -130,6 +139,7 @@ class ChatDetailViewModel
                     .observeMessages(conversationId)
                     .catch { /* DB closed during logout — nav teardown cancels this scope */ }
                     .collect { messages ->
+                        domainMessages = messages.associateBy { it.id }
                         _uiState.update { state ->
                             state.copy(
                                 messages = messages.toUiModels(state.conversation),
@@ -347,6 +357,61 @@ class ChatDetailViewModel
             }
         }
 
+        private fun observeForwardTargets() {
+            viewModelScope.launch {
+                messageRepository
+                    .observeConversations()
+                    .catch { /* DB closed during logout */ }
+                    .collect { conversations -> _uiState.update { it.copy(forwardTargets = conversations) } }
+            }
+        }
+
+        /** Forwards [message] to [targetConversationIds] at once (iOS `forwardMessage`); reports the outcome as a notice. */
+        fun forward(
+            message: MessageUiModel,
+            targetConversationIds: List<String>,
+        ) {
+            val domain = domainMessages[message.id] ?: return
+            viewModelScope.launch {
+                try {
+                    val outcome = forwardMessageUseCase(domain, targetConversationIds)
+                    val notice =
+                        when {
+                            outcome.sent == 0 -> null
+                            outcome.failed == 0 -> "Forwarded to ${outcome.sent} ${if (outcome.sent == 1) "chat" else "chats"}"
+                            else -> "Forwarded to ${outcome.sent}, failed for ${outcome.failed}"
+                        }
+                    _uiState.update { it.copy(notice = notice, error = if (outcome.sent == 0) "Could not forward" else null) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: UnsupportedContentException) {
+                    _uiState.update { it.copy(error = "This message can't be forwarded") }
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = e.message ?: "Could not forward") }
+                }
+            }
+        }
+
+        /** Removes a message locally, and for everyone when [forEveryone] (our own messages only). */
+        fun deleteMessage(
+            message: MessageUiModel,
+            forEveryone: Boolean,
+        ) {
+            viewModelScope.launch {
+                try {
+                    messageRepository.deleteMessage(message.id, forEveryone = forEveryone && message.isFromMe)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(error = e.message ?: "Could not delete message") }
+                }
+            }
+        }
+
+        fun dismissNotice() {
+            _uiState.update { it.copy(notice = null) }
+        }
+
         fun setReply(message: MessageUiModel) {
             _uiState.update { it.copy(replyingTo = message) }
         }
@@ -371,7 +436,22 @@ class ChatDetailViewModel
                 contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
                 reactions = reactions.toChips(currentUser),
                 replyToId = replyToId,
+                isViewOnce = content.attachmentOrNull()?.isViewOnce == true,
             )
+        }
+
+        /** The viewer closed view-once media: wipe the bytes and leave a "Viewed" tombstone (as iOS). */
+        fun consumeViewOnce(message: MessageUiModel) {
+            val attachment = message.attachment ?: return
+            viewModelScope.launch {
+                try {
+                    consumeViewOnceUseCase(message.id, attachment)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not consume view-once ${message.id}: ${e.message}")
+                }
+            }
         }
 
         private fun List<MessageReaction>.toChips(selfUserId: String): List<ReactionChip> =
@@ -415,6 +495,7 @@ class ChatDetailViewModel
                 is MessageContent.File -> fileName
                 is MessageContent.Location -> label ?: "[Location]"
                 is MessageContent.Contact -> name.ifBlank { phoneNumber }
+                is MessageContent.System -> text
             }
 
         private fun MessageContent.attachmentOrNull(): MediaAttachment? =
@@ -422,7 +503,7 @@ class ChatDetailViewModel
                 is MessageContent.Image -> attachment
                 is MessageContent.Voice -> attachment
                 is MessageContent.File -> attachment
-                is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact -> null
+                is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact, is MessageContent.System -> null
             }
 
         private fun MessageContent.contentTypeTag(): String =
@@ -433,6 +514,7 @@ class ChatDetailViewModel
                 is MessageContent.File -> "file"
                 is MessageContent.Location -> "location"
                 is MessageContent.Contact -> ContactCard.CONTENT_TYPE
+                is MessageContent.System -> MessageContent.System.CONTENT_TYPE
             }
 
         private fun com.sanchr.core.model.MessageStatus.toUiStatus(): MessageStatus =

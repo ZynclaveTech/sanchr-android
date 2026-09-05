@@ -89,6 +89,23 @@ sealed interface MessageContent {
         val name: String,
         val phoneNumber: String,
     ) : MessageContent
+
+    /**
+     * A local tombstone or notice, never sent (iOS `.system`). [kind] is the
+     * stored body, e.g. [VIEW_ONCE_CONSUMED] once view-once media was opened.
+     */
+    @Serializable
+    data class System(
+        val kind: String,
+    ) : MessageContent {
+        val text: String
+            get() = if (kind == VIEW_ONCE_CONSUMED) "Viewed" else kind
+
+        companion object {
+            const val CONTENT_TYPE = "system"
+            const val VIEW_ONCE_CONSUMED = "viewOnceConsumed"
+        }
+    }
 }
 
 @Serializable

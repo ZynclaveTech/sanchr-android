@@ -1,5 +1,6 @@
 package com.sanchr.app.data
 
+import android.util.Log
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
@@ -28,6 +29,7 @@ import com.sanchr.proto.messaging.StartDirectConversationRequest
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -48,6 +50,10 @@ class MessageRepositoryImpl
         private val sessionManager: SessionManager,
         private val reactionDao: MessageReactionDao,
     ) : MessageRepository {
+        private companion object {
+            const val TAG = "MessageRepositoryImpl"
+        }
+
         override fun observeConversations(): Flow<List<Conversation>> =
             conversationDao.observeConversations().map { entities ->
                 entities.map { it.toDomain() }
@@ -219,6 +225,18 @@ class MessageRepositoryImpl
                         messageId = messageId,
                     ),
                 )
+            }
+        }
+
+        override suspend fun tombstoneViewOnce(messageId: String) {
+            val row = messageDao.getMessageById(messageId) ?: return
+            messageDao.replaceContent(messageId, MessageContent.System.CONTENT_TYPE, MessageContent.System.VIEW_ONCE_CONSUMED)
+            try {
+                messagingClient.deleteMessage(DeleteMessageRequest(conversationId = row.conversationId, messageId = messageId))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "server delete of view-once $messageId failed: ${e.message}")
             }
         }
 

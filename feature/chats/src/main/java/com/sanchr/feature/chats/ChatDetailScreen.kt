@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.OpenableColumns
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,24 +43,30 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -75,10 +83,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,10 +102,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -112,6 +128,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import com.sanchr.core.model.ContactCard
+import com.sanchr.core.model.Conversation
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.voice.VoiceClip
@@ -135,8 +152,37 @@ fun ChatDetailScreen(
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val pickAttachment = rememberAttachmentPicker(onPicked = viewModel::sendAttachment)
+    // Set right before launching the picker for a view-once photo; consumed by the result.
+    var viewOnceNext by remember { mutableStateOf(false) }
+    val pickAttachment =
+        rememberAttachmentPicker(
+            onPicked = { prepared ->
+                val once = viewOnceNext
+                viewOnceNext = false
+                viewModel.sendAttachment(if (once) prepared.asViewOnce() else prepared)
+            },
+        )
     val pickContact = rememberContactPicker(viewModel::sendContact)
+    var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
+    var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
+    var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val actions =
+        remember(viewModel, clipboard) {
+            MessageActions(
+                onReply = viewModel::setReply,
+                onForward = { forwarding = it },
+                onCopy = { clipboard.setText(AnnotatedString(it.text)) },
+                onDelete = { deleting = it },
+            )
+        }
+    val noticeContext = LocalContext.current
+    uiState.notice?.let { notice ->
+        LaunchedEffect(notice) {
+            Toast.makeText(noticeContext, notice, Toast.LENGTH_SHORT).show()
+            viewModel.dismissNotice()
+        }
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -221,6 +267,16 @@ fun ChatDetailScreen(
                 }
 
                 // --- Message input bar ---
+                MessageDialogs(
+                    viewModel = viewModel,
+                    forwardTargets = uiState.forwardTargets,
+                    forwarding = forwarding,
+                    onForwardingDone = { forwarding = null },
+                    deleting = deleting,
+                    onDeletingDone = { deleting = null },
+                    viewOnceOpen = viewOnceOpen,
+                    onViewOnceClosed = { viewOnceOpen = null },
+                )
                 uiState.replyingTo?.let { replying ->
                     ReplyBanner(
                         authorName =
@@ -241,6 +297,10 @@ fun ChatDetailScreen(
                     onValueChange = viewModel::onInputTextChanged,
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                    onAttachViewOnce = {
+                        viewOnceNext = true
+                        pickAttachment.launch(arrayOf("image/*"))
+                    },
                     onAttachContact = { pickContact.launch(Unit) },
                     onVoiceClip = { clip ->
                         scope.launch {
@@ -343,6 +403,10 @@ fun ChatDetailScreen(
                     key = { it.id },
                 ) { message ->
                     when {
+                        message.contentType == "system" -> SystemNote(message.text)
+
+                        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { viewOnceOpen = message })
+
                         message.contentType == "image" ->
                             ImageMessageBubble(
                                 message = message,
@@ -361,7 +425,7 @@ fun ChatDetailScreen(
                             MessageBubble(
                                 message = message,
                                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                onReply = { viewModel.setReply(message) },
+                                actions = actions,
                                 onClick = {
                                     scope.launch {
                                         val file = viewModel.openAttachment(message) ?: return@launch
@@ -374,7 +438,7 @@ fun ChatDetailScreen(
                             MessageBubble(
                                 message = message,
                                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
-                                onReply = { viewModel.setReply(message) },
+                                actions = actions,
                             )
                     }
                 }
@@ -477,7 +541,7 @@ private fun ChatDetailTopBar(
 private fun MessageBubble(
     message: MessageUiModel,
     onToggleReaction: (String) -> Unit,
-    onReply: () -> Unit,
+    actions: MessageActions,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
@@ -512,10 +576,8 @@ private fun MessageBubble(
                 ReactionPicker(
                     open = pickerOpen,
                     onDismiss = { pickerOpen = false },
-                    onReply = {
-                        pickerOpen = false
-                        onReply()
-                    },
+                    message = message,
+                    actions = actions,
                 ) { emoji ->
                     pickerOpen = false
                     onToggleReaction(emoji)
@@ -585,18 +647,48 @@ private fun MessageBubble(
 /** iOS's quick reactions, shown on long-press above the bubble. */
 private val QUICK_REACTIONS = listOf("❤️", "👍", "😂", "😮", "😢", "🙏")
 
+/** The long-press actions, in iOS's order: the two that apply to everything, then Copy for text, then Delete last and alone. */
+private class MessageActions(
+    val onReply: (MessageUiModel) -> Unit,
+    val onForward: (MessageUiModel) -> Unit,
+    val onCopy: (MessageUiModel) -> Unit,
+    val onDelete: (MessageUiModel) -> Unit,
+)
+
 @Composable
 private fun ReactionPicker(
     open: Boolean,
     onDismiss: () -> Unit,
-    onReply: () -> Unit,
+    message: MessageUiModel,
+    actions: MessageActions,
     onPick: (String) -> Unit,
 ) {
+    fun run(action: (MessageUiModel) -> Unit) {
+        onDismiss()
+        action(message)
+    }
     DropdownMenu(expanded = open, onDismissRequest = onDismiss) {
         DropdownMenuItem(
             text = { Text("Reply") },
             leadingIcon = { Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null) },
-            onClick = onReply,
+            onClick = { run(actions.onReply) },
+        )
+        DropdownMenuItem(
+            text = { Text("Forward") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
+            onClick = { run(actions.onForward) },
+        )
+        if (message.contentType == "text") {
+            DropdownMenuItem(
+                text = { Text("Copy") },
+                leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
+                onClick = { run(actions.onCopy) },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            onClick = { run(actions.onDelete) },
         )
         Row(modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xs)) {
             QUICK_REACTIONS.forEach { emoji ->
@@ -861,6 +953,7 @@ private fun MessageInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onAttachFile: () -> Unit,
+    onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
     onVoiceClip: (VoiceClip) -> Unit,
     isSending: Boolean,
@@ -942,6 +1035,14 @@ private fun MessageInputBar(
                         onClick = {
                             attachMenuOpen = false
                             onAttachFile()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("View-once photo") },
+                        leadingIcon = { Icon(Icons.Filled.LocalFireDepartment, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachViewOnce()
                         },
                     )
                     DropdownMenuItem(
@@ -1288,3 +1389,222 @@ private fun VoiceClip.toPrepared(): AttachmentUploader.Prepared {
 }
 
 private const val MILLIS_PER_SECOND_D = 1000.0
+
+/** A centred transcript notice, e.g. the "Viewed" tombstone left by view-once media. */
+@Composable
+private fun SystemNote(text: String) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = SanchrGray400,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+    }
+}
+
+/**
+ * Unopened view-once media, after iOS `ViewOnceBubble`: nothing is decoded
+ * or downloaded until the recipient taps, so the transcript never shows a
+ * thumbnail of something meant to be seen once.
+ */
+@Composable
+private fun ViewOnceBubble(
+    message: MessageUiModel,
+    onOpen: () -> Unit,
+) {
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Column(horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
+            Surface(
+                shape = SanchrShapeTokens.CornerLarge,
+                color = SanchrIndigo500.copy(alpha = 0.06f),
+                border = BorderStroke(1.dp, SanchrIndigo500.copy(alpha = 0.35f)),
+                modifier = Modifier.widthIn(min = 190.dp, max = 280.dp).clickable(onClick = onOpen),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                ) {
+                    Icon(Icons.Filled.LocalFireDepartment, contentDescription = null, tint = SanchrIndigo500)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Photo", style = MaterialTheme.typography.bodyMedium, color = SanchrGray900)
+                        Text(text = "View once", style = MaterialTheme.typography.labelSmall, color = SanchrGray400)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = SanchrGray400)
+                }
+            }
+            Text(
+                text = formatTimestamp(message.timestamp),
+                style = MaterialTheme.typography.labelSmall,
+                color = SanchrGray400,
+                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Full-screen, in-app viewer for view-once media. Stays inside the app (no
+ * share sheet, no external viewer) and marks its window secure so it cannot
+ * be captured, as iOS's gallery does; closing it consumes the message.
+ */
+@Composable
+private fun ViewOnceViewer(
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+    onClose: () -> Unit,
+) {
+    var file by remember(message.id) { mutableStateOf<File?>(null) }
+    var failed by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(message.id) {
+        val f = openAttachment(message)
+        if (f == null) failed = true else file = f
+    }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val view = LocalView.current
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE,
+            )
+        }
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onClose),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                file != null ->
+                    AsyncImage(
+                        model = file,
+                        contentDescription = "View-once photo",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                failed -> Text(text = "Photo unavailable", color = SanchrWhite)
+                else -> CircularProgressIndicator(color = SanchrWhite)
+            }
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = SanchrWhite)
+            }
+        }
+    }
+}
+
+/** Pick one or more chats to forward into (iOS `MessageForwardDestinationPicker`). */
+@Composable
+private fun ForwardPickerDialog(
+    conversations: List<Conversation>,
+    onCancel: () -> Unit,
+    onSend: (List<String>) -> Unit,
+) {
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Forward to") },
+        text = {
+            if (conversations.isEmpty()) {
+                Text("No chats yet")
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(conversations, key = { it.id }) { conversation ->
+                        val checked = conversation.id in selected
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selected = if (checked) selected - conversation.id else selected + conversation.id }
+                                    .padding(vertical = 6.dp),
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = conversation.title ?: "Unknown", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSend(selected.toList()) }, enabled = selected.isNotEmpty()) {
+                Text(if (selected.size > 1) "Send to ${selected.size}" else "Send")
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun DeleteMessageDialog(
+    canDeleteForEveryone: Boolean,
+    onCancel: () -> Unit,
+    onDelete: (forEveryone: Boolean) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Delete message?") },
+        text = {
+            val body =
+                if (canDeleteForEveryone) {
+                    "Delete for everyone removes it from the chat on all devices."
+                } else {
+                    "This removes the message from this device."
+                }
+            Text(body)
+        },
+        confirmButton = {
+            Row {
+                if (canDeleteForEveryone) {
+                    TextButton(onClick = { onDelete(true) }) { Text("For everyone", color = MaterialTheme.colorScheme.error) }
+                }
+                TextButton(onClick = { onDelete(false) }) { Text("For me", color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
+}
+
+/** The transient dialogs a message action opens; split out to keep the screen composable readable. */
+@Composable
+private fun MessageDialogs(
+    viewModel: ChatDetailViewModel,
+    forwardTargets: List<Conversation>,
+    forwarding: MessageUiModel?,
+    onForwardingDone: () -> Unit,
+    deleting: MessageUiModel?,
+    onDeletingDone: () -> Unit,
+    viewOnceOpen: MessageUiModel?,
+    onViewOnceClosed: () -> Unit,
+) {
+    forwarding?.let { message ->
+        ForwardPickerDialog(
+            conversations = forwardTargets,
+            onCancel = onForwardingDone,
+            onSend = { targets ->
+                onForwardingDone()
+                viewModel.forward(message, targets)
+            },
+        )
+    }
+    deleting?.let { message ->
+        DeleteMessageDialog(
+            canDeleteForEveryone = message.isFromMe,
+            onCancel = onDeletingDone,
+            onDelete = { forEveryone ->
+                onDeletingDone()
+                viewModel.deleteMessage(message, forEveryone)
+            },
+        )
+    }
+    viewOnceOpen?.let { message ->
+        ViewOnceViewer(
+            message = message,
+            openAttachment = viewModel::openAttachment,
+            onClose = {
+                onViewOnceClosed()
+                viewModel.consumeViewOnce(message)
+            },
+        )
+    }
+}

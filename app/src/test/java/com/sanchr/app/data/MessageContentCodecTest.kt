@@ -50,4 +50,10 @@ class MessageContentCodecTest {
         assertEquals(MessageContent.Contact(name = "Ada", phoneNumber = "+15550100"), contact)
         assertEquals(MessageContent.Text("[Contact]"), MessageContentCodec.fromStored("contact", "{}"))
     }
+
+    @Test
+    fun `a view-once tombstone decodes to a System notice reading Viewed`() {
+        val system = MessageContentCodec.fromStored("system", "viewOnceConsumed") as MessageContent.System
+        assertEquals("Viewed", system.text)
+    }
 }

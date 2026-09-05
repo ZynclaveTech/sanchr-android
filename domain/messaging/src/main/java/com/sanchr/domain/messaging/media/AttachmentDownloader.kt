@@ -71,6 +71,21 @@ class AttachmentDownloader
             }
         }
 
+        /** Removes the decrypted copy (and any partial download) for [messageId]; true when something was deleted. */
+        suspend fun evict(
+            messageId: String,
+            mimeType: String,
+        ): Boolean =
+            inFlight.withLock {
+                withContext(Dispatchers.IO) {
+                    val target = cacheFile(messageId, mimeType)
+                    val part = File(target.path + ".part")
+                    val deleted = target.delete()
+                    part.delete()
+                    deleted
+                }
+            }
+
         fun cacheFile(
             messageId: String,
             mimeType: String,

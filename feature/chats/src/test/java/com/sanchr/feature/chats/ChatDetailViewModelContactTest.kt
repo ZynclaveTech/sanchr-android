@@ -4,11 +4,13 @@ import androidx.lifecycle.SavedStateHandle
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ContactCard
+import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.SendMessageUseCase
@@ -39,6 +41,7 @@ import kotlinx.datetime.Instant
 class ChatDetailViewModelContactTest {
     private val testDispatcher = StandardTestDispatcher()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val forwardMessageUseCase = mockk<ForwardMessageUseCase>(relaxed = true)
     private val sendMessageUseCase = mockk<SendMessageUseCase>()
     private val realtimeManager = mockk<RealtimeManager>(relaxed = true)
 
@@ -63,6 +66,8 @@ class ChatDetailViewModelContactTest {
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
+            consumeViewOnceUseCase = mockk(relaxed = true),
+            forwardMessageUseCase = forwardMessageUseCase,
             presenceStore = PresenceStore(),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             realtimeManager = realtimeManager,
@@ -185,5 +190,73 @@ class ChatDetailViewModelContactTest {
             )
             vm.clearReply()
             assertEquals(null, vm.uiState.value.replyingTo)
+        }
+
+    @Test
+    fun `view-once media is flagged for the secure viewer and a tombstone reads Viewed`() =
+        runTest(testDispatcher) {
+            val once = MediaAttachment(url = "sanchr-media://m", mimeType = "image/jpeg", isViewOnce = true)
+            every { messageRepository.observeMessages(any()) } returns
+                flowOf(
+                    listOf(
+                        Message(
+                            id = "m1",
+                            conversationId = "conv-1",
+                            senderId = "peer",
+                            content = MessageContent.Image(url = once.url, thumbnailUrl = null, width = 1, height = 1, attachment = once),
+                            status = MessageStatus.DELIVERED,
+                            timestamp = Instant.fromEpochMilliseconds(1_000),
+                        ),
+                        Message(
+                            id = "m2",
+                            conversationId = "conv-1",
+                            senderId = "peer",
+                            content = MessageContent.System(MessageContent.System.VIEW_ONCE_CONSUMED),
+                            status = MessageStatus.DELIVERED,
+                            timestamp = Instant.fromEpochMilliseconds(2_000),
+                        ),
+                    ),
+                )
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            val rows = vm.uiState.value.messages
+            assertEquals(true, rows[0].isViewOnce)
+            assertEquals("system", rows[1].contentType)
+            assertEquals("Viewed", rows[1].text)
+        }
+
+    @Test
+    fun `forward hands the domain row to the use case and reports a notice, and delete for everyone only applies to own rows`() =
+        runTest(testDispatcher) {
+            val row =
+                Message(
+                    id = "m1",
+                    conversationId = "conv-1",
+                    senderId = "peer",
+                    content = MessageContent.Text("hi"),
+                    status = MessageStatus.DELIVERED,
+                    timestamp = Instant.fromEpochMilliseconds(1_000),
+                )
+            every { messageRepository.observeMessages(any()) } returns flowOf(listOf(row))
+            coEvery { forwardMessageUseCase(row, listOf("c2", "c3")) } returns ForwardMessageUseCase.Outcome(sent = 2, failed = 0)
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            vm.forward(
+                vm.uiState.value.messages
+                    .single(),
+                listOf("c2", "c3"),
+            )
+            advanceUntilIdle()
+            assertEquals("Forwarded to 2 chats", vm.uiState.value.notice)
+
+            vm.deleteMessage(
+                vm.uiState.value.messages
+                    .single(),
+                forEveryone = true,
+            )
+            advanceUntilIdle()
+            coVerify { messageRepository.deleteMessage("m1", forEveryone = false) }
         }
 }

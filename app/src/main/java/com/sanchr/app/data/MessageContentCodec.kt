@@ -22,6 +22,7 @@ object MessageContentCodec {
             "text" -> MessageContent.Text(body)
             "location" -> location(body)
             ContactCard.CONTENT_TYPE -> contact(body)
+            MessageContent.System.CONTENT_TYPE -> MessageContent.System(body)
             else -> MediaKind.fromWire(contentType)?.let { media(body, it) } ?: MessageContent.Text(body)
         }
 

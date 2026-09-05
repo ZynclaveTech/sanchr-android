@@ -22,6 +22,10 @@ data class ChatDetailUiState(
     val currentUserId: String = "",
     /** The message the next send will quote, or null. */
     val replyingTo: MessageUiModel? = null,
+    /** Every conversation, for the forward picker. */
+    val forwardTargets: List<Conversation> = emptyList(),
+    /** A one-shot notice ("Forwarded to 2 chats"), cleared by the UI. */
+    val notice: String? = null,
 )
 
 data class MessageUiModel(
@@ -53,6 +57,8 @@ data class MessageUiModel(
     val replyToId: String? = null,
     /** The quoted message as shown inside the bubble; null when it is not in the loaded transcript. */
     val quote: ReplyQuote? = null,
+    /** Unopened view-once media: never rendered inline, opened in the secure viewer, then wiped. */
+    val isViewOnce: Boolean = false,
 )
 
 /** iOS `ReplyQuote`: who wrote the quoted message and one line of what they said. */
