@@ -349,7 +349,9 @@ class SyncWorker
                 }
 
             if (entities.isNotEmpty()) {
-                conversationDao.insertConversations(entities)
+                // Not a REPLACE: archived state and disappearing timers live
+                // only on this device and must survive every refresh.
+                conversationDao.upsertFromServer(entities)
                 Log.d(TAG, "Refreshed ${entities.size} conversation(s)")
             }
         }

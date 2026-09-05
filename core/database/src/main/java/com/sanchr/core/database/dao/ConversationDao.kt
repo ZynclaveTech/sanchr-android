@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.sanchr.core.database.entity.ConversationEntity
 import kotlinx.coroutines.flow.Flow
@@ -45,6 +46,33 @@ interface ConversationDao {
 
     @Update
     suspend fun updateConversation(conversation: ConversationEntity)
+
+    /**
+     * Writes what the server knows about these conversations without
+     * discarding what only this device knows. `is_archived`,
+     * `disappearing_duration_ms` and `last_message_id` are not on the wire;
+     * a plain REPLACE (see [insertConversations]) resets them to defaults,
+     * which un-archives every chat and clears every disappearing timer on
+     * each periodic sync. Server-owned columns are taken from [conversations]
+     * as given.
+     */
+    @Transaction
+    suspend fun upsertFromServer(conversations: List<ConversationEntity>) {
+        for (incoming in conversations) {
+            val local = getConversationById(incoming.id)
+            insertConversation(
+                if (local == null) {
+                    incoming
+                } else {
+                    incoming.copy(
+                        isArchived = local.isArchived,
+                        disappearingDurationMs = local.disappearingDurationMs,
+                        lastMessageId = local.lastMessageId,
+                    )
+                },
+            )
+        }
+    }
 
     /**
      * Ids of DIRECT conversations whose participant list contains

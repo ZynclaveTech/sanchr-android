@@ -211,8 +211,10 @@ class MessageRepositoryImpl
                     StartDirectConversationRequest(recipientId = participantId),
                 )
             val entity = protoConv.toEntity()
-            conversationDao.insertConversation(entity)
-            return entity.toDomain()
+            // Get-or-create on the server means this may be an existing local
+            // row: keep its archived state and disappearing timer.
+            conversationDao.upsertFromServer(listOf(entity))
+            return (conversationDao.getConversationById(entity.id) ?: entity).toDomain()
         }
 
         override suspend fun ensureConversation(peerUserId: String): String {

@@ -27,7 +27,11 @@ import org.junit.Test
  */
 class MessageRepositoryImplConversationTitleTest {
     private val messagingClient = mockk<MessagingServiceClient>()
-    private val conversationDao = mockk<ConversationDao>(relaxed = true)
+    private val conversationDao =
+        mockk<ConversationDao>(relaxed = true) {
+            // No local row: createConversation returns what it just wrote.
+            coEvery { getConversationById(any()) } returns null
+        }
     private val contactProfileDao = mockk<ContactProfileDao>()
     private val resolver = mockk<ContactProfileResolver>()
     private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" }
@@ -63,12 +67,12 @@ class MessageRepositoryImplConversationTitleTest {
             coEvery { messagingClient.startDirectConversation(any()) } returns serverDirectConversation("Sanchr User")
             coEvery { contactProfileDao.getByUserId("peer") } returns null
             coEvery { resolver.displayNameFor("peer") } returns "~Alice"
-            val inserted = slot<ConversationEntity>()
+            val inserted = slot<List<ConversationEntity>>()
 
             val conversation = repo.createConversation("peer")
 
-            coVerify { conversationDao.insertConversation(capture(inserted)) }
-            assertEquals("~Alice", inserted.captured.title)
+            coVerify { conversationDao.upsertFromServer(capture(inserted)) }
+            assertEquals("~Alice", inserted.captured.single().title)
             assertEquals("~Alice", conversation.title)
         }
 
@@ -79,13 +83,13 @@ class MessageRepositoryImplConversationTitleTest {
             coEvery { contactProfileDao.getByUserId("peer") } returns
                 ContactProfileEntity(userId = "peer", avatarUrl = "https://cdn/decrypted.jpg", updatedAt = 1L)
             coEvery { resolver.displayNameFor("peer") } returns "+15550001"
-            val inserted = slot<ConversationEntity>()
+            val inserted = slot<List<ConversationEntity>>()
 
             repo.createConversation("peer")
 
-            coVerify { conversationDao.insertConversation(capture(inserted)) }
-            assertEquals("https://cdn/decrypted.jpg", inserted.captured.avatarUrl)
-            assertEquals("+15550001", inserted.captured.title)
+            coVerify { conversationDao.upsertFromServer(capture(inserted)) }
+            assertEquals("https://cdn/decrypted.jpg", inserted.captured.single().avatarUrl)
+            assertEquals("+15550001", inserted.captured.single().title)
         }
 
     @Test
@@ -93,12 +97,12 @@ class MessageRepositoryImplConversationTitleTest {
         runTest {
             coEvery { messagingClient.startDirectConversation(any()) } returns
                 ProtoConversation(id = "g", type = "group", participantIds = listOf("self", "a", "b"), title = "Weekend plans")
-            val inserted = slot<ConversationEntity>()
+            val inserted = slot<List<ConversationEntity>>()
 
             repo.createConversation("a")
 
-            coVerify { conversationDao.insertConversation(capture(inserted)) }
-            assertEquals("Weekend plans", inserted.captured.title)
+            coVerify { conversationDao.upsertFromServer(capture(inserted)) }
+            assertEquals("Weekend plans", inserted.captured.single().title)
             coVerify(exactly = 0) { resolver.displayNameFor(any()) }
         }
 }
