@@ -13,8 +13,10 @@ import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
+import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
+import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.sync.realtime.RealtimeManager
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -43,6 +45,7 @@ class ChatDetailViewModelContactTest {
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
     private val forwardMessageUseCase = mockk<ForwardMessageUseCase>(relaxed = true)
     private val sendMessageUseCase = mockk<SendMessageUseCase>()
+    private val sendAttachmentUseCase = mockk<SendAttachmentUseCase>(relaxed = true)
     private val realtimeManager = mockk<RealtimeManager>(relaxed = true)
 
     @BeforeTest
@@ -62,7 +65,7 @@ class ChatDetailViewModelContactTest {
             savedStateHandle = SavedStateHandle(mapOf("conversationId" to "conv-1")),
             messageRepository = messageRepository,
             sendMessageUseCase = sendMessageUseCase,
-            sendAttachmentUseCase = mockk(relaxed = true),
+            sendAttachmentUseCase = sendAttachmentUseCase,
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
@@ -310,5 +313,38 @@ class ChatDetailViewModelContactTest {
 
             vm.closeSearch()
             assertEquals(null, vm.uiState.value.search)
+        }
+
+    @Test
+    fun `a pending reply is consumed by whichever send happens next, attachment or card`() =
+        runTest(testDispatcher) {
+            val quoted =
+                Message(
+                    id = "m1",
+                    conversationId = "conv-1",
+                    senderId = "peer",
+                    content = MessageContent.Text("hi"),
+                    status = MessageStatus.DELIVERED,
+                    timestamp = Instant.fromEpochMilliseconds(1_000),
+                )
+            every { messageRepository.observeMessages(any()) } returns flowOf(listOf(quoted))
+            coEvery { sendAttachmentUseCase(any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
+            coEvery { sendMessageUseCase(any(), any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            vm.setReply(
+                vm.uiState.value.messages
+                    .single(),
+            )
+            vm.sendAttachment(AttachmentUploader.Prepared(byteArrayOf(1), "image/jpeg", "p.jpg"))
+            advanceUntilIdle()
+            coVerify { sendAttachmentUseCase("conv-1", any(), "m1") }
+            assertEquals(null, vm.uiState.value.replyingTo, "the banner clears once the send takes it")
+
+            // Nothing pending now: the next send quotes nothing.
+            vm.sendContact(ContactCard(name = "Ada", phoneNumber = "+15550100"))
+            advanceUntilIdle()
+            coVerify { sendMessageUseCase("conv-1", any(), "contact", null) }
         }
 }
