@@ -48,6 +48,7 @@ class AvatarUploaderTest {
             bytes: ByteArray,
             contentType: String,
             headers: Map<String, String>,
+            onProgress: ((Long, Long) -> Unit)?,
         ) {
             failWith?.let { throw it }
             this.url = url

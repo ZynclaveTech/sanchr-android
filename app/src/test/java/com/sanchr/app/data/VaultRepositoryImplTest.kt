@@ -90,6 +90,7 @@ class VaultRepositoryImplTest {
             bytes: ByteArray,
             contentType: String,
             headers: Map<String, String>,
+            onProgress: ((Long, Long) -> Unit)?,
         ) {
             this.url = url
             this.bytes = bytes

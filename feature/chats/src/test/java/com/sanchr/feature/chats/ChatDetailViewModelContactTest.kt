@@ -329,7 +329,7 @@ class ChatDetailViewModelContactTest {
                     timestamp = Instant.fromEpochMilliseconds(1_000),
                 )
             every { messageRepository.observeMessages(any()) } returns flowOf(listOf(quoted))
-            coEvery { sendAttachmentUseCase(any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
+            coEvery { sendAttachmentUseCase(any(), any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
             coEvery { sendMessageUseCase(any(), any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
             val vm = newViewModel()
             advanceUntilIdle()
@@ -340,7 +340,7 @@ class ChatDetailViewModelContactTest {
             )
             vm.sendAttachment(AttachmentUploader.Prepared(byteArrayOf(1), "image/jpeg", "p.jpg"))
             advanceUntilIdle()
-            coVerify { sendAttachmentUseCase("conv-1", any(), "m1") }
+            coVerify { sendAttachmentUseCase("conv-1", any(), "m1", any()) }
             assertEquals(null, vm.uiState.value.replyingTo, "the banner clears once the send takes it")
 
             // Nothing pending now: the next send quotes nothing.

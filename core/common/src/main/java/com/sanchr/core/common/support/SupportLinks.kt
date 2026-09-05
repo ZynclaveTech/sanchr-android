@@ -1,4 +1,4 @@
-package com.sanchr.feature.settings
+package com.sanchr.core.common.support
 
 import android.content.ActivityNotFoundException
 import android.content.ClipData

@@ -43,11 +43,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sanchr.core.common.support.SupportLinks
 import com.sanchr.core.designsystem.component.CountryCodePickerInlineChip
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.findCountryByDialCode
@@ -354,11 +361,7 @@ fun LoginPhoneScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                text = "By continuing, you agree to our Privacy Policy and Terms of Service",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
+            LegalConsentLine(
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -371,3 +374,40 @@ fun LoginPhoneScreen(
 }
 
 private const val MIN_CONTINUE_DIGITS = 7
+
+/**
+ * The consent line, with both documents openable. It used to be flat text
+ * naming a policy the user had no way to read — the one place they are asked
+ * to agree to it.
+ */
+@Composable
+private fun LegalConsentLine(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val linkStyle = SpanStyle(color = SanchrIndigo500, textDecoration = TextDecoration.Underline)
+    val text =
+        buildAnnotatedString {
+            append("By continuing, you agree to our ")
+            withLink(
+                LinkAnnotation.Clickable("privacy", TextLinkStyles(style = linkStyle)) {
+                    SupportLinks.openUrl(context, SupportLinks.PRIVACY_POLICY)
+                },
+            ) {
+                append("Privacy Policy")
+            }
+            append(" and ")
+            withLink(
+                LinkAnnotation.Clickable("terms", TextLinkStyles(style = linkStyle)) {
+                    SupportLinks.openUrl(context, SupportLinks.TERMS_OF_SERVICE)
+                },
+            ) {
+                append("Terms of Service")
+            }
+        }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = modifier,
+    )
+}

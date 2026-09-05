@@ -37,6 +37,7 @@ class UserPreferences
             val NOTIFICATION_LOCKSCREEN_PREVIEW = booleanPreferencesKey("notification_lockscreen_preview")
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
+            val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
             val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
@@ -146,6 +147,24 @@ class UserPreferences
         }
 
         // --- Security ---
+
+        /**
+         * App Lock. Held in the view model only until now, so the toggle was
+         * forgotten on restart and nothing ever read it.
+         */
+        val screenLockEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.SCREEN_LOCK_ENABLED] ?: false }
+
+        suspend fun setScreenLockEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.SCREEN_LOCK_ENABLED] = enabled }
+        }
+
+        /** Seconds in the background before the lock re-arms; 0 means immediately. */
+        val screenLockTimeoutSeconds: Flow<Int> = dataStore.data.map { it[Keys.SCREEN_LOCK_TIMEOUT] ?: 0 }
+
+        suspend fun setScreenLockTimeoutSeconds(seconds: Int) {
+            dataStore.edit { it[Keys.SCREEN_LOCK_TIMEOUT] = seconds }
+        }
+
         val biometricEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.BIOMETRIC_ENABLED] ?: false }
 
         suspend fun setBiometricEnabled(enabled: Boolean) {
@@ -158,13 +177,13 @@ class UserPreferences
          * window, which blocks screenshots, screen recording, and redacts the
          * app in the recents/app-switcher thumbnail.
          *
-         * Disabled by default so the app behaves normally out of the box;
-         * privacy-conscious users opt in from Settings → Security. Sensitive
-         * screens (OTP, recovery-key) still force FLAG_SECURE unconditionally
-         * via `SecureScreen()` regardless of this preference.
+         * On by default, as iOS: a messenger's window should not land in a
+         * screenshot or the recents thumbnail until the user says otherwise.
+         * Sensitive screens (OTP, recovery-key) still force FLAG_SECURE
+         * unconditionally via `SecureScreen()` regardless of this preference.
          */
         val screenshotProtectionEnabled: Flow<Boolean> =
-            dataStore.data.map { it[Keys.SCREENSHOT_PROTECTION_ENABLED] ?: false }
+            dataStore.data.map { it[Keys.SCREENSHOT_PROTECTION_ENABLED] ?: true }
 
         suspend fun setScreenshotProtectionEnabled(enabled: Boolean) {
             dataStore.edit { it[Keys.SCREENSHOT_PROTECTION_ENABLED] = enabled }
