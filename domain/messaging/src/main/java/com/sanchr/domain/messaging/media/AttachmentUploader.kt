@@ -36,6 +36,9 @@ class AttachmentUploader
             val height: Int? = null,
             val durationSeconds: Double? = null,
             val isVoiceMessage: Boolean? = null,
+            val audioDurationMs: Int? = null,
+            /** Normalised 0..1 loudness buckets for the voice-note waveform, as iOS `audioWaveform`. */
+            val audioWaveform: List<Float>? = null,
         )
 
         suspend fun upload(prepared: Prepared): MediaAttachment {
@@ -67,6 +70,8 @@ class AttachmentUploader
                 durationSeconds = prepared.durationSeconds,
                 filename = prepared.fileName,
                 isVoiceMessage = prepared.isVoiceMessage,
+                audioDurationMs = prepared.audioDurationMs,
+                audioWaveform = prepared.audioWaveform,
             )
         }
 
