@@ -38,6 +38,8 @@ interface MessageRepository {
          * is governed by the timer stamped into the envelope, not by this.
          */
         expiresAtMillis: Long? = null,
+        /** The message this one quotes, or null. Rides the envelope as `reply_to_message_id`. */
+        replyToId: String? = null,
     ): MessageEntity
 
     /**
@@ -266,6 +268,8 @@ interface MessageRepository {
          * is not anchored to local arrival time.
          */
         expiresAtMillis: Long? = null,
+        /** The message the sender quoted, or null. */
+        replyToId: String? = null,
     )
 
     /**

@@ -20,6 +20,8 @@ data class ChatDetailUiState(
     val isLoadingMore: Boolean = false,
     val hasMoreMessages: Boolean = true,
     val currentUserId: String = "",
+    /** The message the next send will quote, or null. */
+    val replyingTo: MessageUiModel? = null,
 )
 
 data class MessageUiModel(
@@ -47,6 +49,16 @@ data class MessageUiModel(
     val contact: ContactCard? = null,
     /** Emoji chips under the bubble, grouped and counted, in first-seen order. */
     val reactions: List<ReactionChip> = emptyList(),
+    /** Id of the message this one quotes, or null. */
+    val replyToId: String? = null,
+    /** The quoted message as shown inside the bubble; null when it is not in the loaded transcript. */
+    val quote: ReplyQuote? = null,
+)
+
+/** iOS `ReplyQuote`: who wrote the quoted message and one line of what they said. */
+data class ReplyQuote(
+    val authorName: String,
+    val preview: String,
 )
 
 data class ReactionChip(

@@ -142,4 +142,48 @@ class ChatDetailViewModelContactTest {
                     .reactions,
             )
         }
+
+    @Test
+    fun `a reply resolves its quote from the transcript and a missing quoted row leaves it null`() =
+        runTest(testDispatcher) {
+            fun msg(
+                id: String,
+                sender: String,
+                text: String,
+                replyTo: String? = null,
+            ) = Message(
+                id = id,
+                conversationId = "conv-1",
+                senderId = sender,
+                content = MessageContent.Text(text),
+                status = MessageStatus.DELIVERED,
+                timestamp = Instant.fromEpochMilliseconds(1_000),
+                replyToId = replyTo,
+            )
+            every { messageRepository.observeMessages(any()) } returns
+                flowOf(
+                    listOf(
+                        msg("m1", "self", "see you at six"),
+                        msg("m2", "peer", "yes", replyTo = "m1"),
+                        msg("m3", "peer", "?", replyTo = "gone"),
+                    ),
+                )
+            val vm = newViewModel()
+            advanceUntilIdle()
+
+            val rows = vm.uiState.value.messages
+            assertEquals(ReplyQuote(authorName = "You", preview = "see you at six"), rows[1].quote)
+            assertEquals("m1", rows[1].replyToId)
+            assertEquals(null, rows[2].quote)
+            assertEquals("gone", rows[2].replyToId)
+
+            vm.setReply(rows[0])
+            assertEquals(
+                "m1",
+                vm.uiState.value.replyingTo
+                    ?.id,
+            )
+            vm.clearReply()
+            assertEquals(null, vm.uiState.value.replyingTo)
+        }
 }

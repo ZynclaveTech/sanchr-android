@@ -35,6 +35,8 @@ sealed interface RoutedPayload {
          * can read their profile. Null for a legacy bare-text plaintext.
          */
         val senderProfileKey: ByteArray? = null,
+        /** The message this one quotes (`reply_to_message_id`), or null. */
+        val replyToMessageId: String? = null,
     ) : RoutedPayload {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -44,6 +46,7 @@ sealed interface RoutedPayload {
                 conversationId == other.conversationId &&
                 messageId == other.messageId &&
                 expiresAfterSecs == other.expiresAfterSecs &&
+                replyToMessageId == other.replyToMessageId &&
                 (senderProfileKey?.contentEquals(other.senderProfileKey) ?: (other.senderProfileKey == null))
         }
 
@@ -54,6 +57,7 @@ sealed interface RoutedPayload {
             result = 31 * result + (messageId?.hashCode() ?: 0)
             result = 31 * result + (expiresAfterSecs?.hashCode() ?: 0)
             result = 31 * result + (senderProfileKey?.contentHashCode() ?: 0)
+            result = 31 * result + (replyToMessageId?.hashCode() ?: 0)
             return result
         }
     }
@@ -129,6 +133,7 @@ object SealedEnvelopeRouter {
                 // into an already-past deadline.
                 expiresAfterSecs = payload.expiresAfterSecs?.takeIf { it > 0 },
                 senderProfileKey = payload.senderProfileKey,
+                replyToMessageId = payload.replyToMessageId?.takeIf { it.isNotBlank() },
             )
         }
     }
