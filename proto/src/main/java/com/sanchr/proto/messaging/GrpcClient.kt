@@ -36,6 +36,8 @@ interface MessagingServiceClient {
     suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse
 
     suspend fun sendReaction(request: Reaction): Reaction
+
+    suspend fun deleteConversation(request: DeleteConversationRequest): DeleteConversationResponse
 }
 
 class MessagingServiceGrpcClient(
@@ -89,6 +91,17 @@ class MessagingServiceGrpcClient(
         stub.sendSealedMessage(request.toProto()).toManual()
 
     override suspend fun sendReaction(request: Reaction): Reaction = stub.sendReaction(request.toProto()).toManual()
+
+    override suspend fun deleteConversation(request: DeleteConversationRequest): DeleteConversationResponse {
+        val response =
+            stub.deleteConversation(
+                Messaging.DeleteConversationRequest
+                    .newBuilder()
+                    .setConversationId(request.conversationId)
+                    .build(),
+            )
+        return DeleteConversationResponse(success = response.success)
+    }
 }
 
 internal fun Reaction.toProto(): Messaging.Reaction =

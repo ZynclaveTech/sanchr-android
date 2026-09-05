@@ -17,6 +17,8 @@ import com.sanchr.proto.messaging.AckMessagesRequest
 import com.sanchr.proto.messaging.AckMessagesResponse
 import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.Conversation
+import com.sanchr.proto.messaging.DeleteConversationRequest
+import com.sanchr.proto.messaging.DeleteConversationResponse
 import com.sanchr.proto.messaging.DeleteMessageRequest
 import com.sanchr.proto.messaging.DeleteMessageResponse
 import com.sanchr.proto.messaging.DeliveryTokenRequest
@@ -427,5 +429,7 @@ class SealedSenderCipherTest {
         override suspend fun sendSealedMessage(request: SendSealedMessageRequest): SendSealedMessageResponse = error("not used")
 
         override suspend fun sendReaction(request: Reaction): Reaction = error("not used")
+
+        override suspend fun deleteConversation(request: DeleteConversationRequest): DeleteConversationResponse = error("not used")
     }
 }

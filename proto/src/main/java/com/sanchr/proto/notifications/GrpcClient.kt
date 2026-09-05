@@ -10,13 +10,15 @@ import sanchr.notifications.Notifications
  *
  * RegisterPushToken and UpdateNotificationPrefs are wired in M4/M5 — the
  * FCM token upload path and global notification toggles go through here.
- * SetConversationNotificationPrefs (per-conversation mute) lands with the
- * full conversation-settings UI in M6+.
+ * SetConversationNotificationPrefs is the per-conversation mute, sent
+ * before the local flag flips (as iOS).
  */
 interface NotificationServiceClient {
     suspend fun registerPushToken(request: RegisterPushTokenRequest): RegisterPushTokenResponse
 
     suspend fun updateNotificationPrefs(request: UpdateNotificationPrefsRequest): UpdateNotificationPrefsResponse
+
+    suspend fun setConversationNotificationPrefs(request: SetConversationNotificationPrefsRequest)
 }
 
 class NotificationServiceGrpcClient(
@@ -33,6 +35,16 @@ class NotificationServiceGrpcClient(
     override suspend fun updateNotificationPrefs(request: UpdateNotificationPrefsRequest): UpdateNotificationPrefsResponse {
         stub.updateNotificationPrefs(request.toProto())
         return UpdateNotificationPrefsResponse(success = true)
+    }
+
+    override suspend fun setConversationNotificationPrefs(request: SetConversationNotificationPrefsRequest) {
+        stub.setConversationNotificationPrefs(
+            Notifications.SetConversationNotificationPrefsRequest
+                .newBuilder()
+                .setConversationId(request.conversationId)
+                .setMuted(request.muted)
+                .build(),
+        )
     }
 }
 

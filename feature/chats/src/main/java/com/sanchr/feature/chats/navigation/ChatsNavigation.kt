@@ -6,12 +6,14 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.navArgument
+import com.sanchr.feature.chats.ArchivedChatsScreen
 import com.sanchr.feature.chats.ChatDetailScreen
 import com.sanchr.feature.chats.ChatsListScreen
 
 const val CHATS_TAB_ROUTE = "chats_tab"
 const val CHATS_LIST_ROUTE = "chats/list"
 const val CHAT_DETAIL_ROUTE = "chats/detail/{conversationId}"
+const val ARCHIVED_CHATS_ROUTE = "chats/archived"
 
 /**
  * Builds the chats navigation graph.
@@ -33,6 +35,14 @@ fun NavGraphBuilder.chatsGraph(
                 onOpenConversation = { conversationId ->
                     navController.navigate("chats/detail/$conversationId")
                 },
+                onOpenArchived = { navController.navigate(ARCHIVED_CHATS_ROUTE) },
+            )
+        }
+
+        composable(ARCHIVED_CHATS_ROUTE) {
+            ArchivedChatsScreen(
+                onConversationClick = { conversationId -> navController.navigate("chats/detail/$conversationId") },
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
