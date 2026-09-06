@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.sanchr.app.diagnostics.CrashReporter
 import com.sanchr.core.notifications.NewMessageNotifier
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.sync.SendRetryWorker
@@ -31,6 +32,9 @@ class SanchrApp :
     @Inject
     lateinit var newMessageNotifier: NewMessageNotifier
 
+    @Inject
+    lateinit var crashReporter: CrashReporter
+
     override val workManagerConfiguration: Configuration
         get() =
             Configuration
@@ -44,6 +48,9 @@ class SanchrApp :
 
         // Create notification channels as early as possible so they are available
         // before any push notification arrives.
+        // Before anything else that could throw, so a crash during startup
+        // is still covered once the user has opted in.
+        crashReporter.start()
         notificationHandler.createNotificationChannels()
         realtimeManager.initialize()
         // The notifier runs on the Hilt-provided @ApplicationScope — no ad-hoc

@@ -27,6 +27,7 @@ hilt-navigation-compose = "1.2.0"
 # Firebase
 firebase-bom = "33.7.0"
 google-services = "4.4.2"
+sentry = "7.18.1"
 
 # Networking
 grpcJava = "1.62.2"
@@ -101,6 +102,7 @@ hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-com
 # Firebase
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebase-bom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+sentry-android = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" }
 
 # Room
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

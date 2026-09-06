@@ -38,6 +38,7 @@ class UserPreferences
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
             val CHAT_WALLPAPER = stringPreferencesKey("chat_wallpaper")
+            val CRASH_REPORTING_ENABLED = booleanPreferencesKey("crash_reporting_enabled")
             val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
@@ -191,6 +192,20 @@ class UserPreferences
         }
 
         // --- Media ---
+
+        /**
+         * Whether crash reports may leave the device.
+         *
+         * Off by default, deliberately. A crash report carries a stack trace
+         * and device details to a third party, and this app's whole premise
+         * is that nothing about a conversation goes anywhere the user did not
+         * send it. Sending diagnostics is the user's call, not a default.
+         */
+        val crashReportingEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.CRASH_REPORTING_ENABLED] ?: false }
+
+        suspend fun setCrashReportingEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.CRASH_REPORTING_ENABLED] = enabled }
+        }
 
         /**
          * The account-wide chat wallpaper. A conversation with its own choice

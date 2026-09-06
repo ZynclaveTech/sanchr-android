@@ -96,6 +96,14 @@ fun PrivacyScreen(
                 onCheckedChange = viewModel::setLinkPreviewsEnabled,
             )
 
+            val crashReportingEnabled by viewModel.crashReportingEnabled.collectAsStateWithLifecycle()
+            SettingsToggleRow(
+                title = "Send crash reports",
+                subtitle = "Share anonymous crash diagnostics so we can fix what broke. Never message content, and off by default",
+                checked = crashReportingEnabled,
+                onCheckedChange = viewModel::setCrashReportingEnabled,
+            )
+
             SettingsItem(
                 icon = Icons.Filled.Block,
                 title = "Blocked Contacts",
