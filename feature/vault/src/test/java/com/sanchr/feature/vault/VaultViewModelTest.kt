@@ -1,15 +1,18 @@
 package com.sanchr.feature.vault
 
+import com.sanchr.core.common.Result
 import com.sanchr.core.model.VaultItem
 import com.sanchr.core.model.VaultItemType
 import com.sanchr.domain.vault.VaultPage
 import com.sanchr.domain.vault.VaultRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -44,13 +47,25 @@ class VaultViewModelTest {
         Dispatchers.resetMain()
     }
 
+    /**
+     * Sharing is stubbed out here: these tests are about listing, filtering
+     * and paging, and a vault with no conversations to send to exercises
+     * exactly the same code paths.
+     */
+    private fun viewModel() =
+        VaultViewModel(
+            vaultRepository = repo,
+            sendAttachmentUseCase = mockk(relaxed = true),
+            observeConversationsUseCase = mockk(relaxed = true) { every { this@mockk() } returns flowOf(Result.Success(emptyList())) },
+        )
+
     @Test
     fun `first page loads, filters by type, and paging continues from the cursor`() =
         runTest(dispatcher) {
             coEvery { repo.listItems(any(), "") } returns
                 VaultPage(listOf(item("a", VaultItemType.PHOTO), item("b", VaultItemType.DOCUMENT)), "c2")
             coEvery { repo.listItems(any(), "c2") } returns VaultPage(listOf(item("c", VaultItemType.VIDEO)), "")
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val collector = launch { vm.uiState.collect {} }
             advanceUntilIdle()
 
@@ -87,7 +102,7 @@ class VaultViewModelTest {
         runTest(dispatcher) {
             coEvery { repo.listItems(any(), "") } returns VaultPage(listOf(item("a", VaultItemType.PHOTO)), "")
             coEvery { repo.createItem("new.jpg", any(), "image/jpeg", any()) } returns item("new", VaultItemType.PHOTO)
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val collector = launch { vm.uiState.collect {} }
             advanceUntilIdle()
 
@@ -122,7 +137,7 @@ class VaultViewModelTest {
             coEvery { repo.listItems(any(), "") } returns
                 VaultPage(listOf(item("a", VaultItemType.PHOTO), item("b", VaultItemType.PHOTO)), "")
             coEvery { repo.deleteItem("a") } returns Unit
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val collector = launch { vm.uiState.collect {} }
             advanceUntilIdle()
 
@@ -144,7 +159,7 @@ class VaultViewModelTest {
             val a = item("a", VaultItemType.DOCUMENT)
             coEvery { repo.listItems(any(), "") } returns VaultPage(listOf(a), "")
             coEvery { repo.download(a) } returns byteArrayOf(7, 7)
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val events = mutableListOf<VaultEvent>()
             val eventJob = launch { vm.events.collect { events += it } }
             advanceUntilIdle()
@@ -183,7 +198,7 @@ class VaultViewModelTest {
                         ),
                     nextCursor = "",
                 )
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val collector = launch { vm.uiState.collect {} }
             advanceUntilIdle()
 
@@ -250,7 +265,7 @@ class VaultViewModelTest {
             coEvery { repo.listItems(any(), any()) } returns
                 VaultPage(listOf(item("a", VaultItemType.PHOTO), item("b", VaultItemType.PHOTO), item("d", VaultItemType.DOCUMENT)), "")
             coEvery { repo.deleteItem(any()) } returns Unit
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val collector = launch { vm.uiState.collect {} }
             advanceUntilIdle()
 
@@ -293,7 +308,7 @@ class VaultViewModelTest {
                 VaultPage(listOf(item("a", VaultItemType.PHOTO), item("b", VaultItemType.PHOTO)), "")
             coEvery { repo.deleteItem("a") } throws IllegalStateException("server said no")
             coEvery { repo.deleteItem("b") } returns Unit
-            val vm = VaultViewModel(repo)
+            val vm = viewModel()
             val collector = launch { vm.uiState.collect {} }
             val events = mutableListOf<VaultEvent>()
             val eventCollector = launch { vm.events.collect { events += it } }
