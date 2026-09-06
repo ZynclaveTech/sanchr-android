@@ -460,6 +460,19 @@ class SettingsViewModel
             triggerDebouncedSync()
         }
 
+        /**
+         * Whether crash reports may leave the device. Off unless the user
+         * says otherwise; see UserPreferences for why that is the default.
+         */
+        val crashReportingEnabled: StateFlow<Boolean> =
+            userPreferences.crashReportingEnabled
+                .catch { emit(false) }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+        fun setCrashReportingEnabled(enabled: Boolean) {
+            viewModelScope.launch { userPreferences.setCrashReportingEnabled(enabled) }
+        }
+
         /** The account-wide chat wallpaper; chats without their own follow it. */
         fun setChatWallpaper(name: String) {
             viewModelScope.launch { userPreferences.setChatWallpaper(name) }

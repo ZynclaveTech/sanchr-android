@@ -10,6 +10,25 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
+// Per-machine override for the Sentry endpoint, same mechanism the gRPC host
+// uses: a `sanchr.sentry.dsn` key in local.properties (gitignored) or a
+// SANCHR_SENTRY_DSN env var in CI. Empty by default, which disables the SDK
+// outright, so a build that was not given an endpoint reports nowhere.
+val sanchrLocalProperties =
+    Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+
+fun sanchrOverride(
+    propKey: String,
+    envKey: String,
+    default: String,
+): String =
+    sanchrLocalProperties.getProperty(propKey)
+        ?: System.getenv(envKey)
+        ?: default
+
 // ─────────────────────────────────────────────────────────────────────────────
 // App version
 //
@@ -44,6 +63,19 @@ android {
 
     defaultConfig {
         applicationId = "com.sanchr.app"
+
+        // The Sentry endpoint, pointing at our own instance. Overridable the
+        // same way the gRPC host is, so a fork or a local build can send
+        // nowhere (the default) rather than to our servers.
+        //
+        // A DSN is embedded in every client that uses it, so it is not a
+        // secret in the sense a token is. It does name our infrastructure,
+        // which is why it is injected at build time rather than committed.
+        buildConfigField(
+            "String",
+            "SENTRY_DSN",
+            "\"${sanchrOverride("sanchr.sentry.dsn", "SANCHR_SENTRY_DSN", "")}\"",
+        )
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
@@ -192,6 +224,7 @@ dependencies {
     // Firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation(libs.sentry.android)
 
     // WorkManager
     implementation(libs.work.runtime)
