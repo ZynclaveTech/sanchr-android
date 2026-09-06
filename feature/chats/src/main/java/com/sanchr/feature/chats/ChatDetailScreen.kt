@@ -1,5 +1,6 @@
 package com.sanchr.feature.chats
 
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -64,6 +65,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
@@ -148,6 +150,8 @@ import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.emoji.EmojiPickerSheet
+import com.sanchr.feature.chats.location.CurrentLocation
+import com.sanchr.feature.chats.location.LocationPayload
 import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.media.GallerySelection
@@ -227,6 +231,7 @@ fun ChatDetailScreen(
         }
     }
     val context = LocalContext.current
+    val shareLocation = rememberLocationSharer(onShare = viewModel::sendLocation)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val focusedResultId = uiState.search?.currentId
@@ -389,6 +394,7 @@ fun ChatDetailScreen(
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
+                    onAttachLocation = shareLocation,
                     onAttachViewOnce = {
                         viewOnceNext = true
                         pickAttachment.launch(arrayOf("image/*"))
@@ -567,6 +573,86 @@ private fun BatchReviewIfPicked(
     )
 }
 
+/**
+ * A shared pin. Tapping hands the coordinates to whatever map app is
+ * installed, rather than embedding a map SDK for one bubble.
+ */
+@Composable
+private fun LocationMessageBubble(
+    message: MessageUiModel,
+    pin: LocationPayload.Pin,
+) {
+    val context = LocalContext.current
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Card(
+            modifier =
+                Modifier.widthIn(max = 260.dp).clickable {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(LocationPayload.geoUri(pin)))
+                    // A device with no map app should say so, not crash.
+                    runCatching { context.startActivity(intent) }
+                        .onFailure { Toast.makeText(context, "No map app available", Toast.LENGTH_SHORT).show() }
+                },
+            shape = SanchrShapeTokens.CornerLarge,
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
+                ),
+        ) {
+            Row(
+                modifier = Modifier.padding(SanchrTheme.spacing.default),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Place,
+                    contentDescription = null,
+                    tint = if (message.isFromMe) SanchrWhite else SanchrIndigo500,
+                )
+                Column {
+                    Text(
+                        text = "Location",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                    )
+                    Text(
+                        text = "%.5f, %.5f".format(pin.latitude, pin.longitude),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (message.isFromMe) SanchrWhite.copy(alpha = 0.8f) else SanchrGray400,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Shares the current position, asking for the permission only when the user
+ * taps Location rather than at launch.
+ *
+ * Returns the action to run. Split out so the screen composable stays under
+ * detekt's complexity limit.
+ */
+@Composable
+private fun rememberLocationSharer(onShare: (Double, Double) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val request =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val pin = if (granted) CurrentLocation.lastKnown(context) else null
+            when {
+                !granted -> Toast.makeText(context, "Location permission is needed to share a pin", Toast.LENGTH_SHORT).show()
+                // Permission granted but nothing cached yet: say so rather
+                // than sending a pin at (0, 0).
+                pin == null -> Toast.makeText(context, "No location fix yet. Try again in a moment", Toast.LENGTH_SHORT).show()
+                else -> onShare(pin.latitude, pin.longitude)
+            }
+        }
+    return {
+        val pin = CurrentLocation.lastKnown(context)
+        if (pin != null) onShare(pin.latitude, pin.longitude) else request.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+    }
+}
+
 /** Shows the key-change warning only when there is one, keeping the screen composable flat. */
 @Composable
 private fun IdentityChangeNotice(
@@ -685,6 +771,12 @@ private fun MessageRow(
             VoiceMessageBubble(
                 message = message,
                 openAttachment = viewModel::openAttachment,
+            )
+
+        message.contentType == "location" && LocationPayload.decode(message.text) != null ->
+            LocationMessageBubble(
+                message = message,
+                pin = requireNotNull(LocationPayload.decode(message.text)),
             )
 
         message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
@@ -1244,6 +1336,7 @@ private fun MessageInputBar(
     onAttachSticker: () -> Unit,
     onAttachFile: () -> Unit,
     onAttachPhotos: () -> Unit,
+    onAttachLocation: () -> Unit,
     onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
     onVoiceClip: (VoiceClip) -> Unit,
@@ -1342,6 +1435,14 @@ private fun MessageInputBar(
                         onClick = {
                             attachMenuOpen = false
                             onAttachViewOnce()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Location") },
+                        leadingIcon = { Icon(Icons.Filled.Place, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachLocation()
                         },
                     )
                     DropdownMenuItem(
