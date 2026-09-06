@@ -141,6 +141,7 @@ import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.network.link.LinkDetector
 import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
@@ -152,6 +153,7 @@ import com.sanchr.feature.chats.media.GallerySelection
 import com.sanchr.feature.chats.media.GalleryState
 import com.sanchr.feature.chats.media.MediaBatchReview
 import com.sanchr.feature.chats.media.MediaGallery
+import com.sanchr.feature.chats.media.viewer.DocumentPreviewScreen
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
 import com.sanchr.feature.chats.voice.VoiceRecordButton
@@ -190,6 +192,7 @@ fun ChatDetailScreen(
     val pickContact = rememberContactPicker(viewModel::sendContact)
     var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
     var gallery by remember { mutableStateOf<GalleryState?>(null) }
+    var documentPreview by remember { mutableStateOf<Pair<File, MediaAttachment>?>(null) }
     var batch by remember { mutableStateOf<List<Uri>>(emptyList()) }
     val pickPhotos =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -337,6 +340,8 @@ fun ChatDetailScreen(
                     gallery = gallery,
                     galleryIsSecure = uiState.screenshotProtectionEnabled,
                     onGalleryClosed = { gallery = null },
+                    documentPreview = documentPreview,
+                    onDocumentPreviewClosed = { documentPreview = null },
                 )
                 BatchReviewIfPicked(
                     uris = batch,
@@ -509,6 +514,7 @@ fun ChatDetailScreen(
                             actions = actions,
                             onOpenViewOnce = { viewOnceOpen = it },
                             onOpenMedia = { tapped -> gallery = GallerySelection.from(uiState.messages, tapped.id) },
+                            onPreviewDocument = { file, attachment -> documentPreview = file to attachment },
                             loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
                         )
                     }
@@ -627,9 +633,9 @@ private fun MessageRow(
     actions: MessageActions,
     onOpenViewOnce: (MessageUiModel) -> Unit,
     onOpenMedia: (MessageUiModel) -> Unit,
+    onPreviewDocument: (File, MediaAttachment) -> Unit,
     loadLinkPreview: (suspend (String) -> LinkPreview?)?,
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     when {
         message.contentType == "system" -> SystemNote(message.text)
@@ -661,13 +667,14 @@ private fun MessageRow(
                 actions = actions,
                 onClick = {
                     // Video plays in our own viewer alongside the photos;
-                    // everything else still opens in whatever app handles it.
+                    // documents open in ours too, so a decrypted attachment is
+                    // not handed to another app just to be read.
                     if (message.isVideoAttachment) {
                         onOpenMedia(message)
                     } else {
                         scope.launch {
                             val file = viewModel.openAttachment(message) ?: return@launch
-                            presentAttachment(context, file, message.attachment.mimeType)
+                            onPreviewDocument(file, message.attachment)
                         }
                     }
                 },
@@ -1843,6 +1850,8 @@ private fun MessageDialogs(
     gallery: GalleryState?,
     galleryIsSecure: Boolean,
     onGalleryClosed: () -> Unit,
+    documentPreview: Pair<File, MediaAttachment>?,
+    onDocumentPreviewClosed: () -> Unit,
 ) {
     forwarding?.let { message ->
         ForwardPickerDialog(
@@ -1880,6 +1889,19 @@ private fun MessageDialogs(
             openAttachment = viewModel::openAttachment,
             onClose = onGalleryClosed,
             secure = galleryIsSecure,
+        )
+    }
+    documentPreview?.let { (file, attachment) ->
+        val context = LocalContext.current
+        DocumentPreviewScreen(
+            file = file,
+            fileName = attachment.filename,
+            mimeType = attachment.mimeType,
+            onDismiss = onDocumentPreviewClosed,
+            onOpenExternally = {
+                presentAttachment(context, file, attachment.mimeType)
+                onDocumentPreviewClosed()
+            },
         )
     }
 }
