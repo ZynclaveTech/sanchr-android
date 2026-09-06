@@ -13,15 +13,19 @@ object CrashReportRedaction {
     private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
     private val CONTENT_URI = Regex("""content://\S+""")
     private val FILE_PATH = Regex("""(/[\w.-]+){2,}""")
-    private val LONG_B64 = Regex("""[A-Za-z0-9+/=]{24,}""")
+
+    // `=` only ever pads the end of base64. Including it at the front let
+    // this rule swallow a preceding "key=" and report the label as data.
+    private val LONG_B64 = Regex("""[A-Za-z0-9+/]{24,}={0,2}""")
 
     /**
      * [text] with anything that could identify a person or a message
      * replaced.
      *
-     * Order matters: phone numbers and emails go first, since a path or a
+     * Order matters. Phone numbers and emails go first, since a path or a
      * base64 run could otherwise swallow them and leave a partial number
-     * behind.
+     * behind. Paths then precede base64, whose character class contains `/`
+     * and so matches any sufficiently long path.
      */
     fun redact(text: String?): String {
         if (text.isNullOrBlank()) return ""
@@ -29,8 +33,13 @@ object CrashReportRedaction {
             .replace(EMAIL, "[email]")
             .replace(PHONE, "[phone]")
             .replace(CONTENT_URI, "[uri]")
-            .replace(LONG_B64, "[data]")
+            // Paths before base64: `/` is a base64 character, so the base64
+            // rule matches any path long enough and reports it as [data].
+            // Nothing leaks — it over-redacts — but a report in which every
+            // path reads [data] is markedly harder to act on, which defeats
+            // the point of keeping the non-identifying half.
             .replace(FILE_PATH, "[path]")
+            .replace(LONG_B64, "[data]")
     }
 
     /**

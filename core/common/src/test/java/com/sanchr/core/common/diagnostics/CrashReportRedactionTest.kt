@@ -29,12 +29,25 @@ class CrashReportRedactionTest {
     fun `a file path never survives`() {
         val out = CrashReportRedaction.redact("missing /data/user/0/com.sanchr.app/cache/photo.jpg")
         assertFalse(out.contains("com.sanchr.app/cache"), out)
+        // The label matters too. `/` is a base64 character, so with the rules
+        // in the wrong order the base64 pass claimed the path first and every
+        // path in a report read [data]. Nothing leaked, but a report that
+        // cannot distinguish a path from key material is much harder to act
+        // on — and asserting only on what is absent let that go unnoticed.
+        assertTrue(out.contains("[path]"), out)
     }
 
     @Test
     fun `a long base64 run, which could be key material, never survives`() {
         val out = CrashReportRedaction.redact("bad key MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE")
         assertFalse(out.contains("MFkwEwYHKoZIzj0"), out)
+        assertEquals("bad key [data]", out)
+    }
+
+    /** `=` pads the end of base64; it must not consume a preceding "key=". */
+    @Test
+    fun `a base64 run does not swallow the label in front of it`() {
+        assertEquals("key=[data]", CrashReportRedaction.redact("key=MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE"))
     }
 
     @Test
