@@ -30,6 +30,7 @@ import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
+import com.sanchr.feature.chats.location.LocationPayload
 import com.sanchr.feature.chats.stickers.StickerRenderer
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -375,6 +376,27 @@ class ChatDetailViewModel
                     if (result is Result.Error) failure = result.exception.message ?: "Failed to send attachment"
                 }
                 _uiState.update { it.copy(isSending = false, uploadProgress = null, error = failure) }
+            }
+        }
+
+        /**
+         * Sends the user's current position as a `location` message.
+         *
+         * The body is the same JSON iOS writes, so a pin sent from here
+         * renders as a pin there rather than as unreadable text.
+         */
+        fun sendLocation(
+            latitude: Double,
+            longitude: Double,
+        ) {
+            val replyToId = takePendingReply()
+            viewModelScope.launch {
+                val body = LocationPayload.encode(latitude, longitude)
+                when (val result = sendMessageUseCase(conversationId, body, "location", replyToId)) {
+                    is Result.Error ->
+                        _uiState.update { it.copy(error = result.exception.message ?: "Couldn't send your location") }
+                    else -> Unit
+                }
             }
         }
 
