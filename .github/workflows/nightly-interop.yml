@@ -104,11 +104,12 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           working-directory: sanchr-android
-          script: |
-            ./gradlew :app:connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.interop.InteropTest \
-              -Pandroid.testInstrumentationRunnerArguments.backendUrl=$SANCHR_TEST_BACKEND_URL \
-              --no-daemon
+          # One line, deliberately. The action does not run this through a
+          # shell that honours backslash continuations, so a wrapped command
+          # reaches Gradle with a literal `\` as an argument and fails with
+          # "Task '\' not found" — which it did, invisibly, behind the
+          # checkout failure that stopped this job ever getting here.
+          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.interop.InteropTest -Pandroid.testInstrumentationRunnerArguments.backendUrl=$SANCHR_TEST_BACKEND_URL --no-daemon
 
       - name: Tear down backend
         if: always()
