@@ -41,6 +41,9 @@ dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.datastore)
     implementation(projects.core.model)
+    // The post-install restore offer asks the backup manager whether this
+    // account has anything to restore.
+    implementation(projects.sync)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

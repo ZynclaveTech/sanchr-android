@@ -33,6 +33,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
@@ -44,6 +45,8 @@ import com.sanchr.feature.calls.navigation.callsGraph
 import com.sanchr.feature.calls.navigation.outgoingCallRoute
 import com.sanchr.feature.chats.navigation.chatsGraph
 import com.sanchr.feature.contacts.navigation.contactsGraph
+import com.sanchr.feature.onboarding.BackupRestoreOfferScreen
+import com.sanchr.feature.onboarding.navigation.BACKUP_RESTORE_OFFER_ROUTE
 import com.sanchr.feature.onboarding.navigation.ONBOARDING_GRAPH_ROUTE
 import com.sanchr.feature.onboarding.navigation.onboardingGraph
 import com.sanchr.feature.profile.navigation.profileGraph
@@ -257,12 +260,28 @@ private fun ResolvedNavHost(
             onboardingGraph(
                 navController = navController,
                 onOnboardingComplete = {
-                    navController.navigate("main") {
+                    // Via the restore offer, not straight to main. This is the
+                    // fresh-install path, and it is the only moment a
+                    // reinstalling user is looking for their history; the
+                    // screen takes itself out of the way when there is no
+                    // backup to offer.
+                    navController.navigate(BACKUP_RESTORE_OFFER_ROUTE) {
                         popUpTo(ONBOARDING_GRAPH_ROUTE) { inclusive = true }
                         launchSingleTop = true
                     }
                 },
             )
+
+            composable(BACKUP_RESTORE_OFFER_ROUTE) {
+                BackupRestoreOfferScreen(
+                    onFinished = {
+                        navController.navigate("main") {
+                            popUpTo(BACKUP_RESTORE_OFFER_ROUTE) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
 
             // Main authenticated flow with bottom navigation
             navigation(startDestination = TopLevelDestination.CHATS.route, route = "main") {
