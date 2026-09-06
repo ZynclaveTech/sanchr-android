@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +49,14 @@ import kotlinx.coroutines.withContext
 
 /** How much of a text attachment is read before it is truncated. */
 private const val TEXT_PREVIEW_LIMIT = 512 * 1024
+
+private const val IMAGE_BYTES_PER_PIXEL = 4
+
+/** Ceiling for a decoded image; anything larger is downsampled to fit. */
+private const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
+
+/** A4-ish, used to hold a page's place until it renders. */
+private const val PAGE_PLACEHOLDER_ASPECT = 0.707f
 
 /**
  * Shows an attachment without handing it to another app.
@@ -108,51 +118,91 @@ fun DocumentPreviewScreen(
 
 @Composable
 private fun PdfBody(file: File) {
-    var pages by remember(file) { mutableStateOf<List<Bitmap>?>(null) }
-    var failed by remember(file) { mutableStateOf(false) }
+    var pdf by remember(file) { mutableStateOf<PdfPages?>(null) }
+    var opened by remember(file) { mutableStateOf(false) }
 
-    // BoxWithConstraints so pages are rasterised at the width they are shown
-    // at, rather than at a guessed resolution that is either soft or wasteful.
+    DisposableEffect(file) {
+        val pages = PdfPages.open(file)
+        pdf = pages
+        opened = true
+        onDispose {
+            pages?.close()
+            pdf = null
+        }
+    }
+
+    // BoxWithConstraints so a page is rasterised at the width it is shown at,
+    // rather than at a guessed resolution that is either soft or wasteful.
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize().padding(horizontal = SanchrTheme.spacing.sm),
     ) {
         val widthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
-
-        LaunchedEffect(file, widthPx) {
-            if (widthPx <= 0) return@LaunchedEffect
-            val rendered =
-                withContext(Dispatchers.IO) {
-                    PdfPages.open(file)?.use { pdf ->
-                        (0 until pdf.pageCount).mapNotNull { pdf.render(it, widthPx) }
-                    }
-                }
-            if (rendered.isNullOrEmpty()) failed = true else pages = rendered
-        }
+        val pages = pdf
 
         when {
-            failed ->
-                CentredMessage("This PDF could not be opened here. It may be password-protected or damaged.")
-
-            pages == null ->
+            !opened ->
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
 
+            pages == null || pages.pageCount == 0 ->
+                CentredMessage("This PDF could not be opened here. It may be password-protected or damaged.")
+
             else ->
+                // Rendered page by page as they scroll into view. Rendering
+                // the whole document up front meant a file from a stranger
+                // decided how much memory to allocate: a few hundred pages is
+                // an ordinary report, and holding all of them as bitmaps is
+                // enough to take the process down.
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(pages.orEmpty()) { page ->
-                        ComposeImage(
-                            bitmap = page.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.FillWidth,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                    items(pages.pageCount) { index ->
+                        PdfPage(pages = pages, index = index, widthPx = widthPx)
                     }
                 }
         }
+    }
+}
+
+/**
+ * One page, rendered when it comes into view and dropped when it leaves.
+ *
+ * The placeholder keeps its height so the list does not jump as pages
+ * resolve; a page that cannot be rendered — outside the size budget, or
+ * damaged — simply stays a placeholder rather than failing the document.
+ */
+@Composable
+private fun PdfPage(
+    pages: PdfPages,
+    index: Int,
+    widthPx: Int,
+) {
+    var page by remember(pages, index, widthPx) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(pages, index, widthPx) {
+        if (widthPx > 0) {
+            page = pages.render(index, widthPx)
+        }
+    }
+
+    when (val rendered = page) {
+        null ->
+            Box(
+                modifier = Modifier.fillMaxWidth().aspectRatio(PAGE_PLACEHOLDER_ASPECT),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator()
+            }
+
+        else ->
+            ComposeImage(
+                bitmap = rendered.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxWidth(),
+            )
     }
 }
 
@@ -165,7 +215,7 @@ private fun ImageBody(
     var failed by remember(file) { mutableStateOf(false) }
 
     LaunchedEffect(file) {
-        val decoded = withContext(Dispatchers.IO) { runCatching { BitmapFactory.decodeFile(file.path) }.getOrNull() }
+        val decoded = withContext(Dispatchers.IO) { decodeBounded(file) }
         if (decoded == null) failed = true else bitmap = decoded
     }
 
@@ -189,6 +239,31 @@ private fun ImageBody(
             }
     }
 }
+
+/**
+ * [file] decoded at a size that fits a fixed budget.
+ *
+ * The dimensions are read from the header first. Decoding straight to a
+ * bitmap lets the file decide the allocation, and an image is something a
+ * stranger sends: a 30000x30000 PNG compresses to very little and asks for
+ * gigabytes on decode. Reading the bounds costs nothing and turns that into
+ * a downsample.
+ */
+private fun decodeBounded(file: File): Bitmap? =
+    runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sample = 1
+        while (
+            bounds.outWidth.toLong() * bounds.outHeight / (sample.toLong() * sample) * IMAGE_BYTES_PER_PIXEL >
+            MAX_IMAGE_BYTES
+        ) {
+            sample *= 2
+        }
+        BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+    }.getOrNull()
 
 @Composable
 private fun TextBody(file: File) {
