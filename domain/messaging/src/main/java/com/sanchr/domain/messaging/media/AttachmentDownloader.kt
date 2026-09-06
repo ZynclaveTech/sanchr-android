@@ -86,6 +86,16 @@ class AttachmentDownloader
                 }
             }
 
+        /**
+         * Whether this attachment is already on disk, so it can be shown
+         * without spending data. Lets the auto-download policy hold back only
+         * the fetches that would actually cost something.
+         */
+        fun isCached(
+            messageId: String,
+            attachment: MediaAttachment,
+        ): Boolean = cacheFile(messageId, attachment.mimeType).let { it.isFile && it.length() > 0 }
+
         fun cacheFile(
             messageId: String,
             mimeType: String,

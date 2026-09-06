@@ -69,9 +69,12 @@ class ChatDetailViewModelIdentityChangeTest {
                 mockk {
                     every { linkPreviewsEnabled } returns flowOf(true)
                     every { screenshotProtectionEnabled } returns flowOf(true)
+                    every { mediaAutoDownload } returns flowOf("wifi")
+                    every { typingIndicatorsEnabled } returns flowOf(true)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = safetyNumbers,
+            connectivityMonitor = mockk(relaxed = true),
         )
 
     @Test

@@ -122,6 +122,8 @@ class NotificationHandler
             entity: MessageEntity,
             senderDisplayName: String?,
             showPreviewOnLockscreen: Boolean = false,
+            /** Settings → Notifications → Message Preview; decides what may be shown at all. */
+            messagePreviewSetting: String = NotificationPreviewPolicy.ALWAYS,
         ) {
             val notificationId = entity.conversationId.hashCode()
             val contentPendingIntent =
@@ -132,8 +134,7 @@ class NotificationHandler
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
 
-            val displayTitle = senderDisplayName?.takeIf { it.isNotBlank() } ?: "New message"
-            val preview =
+            val rawPreview =
                 if (entity.contentType.equals("text", ignoreCase = true)) {
                     entity.contentBody
                 } else {
@@ -141,6 +142,12 @@ class NotificationHandler
                     // binary blobs or URLs into the system notification.
                     entity.contentType.lowercase().replaceFirstChar { it.uppercase() }
                 }
+            // What the user's Message Preview choice permits. Applied here, not
+            // only to the lockscreen: "Never" has to withhold the name and the
+            // text from the shade as well, which is where it used to show both.
+            val content = NotificationPreviewPolicy.decide(messagePreviewSetting, senderDisplayName, rawPreview)
+            val displayTitle = content.title
+            val preview = content.body
 
             val publicVersion =
                 NotificationCompat

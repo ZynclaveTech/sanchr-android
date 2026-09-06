@@ -73,9 +73,12 @@ class ChatDetailViewModelPresenceTest {
                 mockk {
                     every { linkPreviewsEnabled } returns flowOf(true)
                     every { screenshotProtectionEnabled } returns flowOf(true)
+                    every { mediaAutoDownload } returns flowOf("wifi")
+                    every { typingIndicatorsEnabled } returns flowOf(true)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
+            connectivityMonitor = mockk(relaxed = true),
         )
 
     @Test

@@ -14,6 +14,7 @@ import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
+import com.sanchr.core.network.ConnectivityMonitor
 import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.core.notifications.NotificationHandler
@@ -28,6 +29,7 @@ import com.sanchr.domain.messaging.ToggleReactionUseCase
 import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
@@ -40,6 +42,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -66,6 +69,7 @@ class ChatDetailViewModel
         private val userPreferences: UserPreferences,
         private val linkPreviewFetcher: LinkPreviewFetcher,
         private val safetyNumbers: SafetyNumberManager,
+        private val connectivityMonitor: ConnectivityMonitor,
     ) : ViewModel() {
         private companion object {
             const val TAG = "ChatDetailViewModel"
@@ -163,12 +167,20 @@ class ChatDetailViewModel
             }
         }
 
+        /**
+         * Typing indicators are a mutual courtesy, so the setting governs both
+         * directions: a user who does not broadcast that they are typing does
+         * not see the other side's either, as on iOS.
+         */
         private fun observeTyping() {
             viewModelScope.launch {
-                realtimeManager.typingCache.collect { cache ->
-                    _uiState.update { state ->
-                        state.copy(peerTyping = cache[conversationId]?.isTyping == true)
-                    }
+                combine(
+                    realtimeManager.typingCache,
+                    userPreferences.typingIndicatorsEnabled,
+                ) { cache, enabled ->
+                    enabled && cache[conversationId]?.isTyping == true
+                }.collect { typing ->
+                    _uiState.update { state -> state.copy(peerTyping = typing) }
                 }
             }
         }
@@ -268,7 +280,13 @@ class ChatDetailViewModel
 
         fun onInputTextChanged(text: String) {
             _uiState.update { it.copy(inputText = text) }
-            realtimeManager.sendTypingIndicator(conversationId, text.isNotBlank())
+            viewModelScope.launch {
+                // Read per keystroke rather than cached: the toggle is in
+                // Settings, and a chat left open must stop broadcasting the
+                // moment it is turned off, not on next launch.
+                val enabled = runCatching { userPreferences.typingIndicatorsEnabled.first() }.getOrDefault(true)
+                if (enabled) realtimeManager.sendTypingIndicator(conversationId, text.isNotBlank())
+            }
         }
 
         fun sendMessage() {
@@ -370,6 +388,23 @@ class ChatDetailViewModel
                 runCatching { safetyNumbers.acceptIdentityChange(peer) }
                 refreshIdentityChangeState()
             }
+        }
+
+        /**
+         * Whether a bubble may fetch its own media without being tapped.
+         *
+         * Read at the moment of the fetch rather than cached, so the network
+         * changing under a chat that is already open is respected.
+         */
+        fun mayAutoDownload(): Boolean {
+            val setting = _uiState.value.mediaAutoDownload
+            return MediaAutoDownloadPolicy.shouldAutoDownload(setting, connectivityMonitor.isMetered)
+        }
+
+        /** Whether this attachment is already on disk, so showing it costs nothing. */
+        fun isCached(message: MessageUiModel): Boolean {
+            val attachment = message.attachment ?: return false
+            return runCatching { attachmentDownloader.isCached(message.id, attachment) }.getOrDefault(false)
         }
 
         /** The decrypted file for a message's attachment, downloading it if needed. */
@@ -541,6 +576,11 @@ class ChatDetailViewModel
                 // screenshot could still catch.
                 userPreferences.screenshotProtectionEnabled.collect { on ->
                     _uiState.update { it.copy(screenshotProtectionEnabled = on) }
+                }
+            }
+            viewModelScope.launch {
+                userPreferences.mediaAutoDownload.collect { setting ->
+                    _uiState.update { it.copy(mediaAutoDownload = setting) }
                 }
             }
         }

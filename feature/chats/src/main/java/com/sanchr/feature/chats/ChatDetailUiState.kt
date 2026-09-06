@@ -32,6 +32,8 @@ data class ChatDetailUiState(
     val uploadProgress: Float? = null,
     /** Whether the user's screenshot protection is on, which the media viewer honours too. */
     val screenshotProtectionEnabled: Boolean = true,
+    /** Settings → Storage → Media auto-download: "wifi", "always" or "never". */
+    val mediaAutoDownload: String = "wifi",
     /**
      * The peer's security code changed and the user has not reviewed it. While
      * true, sends to them fail closed, so the banner is not dismissible.
