@@ -1,5 +1,6 @@
 package com.sanchr.feature.chats.media
 
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -38,6 +41,8 @@ import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.feature.chats.media.editor.EditedImageStore
+import com.sanchr.feature.chats.media.editor.ImageEditorScreen
 
 /**
  * Reviews several picked photos before they are sent, with one caption.
@@ -52,9 +57,38 @@ fun MediaBatchReview(
     onCancel: () -> Unit,
     onSend: (uris: List<Uri>, caption: String?) -> Unit,
 ) {
+    val context = LocalContext.current
     var caption by remember { mutableStateOf("") }
     var selected by remember(uris) { mutableStateOf(uris) }
     var previewed by remember(uris) { mutableStateOf(uris.firstOrNull()) }
+    var editing by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    // The editor replaces the review screen rather than stacking on top of
+    // it: two dialogs deep, the outer scrim renders over the inner content on
+    // some OEM builds, and the editor wants the whole screen regardless.
+    editing?.let { source ->
+        Dialog(
+            onDismissRequest = { editing = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            ImageEditorScreen(
+                source = source,
+                onCancel = { editing = null },
+                onDone = { edited ->
+                    val replacement = EditedImageStore.save(context, edited)
+                    if (replacement != null) {
+                        val original = previewed
+                        // Replaced in place so the photo keeps its position in
+                        // the strip; appending would reorder what is sent.
+                        selected = selected.map { if (it == original) replacement else it }
+                        previewed = replacement
+                    }
+                    editing = null
+                },
+            )
+        }
+        return
+    }
 
     // Removing the last one is a cancel, not an empty review screen.
     if (selected.isEmpty()) {
@@ -90,6 +124,20 @@ fun MediaBatchReview(
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    IconButton(
+                        onClick = {
+                            // Decoded here rather than in the editor so a file
+                            // that cannot be read leaves the review screen up
+                            // instead of opening an editor with no image.
+                            editing =
+                                runCatching {
+                                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                                }.getOrNull()
+                        },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(SanchrTheme.spacing.sm),
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Edit photo", tint = Color.White)
+                    }
                 }
             }
 

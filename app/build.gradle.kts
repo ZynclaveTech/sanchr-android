@@ -155,6 +155,12 @@ android {
         // Matches :domain:messaging and :feature:chats. Without it, any
         // android.util.Log call on a tested path throws "not mocked".
         unitTests.isReturnDefaultValues = true
+
+        // Robolectric otherwise runs against a stub package rather than the
+        // merged manifest, so anything resolved by authority — the
+        // FileProvider the image editor hands its output through — is
+        // invisible to a test and fails as if it were not declared.
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -238,6 +244,12 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
     testImplementation(libs.json)
+
+    // The image editor hands the send path a content:// URI through the
+    // FileProvider declared in this module's manifest. Only a real resolver
+    // proves the authority and the file_paths entry line up.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.kotlinx.serialization.json)
     androidTestImplementation(libs.espresso.core)

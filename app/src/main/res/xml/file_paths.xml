@@ -4,4 +4,10 @@
     <cache-path name="vault" path="vault/" />
     <!-- Decrypted chat attachments cached by AttachmentDownloader. -->
     <cache-path name="attachments" path="attachments/" />
+    <!--
+        Photos written by the image editor before sending. Needs a content://
+        URI rather than a file:// one so the resolver can report image/jpeg;
+        a file URI reports nothing and the photo uploads as octet-stream.
+    -->
+    <cache-path name="edited" path="edited/" />
 </paths>
