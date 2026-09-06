@@ -34,6 +34,8 @@ data class ChatDetailUiState(
     val screenshotProtectionEnabled: Boolean = true,
     /** Settings → Storage → Media auto-download: "wifi", "always" or "never". */
     val mediaAutoDownload: String = "wifi",
+    /** This chat's wallpaper, already resolved from the per-chat override and the account default. */
+    val wallpaper: String = "default",
     /**
      * The peer's security code changed and the user has not reviewed it. While
      * true, sends to them fail closed, so the banner is not dismissible.

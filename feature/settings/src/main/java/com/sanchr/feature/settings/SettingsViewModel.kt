@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
@@ -112,6 +113,18 @@ class SettingsViewModel
         private val _disappearingMessagesDefault = MutableStateFlow("off")
         private val _profilePhotoVisibility = MutableStateFlow("everyone")
         private val _lowDataMode = MutableStateFlow(false)
+
+        /**
+         * The account-wide chat wallpaper.
+         *
+         * Exposed separately rather than folded into [uiState]: that combine
+         * is already at its maximum arity, and the picker needs to redraw the
+         * moment the choice changes.
+         */
+        val chatWallpaper: StateFlow<String> =
+            userPreferences.chatWallpaper
+                .catch { emit("default") }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "default")
 
         private val _pendingSync = MutableStateFlow(0L)
 
@@ -445,6 +458,11 @@ class SettingsViewModel
             }
             _remoteSettings.update { it?.copy(profilePhotoVisibility = visibility) }
             triggerDebouncedSync()
+        }
+
+        /** The account-wide chat wallpaper; chats without their own follow it. */
+        fun setChatWallpaper(name: String) {
+            viewModelScope.launch { userPreferences.setChatWallpaper(name) }
         }
 
         fun setDisappearingMessagesDefault(duration: String) {

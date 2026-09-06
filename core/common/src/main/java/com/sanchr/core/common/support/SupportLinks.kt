@@ -17,6 +17,7 @@ object SupportLinks {
     const val PRIVACY_POLICY = "https://sanchr.com/privacy"
     const val TERMS_OF_SERVICE = "https://sanchr.com/terms"
     const val DOCUMENTATION = "https://sanchr.com/docs"
+    const val OPEN_SOURCE_LICENSES = "https://sanchr.com/licenses"
     const val SUPPORT_EMAIL = "support@sanchr.com"
     const val SECURITY_EMAIL = "security@sanchr.com"
 

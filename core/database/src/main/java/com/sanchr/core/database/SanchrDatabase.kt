@@ -62,7 +62,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -353,6 +353,17 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * Adds the per-conversation wallpaper. Nullable, so every existing chat
+     * follows the account-wide choice until the user picks one for it.
+     */
+    internal val migration12To13 =
+        object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `wallpaper` TEXT DEFAULT NULL")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -388,6 +399,7 @@ object DatabaseModule {
                     migration9To10,
                     migration10To11,
                     migration11To12,
+                    migration12To13,
                 ).build()
         }
     }

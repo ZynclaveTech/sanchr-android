@@ -4,6 +4,7 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.ChatWallpapers
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -50,6 +52,7 @@ fun AppearanceScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val chatWallpaper by viewModel.chatWallpaper.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -188,32 +191,29 @@ fun AppearanceScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
             ) {
-                listOf(
-                    MaterialTheme.colorScheme.surface,
-                    MaterialTheme.colorScheme.primaryContainer,
-                    MaterialTheme.colorScheme.secondaryContainer,
-                    MaterialTheme.colorScheme.tertiaryContainer,
-                ).forEachIndexed { index, color ->
+                // Every swatch used to be inert and the first was drawn as
+                // selected whatever the stored value was.
+                ChatWallpapers.NAMES.forEach { name ->
+                    val isSelected = name == chatWallpaper
+                    val shape = RoundedCornerShape(12.dp)
                     Box(
                         modifier =
                             Modifier
                                 .size(56.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(color)
-                                .then(
-                                    if (index == 0) {
-                                        Modifier.border(
-                                            2.dp,
-                                            MaterialTheme.colorScheme.primary,
-                                            RoundedCornerShape(12.dp),
-                                        )
+                                .clip(shape)
+                                .background(
+                                    ChatWallpapers.colorOf(name, isSystemInDarkTheme())
+                                        ?: MaterialTheme.colorScheme.surfaceVariant,
+                                ).then(
+                                    if (isSelected) {
+                                        Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape)
                                     } else {
                                         Modifier
                                     },
-                                ).clickable { /* select wallpaper */ },
+                                ).clickable { viewModel.setChatWallpaper(name) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (index == 0) {
+                        if (isSelected) {
                             Icon(
                                 imageVector = Icons.Filled.Check,
                                 contentDescription = "Selected",

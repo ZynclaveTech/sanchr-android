@@ -6,10 +6,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import com.sanchr.feature.contacts.ContactSyncScreen
 import com.sanchr.feature.contacts.ContactsScreen
+import com.sanchr.feature.contacts.lookup.PhoneLookupScreen
 
 const val CONTACTS_TAB_ROUTE = "contacts_tab"
 const val CONTACTS_LIST_ROUTE = "contacts/list"
 const val CONTACT_SYNC_ROUTE = "contacts/sync"
+const val PHONE_LOOKUP_ROUTE = "contacts/lookup"
 
 fun NavGraphBuilder.contactsGraph(navController: NavController) {
     navigation(startDestination = CONTACTS_LIST_ROUTE, route = CONTACTS_TAB_ROUTE) {
@@ -20,6 +22,16 @@ fun NavGraphBuilder.contactsGraph(navController: NavController) {
                 },
                 onSyncContacts = {
                     navController.navigate(CONTACT_SYNC_ROUTE)
+                },
+                onFindByNumber = { navController.navigate(PHONE_LOOKUP_ROUTE) },
+            )
+        }
+
+        composable(PHONE_LOOKUP_ROUTE) {
+            PhoneLookupScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onOpenConversation = { conversationId ->
+                    navController.navigate("chats/detail/$conversationId")
                 },
             )
         }

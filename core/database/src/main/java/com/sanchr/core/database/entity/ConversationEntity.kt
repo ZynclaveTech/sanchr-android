@@ -45,6 +45,14 @@ data class ConversationEntity(
      */
     @ColumnInfo(name = "is_hidden")
     val isHidden: Boolean = false,
+    /**
+     * This chat's wallpaper, or null to follow the account-wide choice.
+     *
+     * Device-only, like [isArchived] and [isHidden]: nothing on the wire
+     * carries it, so it must survive a sync.
+     */
+    @ColumnInfo(name = "wallpaper")
+    val wallpaper: String? = null,
     @ColumnInfo(name = "disappearing_duration_ms")
     val disappearingDurationMs: Long? = null,
     @ColumnInfo(name = "updated_at")

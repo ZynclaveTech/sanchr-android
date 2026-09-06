@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sanchr.core.common.support.SupportLinks
@@ -50,6 +51,7 @@ fun HelpCenterScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     Scaffold(
         topBar = {
@@ -246,7 +248,13 @@ fun HelpCenterScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
-            listOf("Terms of Service", "Privacy Policy", "Open Source Licenses").forEach { item ->
+            // These three used to be styled as links with an empty click
+            // handler, so they read as tappable and did nothing.
+            listOf(
+                "Terms of Service" to SupportLinks.TERMS_OF_SERVICE,
+                "Privacy Policy" to SupportLinks.PRIVACY_POLICY,
+                "Open Source Licenses" to SupportLinks.OPEN_SOURCE_LICENSES,
+            ).forEach { (item, url) ->
                 Text(
                     text = item,
                     style = MaterialTheme.typography.bodyMedium,
@@ -254,7 +262,7 @@ fun HelpCenterScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .clickable { /* open link */ }
+                            .clickable { uriHandler.openUri(url) }
                             .padding(vertical = SanchrTheme.spacing.sm),
                 )
             }

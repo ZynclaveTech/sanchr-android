@@ -338,6 +338,29 @@ class ChatDetailViewModel
             }
         }
 
+        /**
+         * Sends a reviewed batch of photos, the caption on the first only so a
+         * set does not repeat it, and stops at the first failure rather than
+         * reporting success for a partial send.
+         */
+        fun sendAttachments(prepared: List<AttachmentUploader.Prepared>) {
+            if (prepared.isEmpty() || _uiState.value.isSending) return
+            val replyToId = takePendingReply()
+            _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
+            viewModelScope.launch {
+                var failure: String? = null
+                prepared.forEachIndexed { index, file ->
+                    if (failure != null) return@forEachIndexed
+                    val result =
+                        sendAttachmentUseCase(conversationId, file, replyToId.takeIf { index == 0 }) { fraction ->
+                            _uiState.update { it.copy(uploadProgress = (index + fraction) / prepared.size) }
+                        }
+                    if (result is Result.Error) failure = result.exception.message ?: "Failed to send attachment"
+                }
+                _uiState.update { it.copy(isSending = false, uploadProgress = null, error = failure) }
+            }
+        }
+
         /** Encrypts and sends a picked file as an attachment message. */
         fun sendAttachment(prepared: AttachmentUploader.Prepared) {
             if (_uiState.value.isSending) return
@@ -582,6 +605,18 @@ class ChatDetailViewModel
                 userPreferences.mediaAutoDownload.collect { setting ->
                     _uiState.update { it.copy(mediaAutoDownload = setting) }
                 }
+            }
+            viewModelScope.launch {
+                // The chat's own choice wins; "no choice" follows the
+                // account-wide one, so changing that still reaches every chat
+                // that never picked its own.
+                combine(
+                    messageRepository.observeConversation(conversationId),
+                    userPreferences.chatWallpaper,
+                ) { conversation, accountWide ->
+                    conversation?.wallpaper ?: accountWide
+                }.catch { }
+                    .collect { name -> _uiState.update { it.copy(wallpaper = name) } }
             }
         }
 

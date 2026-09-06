@@ -19,6 +19,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,7 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
@@ -125,6 +127,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrButton
+import com.sanchr.core.designsystem.theme.ChatWallpapers
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
@@ -147,6 +150,7 @@ import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.media.BlurHashImages
 import com.sanchr.feature.chats.media.GallerySelection
 import com.sanchr.feature.chats.media.GalleryState
+import com.sanchr.feature.chats.media.MediaBatchReview
 import com.sanchr.feature.chats.media.MediaGallery
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
@@ -164,10 +168,11 @@ import kotlinx.coroutines.withContext
 fun ChatDetailScreen(
     conversationId: String,
     onNavigateBack: () -> Unit,
-    onNavigateToProfile: (String) -> Unit,
     onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     /** Opens the peer's safety number, so a key change can be reviewed where it is reported. */
     onVerifySafetyNumber: (peerId: String, peerName: String) -> Unit,
+    /** Opens this conversation's own settings page. */
+    onOpenInfo: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ChatDetailViewModel = hiltViewModel(),
 ) {
@@ -185,6 +190,11 @@ fun ChatDetailScreen(
     val pickContact = rememberContactPicker(viewModel::sendContact)
     var viewOnceOpen by remember { mutableStateOf<MessageUiModel?>(null) }
     var gallery by remember { mutableStateOf<GalleryState?>(null) }
+    var batch by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    val pickPhotos =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+            batch = uris
+        }
     // Re-read on resume: a review done on the safety-number screen must clear
     // this banner when the user comes back, not leave a stale warning.
     LifecycleResumeEffect(Unit) {
@@ -250,7 +260,7 @@ fun ChatDetailScreen(
                     canCall = uiState.directPeerId != null,
                     onVideoCall = { uiState.directPeerId?.let { onStartCall(it, uiState.conversation?.title.orEmpty(), true) } },
                     onVoiceCall = { uiState.directPeerId?.let { onStartCall(it, uiState.conversation?.title.orEmpty(), false) } },
-                    onMenu = { uiState.directPeerId?.let(onNavigateToProfile) },
+                    onMenu = onOpenInfo,
                     onSearch = viewModel::openSearch,
                 )
             }
@@ -328,6 +338,11 @@ fun ChatDetailScreen(
                     galleryIsSecure = uiState.screenshotProtectionEnabled,
                     onGalleryClosed = { gallery = null },
                 )
+                BatchReviewIfPicked(
+                    uris = batch,
+                    onCancel = { batch = emptyList() },
+                    onPrepared = viewModel::sendAttachments,
+                )
                 uiState.uploadProgress?.let { fraction ->
                     // Bytes actually written, so a stalled upload stops rather than sliding to full.
                     LinearProgressIndicator(
@@ -363,6 +378,7 @@ fun ChatDetailScreen(
                     onEmojiClick = { emojiPickerOpen = true },
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                    onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
                     onAttachViewOnce = {
                         viewOnceNext = true
                         pickAttachment.launch(arrayOf("image/*"))
@@ -460,11 +476,16 @@ fun ChatDetailScreen(
                 onAccept = viewModel::acceptIdentityChange,
             )
 
+            val wallpaper = ChatWallpapers.colorOf(uiState.wallpaper, isSystemInDarkTheme())
             LazyColumn(
                 modifier =
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
+                        // Null means the chat keeps the ordinary theme
+                        // background, so an unknown stored name degrades to
+                        // plain rather than to some arbitrary colour.
+                        .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
                         .padding(horizontal = SanchrTheme.spacing.default),
                 state = listState,
                 reverseLayout = true,
@@ -495,6 +516,44 @@ fun ChatDetailScreen(
             }
         }
     }
+}
+
+/**
+ * Reviews picked photos before sending, when any were picked.
+ *
+ * Split out so the screen composable stays under detekt's complexity limit,
+ * and so reading the files off the main thread lives next to the review that
+ * needs them.
+ */
+@Composable
+private fun BatchReviewIfPicked(
+    uris: List<Uri>,
+    onCancel: () -> Unit,
+    onPrepared: (List<AttachmentUploader.Prepared>) -> Unit,
+) {
+    if (uris.isEmpty()) return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    MediaBatchReview(
+        uris = uris,
+        onCancel = onCancel,
+        onSend = { chosen, caption ->
+            onCancel()
+            scope.launch {
+                val prepared =
+                    withContext(Dispatchers.IO) {
+                        chosen.mapIndexedNotNull { index, uri ->
+                            AttachmentPreparer
+                                .prepare(context, uri)
+                                // The caption rides the first file only, so a
+                                // set of photos does not repeat it.
+                                ?.let { if (index == 0 && caption != null) it.withCaption(caption) else it }
+                        }
+                    }
+                onPrepared(prepared)
+            }
+        },
+    )
 }
 
 /** Shows the key-change warning only when there is one, keeping the screen composable flat. */
@@ -1147,6 +1206,7 @@ private fun MessageInputBar(
     onSend: () -> Unit,
     onEmojiClick: () -> Unit,
     onAttachFile: () -> Unit,
+    onAttachPhotos: () -> Unit,
     onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
     onVoiceClip: (VoiceClip) -> Unit,
@@ -1223,6 +1283,14 @@ private fun MessageInputBar(
                     )
                 }
                 DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Photos") },
+                        leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachPhotos()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("File") },
                         leadingIcon = { Icon(Icons.Filled.AttachFile, contentDescription = null) },

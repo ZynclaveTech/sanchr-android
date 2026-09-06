@@ -66,6 +66,8 @@ import com.sanchr.proto.contacts.Contact
 fun ContactsScreen(
     onContactClick: (String) -> Unit,
     onSyncContacts: () -> Unit,
+    /** Opens the by-number search, for reaching someone not in the address book. */
+    onFindByNumber: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ContactsViewModel = hiltViewModel(),
 ) {
@@ -77,6 +79,12 @@ fun ContactsScreen(
             SanchrTopBar(
                 title = "Contacts",
                 actions = {
+                    IconButton(onClick = onFindByNumber) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = "Find by number",
+                        )
+                    }
                     IconButton(onClick = onSyncContacts) {
                         Icon(
                             imageVector = Icons.Filled.PersonAdd,

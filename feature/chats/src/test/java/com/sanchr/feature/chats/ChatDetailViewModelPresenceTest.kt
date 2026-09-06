@@ -73,6 +73,7 @@ class ChatDetailViewModelPresenceTest {
                 mockk {
                     every { linkPreviewsEnabled } returns flowOf(true)
                     every { screenshotProtectionEnabled } returns flowOf(true)
+                    every { chatWallpaper } returns flowOf("default")
                     every { mediaAutoDownload } returns flowOf("wifi")
                     every { typingIndicatorsEnabled } returns flowOf(true)
                 },
