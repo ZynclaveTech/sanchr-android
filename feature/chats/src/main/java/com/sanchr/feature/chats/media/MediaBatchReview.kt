@@ -41,6 +41,7 @@ import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.core.mediaviewer.BoundedBitmaps
 import com.sanchr.feature.chats.media.editor.EditedImageStore
 import com.sanchr.feature.chats.media.editor.ImageEditorScreen
 import kotlinx.coroutines.Dispatchers

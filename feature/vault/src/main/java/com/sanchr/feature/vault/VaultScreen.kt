@@ -84,6 +84,7 @@ import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
+import com.sanchr.core.mediaviewer.DocumentPreviewScreen
 import com.sanchr.core.model.VaultItem
 import com.sanchr.core.model.VaultItemType
 import java.io.File
@@ -103,18 +104,16 @@ fun VaultScreen(
     val pickFile = rememberVaultFilePicker(onPicked = viewModel::addToVault)
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var previewing by remember { mutableStateOf<Pair<File, VaultItem>?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
-            when (event) {
-                is VaultEvent.Opened -> {
-                    if (!presentDecryptedItem(context, event.item, event.bytes)) {
-                        snackbarHostState.showSnackbar("No app can open ${event.item.mimeType}")
-                    }
-                }
-                is VaultEvent.Error -> snackbarHostState.showSnackbar(event.message)
-                VaultEvent.ItemAdded -> snackbarHostState.showSnackbar("Added to vault")
-                VaultEvent.ItemDeleted -> snackbarHostState.showSnackbar("Removed from vault")
-            }
+            handleVaultEvent(
+                event = event,
+                context = context,
+                snackbarHostState = snackbarHostState,
+                onPreview = { previewing = it },
+            )
         }
     }
 
@@ -281,6 +280,18 @@ fun VaultScreen(
             }
         }
     }
+
+    VaultItemPreview(
+        previewing = previewing,
+        onDismiss = { previewing = null },
+        onOpenExternally = { file, item ->
+            val opened = openExternally(context, item, file)
+            previewing = null
+            if (!opened) {
+                scope.launch { snackbarHostState.showSnackbar("No app can open ${item.mimeType}") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -636,22 +647,90 @@ private fun rememberVaultFilePicker(onPicked: (PickedFile) -> Unit): ManagedActi
 }
 
 /**
- * Writes the decrypted bytes to this app's private cache and hands them to
- * a viewer through the app's FileProvider (read-only, this one URI). The
- * plaintext exists on disk only in the sandbox, only while viewed.
+ * One vault event, applied.
  *
- * @return false when no installed app handles the item's type.
+ * Split out of VaultScreen, which is at detekt's complexity limit — it
+ * already carries the list, selection mode, pagination and the snackbar.
  */
-private suspend fun presentDecryptedItem(
+private suspend fun handleVaultEvent(
+    event: VaultEvent,
+    context: Context,
+    snackbarHostState: SnackbarHostState,
+    onPreview: (Pair<File, VaultItem>) -> Unit,
+) {
+    when (event) {
+        is VaultEvent.Opened -> {
+            // Decrypted into the sandbox and shown in our own viewer. Handing
+            // it straight to another app is what this feature exists to
+            // avoid — these are the files the user chose to put behind a lock.
+            val file = writeToSandbox(context, event.item, event.bytes)
+            if (file == null) {
+                snackbarHostState.showSnackbar("Could not open ${event.item.name}")
+            } else {
+                onPreview(file to event.item)
+            }
+        }
+
+        is VaultEvent.Error -> snackbarHostState.showSnackbar(event.message)
+        VaultEvent.ItemAdded -> snackbarHostState.showSnackbar("Added to vault")
+        VaultEvent.ItemDeleted -> snackbarHostState.showSnackbar("Removed from vault")
+    }
+}
+
+/**
+ * The vault's item viewer.
+ *
+ * Extracted so VaultScreen stays under the complexity limit; it is already
+ * carrying the list, selection mode, pagination and the snackbar.
+ */
+@Composable
+private fun VaultItemPreview(
+    previewing: Pair<File, VaultItem>?,
+    onDismiss: () -> Unit,
+    onOpenExternally: (File, VaultItem) -> Unit,
+) {
+    previewing?.let { (file, item) ->
+        DocumentPreviewScreen(
+            file = file,
+            fileName = item.name,
+            mimeType = item.mimeType,
+            onDismiss = onDismiss,
+            onOpenExternally = { onOpenExternally(file, item) },
+        )
+    }
+}
+
+/**
+ * Writes the decrypted bytes to this app's private cache so the viewer can
+ * read them. The plaintext exists on disk only in the sandbox, only while it
+ * is being viewed.
+ *
+ * @return the file, or null when it could not be written.
+ */
+private suspend fun writeToSandbox(
     context: Context,
     item: VaultItem,
     bytes: ByteArray,
-): Boolean {
-    val file =
-        withContext(Dispatchers.IO) {
+): File? =
+    withContext(Dispatchers.IO) {
+        runCatching {
             val dir = File(context.cacheDir, "vault").apply { mkdirs() }
             File(dir, "${item.id}-${File(item.name).name}").apply { writeBytes(bytes) }
-        }
+        }.getOrNull()
+    }
+
+/**
+ * Hands a vault item to another app, for the types nothing here can render.
+ *
+ * Kept, because refusing outright would make a vault the wrong place to
+ * store a spreadsheet — but it is now a choice the user makes, with the
+ * consequence spelled out, rather than what happens on every tap.
+ */
+private fun openExternally(
+    context: Context,
+    item: VaultItem,
+    file: File,
+): Boolean {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val intent =
         Intent(Intent.ACTION_VIEW)

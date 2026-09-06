@@ -41,6 +41,7 @@ include(":core:datastore")
 include(":core:crypto")
 include(":core:notifications")
 include(":core:callengine")
+include(":core:mediaviewer")
 
 // Domain modules
 include(":domain:messaging")

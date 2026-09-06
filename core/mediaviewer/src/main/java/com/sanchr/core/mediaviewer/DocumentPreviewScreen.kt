@@ -1,4 +1,4 @@
-package com.sanchr.feature.chats.media.viewer
+package com.sanchr.core.mediaviewer
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image as ComposeImage
@@ -42,7 +42,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.feature.chats.media.BoundedBitmaps
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -242,13 +241,7 @@ private fun TextBody(file: File) {
     LaunchedEffect(file) {
         text =
             withContext(Dispatchers.IO) {
-                runCatching {
-                    // Capped: a multi-megabyte log would otherwise be held in
-                    // memory twice and laid out as one Text node.
-                    file.inputStream().use { stream ->
-                        String(stream.readNBytes(TEXT_PREVIEW_LIMIT))
-                    }
-                }.getOrElse { "" }
+                runCatching { readCapped(file) }.getOrElse { "" }
             }
     }
 
@@ -269,6 +262,30 @@ private fun TextBody(file: File) {
                         .padding(SanchrTheme.spacing.default),
             )
     }
+}
+
+/**
+ * At most [TEXT_PREVIEW_LIMIT] bytes of [file], decoded as UTF-8.
+ *
+ * Capped because a multi-megabyte log would otherwise be held in memory twice
+ * and laid out as a single Text node.
+ *
+ * Read in a loop rather than with `InputStream.readNBytes`, which is API 33
+ * and only available below that through core library desugaring. Relying on
+ * a desugared method means the file this lives in cannot move to a module
+ * that has not enabled it — which is exactly how this surfaced.
+ */
+private fun readCapped(file: File): String {
+    val buffer = ByteArray(TEXT_PREVIEW_LIMIT)
+    var filled = 0
+    file.inputStream().use { stream ->
+        while (filled < buffer.size) {
+            val read = stream.read(buffer, filled, buffer.size - filled)
+            if (read <= 0) break
+            filled += read
+        }
+    }
+    return String(buffer, 0, filled, Charsets.UTF_8)
 }
 
 @Composable

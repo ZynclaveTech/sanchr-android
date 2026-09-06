@@ -139,6 +139,7 @@ import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
+import com.sanchr.core.mediaviewer.DocumentPreviewScreen
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.MediaAttachment
@@ -153,7 +154,6 @@ import com.sanchr.feature.chats.media.GallerySelection
 import com.sanchr.feature.chats.media.GalleryState
 import com.sanchr.feature.chats.media.MediaBatchReview
 import com.sanchr.feature.chats.media.MediaGallery
-import com.sanchr.feature.chats.media.viewer.DocumentPreviewScreen
 import com.sanchr.feature.chats.stickers.StickerPickerSheet
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
