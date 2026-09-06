@@ -1,6 +1,5 @@
 package com.sanchr.feature.chats.media
 
-import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +43,9 @@ import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.feature.chats.media.editor.EditedImageStore
 import com.sanchr.feature.chats.media.editor.ImageEditorScreen
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Reviews several picked photos before they are sent, with one caption.
@@ -58,6 +61,7 @@ fun MediaBatchReview(
     onSend: (uris: List<Uri>, caption: String?) -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var caption by remember { mutableStateOf("") }
     var selected by remember(uris) { mutableStateOf(uris) }
     var previewed by remember(uris) { mutableStateOf(uris.firstOrNull()) }
@@ -126,13 +130,19 @@ fun MediaBatchReview(
                     )
                     IconButton(
                         onClick = {
-                            // Decoded here rather than in the editor so a file
-                            // that cannot be read leaves the review screen up
-                            // instead of opening an editor with no image.
-                            editing =
-                                runCatching {
-                                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
-                                }.getOrNull()
+                            // Off the main thread and through the bounded
+                            // decoder. A photo from a recent phone is over
+                            // 100 megapixels — 400 MB as ARGB — so decoding it
+                            // whole, on the UI thread, froze the app and then
+                            // ended it. Decoded here rather than in the editor
+                            // so a file that cannot be read leaves the review
+                            // screen up instead of opening an empty editor.
+                            scope.launch {
+                                editing =
+                                    withContext(Dispatchers.IO) {
+                                        BoundedBitmaps.decode(context.contentResolver, uri)
+                                    }
+                            }
                         },
                         modifier = Modifier.align(Alignment.TopEnd).padding(SanchrTheme.spacing.sm),
                     ) {
