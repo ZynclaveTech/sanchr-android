@@ -1,0 +1,38 @@
+Sanchr is a messaging app for people who would rather their conversations stayed between the people in them.
+
+Messages and calls are end-to-end encrypted using the Signal protocol (libsignal). Encryption is not a mode you switch on — there is no way to send an unencrypted message.
+
+WHAT YOU CAN DO
+
+• Message one to one, with replies, reactions and forwarding
+• Voice and video calls
+• Send photos, videos, documents, voice notes and stickers
+• Mark up a photo before you send it — crop, rotate, draw
+• Send a photo that can be opened once and then is gone
+• Search your conversations
+• Keep sensitive media in a separate encrypted vault
+
+PRIVACY BY CONSTRUCTION
+
+• Sealed sender: the server does not learn who is talking to whom
+• Documents, PDFs and images open inside Sanchr, so a decrypted file is not handed to another app just to be read
+• App Lock, with biometrics if you want them
+• Screenshot protection
+• Crash reporting is off unless you turn it on, carries no user identifier, and goes to infrastructure we run rather than a third party
+• Delete Account removes your account and wipes every key on the device
+
+WHAT WE DO NOT DO
+
+• No advertising, and no advertising identifiers
+• No selling or sharing of your data
+• No reading of your messages — we cannot, and neither can anyone who compels us
+
+A NOTE ON HONESTY
+
+End-to-end encryption protects the contents of your conversations. It does not make you anonymous, and it cannot protect a device that someone else controls. Anyone who tells you their app makes you untraceable is selling something.
+
+Sanchr requires a phone number to register, and that number is how other people find you.
+
+OPEN
+
+Sanchr's Android and iOS clients are open source. If a claim on this page matters to you, you are welcome to go and check it.
