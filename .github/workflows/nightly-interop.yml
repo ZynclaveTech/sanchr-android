@@ -111,6 +111,34 @@ jobs:
           # checkout failure that stopped this job ever getting here.
           script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.annotation=com.sanchr.app.interop.InteropTest -Pandroid.testInstrumentationRunnerArguments.backendUrl=$SANCHR_TEST_BACKEND_URL --no-daemon
 
+      # A skipped interop test is not a passing one. The suite skips itself
+      # when the iOS fixture is absent, which it always has been, so the job
+      # reported success every time it got this far while verifying nothing.
+      # The whole purpose of this job is to execute those tests; if they did
+      # not run, it has failed at its purpose and should say so.
+      - name: Require the interop suite to have actually run
+        if: always() && steps.interop.outcome != 'skipped'
+        run: |
+          set -o pipefail
+          results=$(find sanchr-android/app/build/outputs/androidTest-results -name '*.xml' 2>/dev/null | head -1)
+          if [ -z "$results" ]; then
+            echo "::error::No interop test results were produced — the suite did not run."
+            exit 1
+          fi
+          echo "Results: $results"
+          skipped=$(sed -n 's/.*skipped="\([0-9]*\)".*/\1/p' "$results" | head -1)
+          total=$(sed -n 's/.*tests="\([0-9]*\)".*/\1/p' "$results" | head -1)
+          echo "tests=$total skipped=$skipped"
+          if [ "${total:-0}" -eq 0 ]; then
+            echo "::error::The interop suite reported no tests."
+            exit 1
+          fi
+          if [ "${skipped:-0}" -gt 0 ]; then
+            echo "::error::$skipped of $total interop tests were skipped. Interop is NOT verified."
+            echo "::error::Most likely the iOS golden fixture is missing — see app/src/androidTest/assets/ios-fixtures/README.md."
+            exit 1
+          fi
+
       - name: Tear down backend
         if: always()
         working-directory: sanchr-backend
