@@ -154,6 +154,7 @@ import com.sanchr.feature.chats.media.GalleryState
 import com.sanchr.feature.chats.media.MediaBatchReview
 import com.sanchr.feature.chats.media.MediaGallery
 import com.sanchr.feature.chats.media.viewer.DocumentPreviewScreen
+import com.sanchr.feature.chats.stickers.StickerPickerSheet
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
 import com.sanchr.feature.chats.voice.VoiceRecordButton
@@ -205,6 +206,7 @@ fun ChatDetailScreen(
         onPauseOrDispose {}
     }
     var emojiPickerOpen by remember { mutableStateOf(false) }
+    var stickerPickerOpen by remember { mutableStateOf(false) }
     var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
     var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
     val clipboard = LocalClipboardManager.current
@@ -371,16 +373,19 @@ fun ChatDetailScreen(
                         onClear = viewModel::clearReply,
                     )
                 }
-                if (emojiPickerOpen) {
-                    EmojiPickerSheet(
-                        onDismiss = { emojiPickerOpen = false },
-                        onSelect = { emoji -> viewModel.onInputTextChanged(uiState.inputText + emoji) },
-                    )
-                }
+                ComposerSheets(
+                    emojiOpen = emojiPickerOpen,
+                    onEmojiDismiss = { emojiPickerOpen = false },
+                    onEmojiSelect = { emoji -> viewModel.onInputTextChanged(uiState.inputText + emoji) },
+                    stickerOpen = stickerPickerOpen,
+                    onStickerDismiss = { stickerPickerOpen = false },
+                    onStickerSelect = viewModel::sendSticker,
+                )
                 MessageInputBar(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
                     onEmojiClick = { emojiPickerOpen = true },
+                    onAttachSticker = { stickerPickerOpen = true },
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
@@ -622,6 +627,30 @@ private fun IdentityChangeBanner(
             SanchrButton(text = "Verify security code", onClick = onVerify)
             TextButton(onClick = onAccept) { Text("Accept change") }
         }
+    }
+}
+
+/**
+ * The two sheets the composer can raise.
+ *
+ * Extracted so ChatDetailScreen stays under the complexity limit — it is
+ * already the largest composable here, and every addition to the composer
+ * lands on it.
+ */
+@Composable
+private fun ComposerSheets(
+    emojiOpen: Boolean,
+    onEmojiDismiss: () -> Unit,
+    onEmojiSelect: (String) -> Unit,
+    stickerOpen: Boolean,
+    onStickerDismiss: () -> Unit,
+    onStickerSelect: (String) -> Unit,
+) {
+    if (emojiOpen) {
+        EmojiPickerSheet(onDismiss = onEmojiDismiss, onSelect = onEmojiSelect)
+    }
+    if (stickerOpen) {
+        StickerPickerSheet(onDismiss = onStickerDismiss, onSelect = onStickerSelect)
     }
 }
 
@@ -1212,6 +1241,7 @@ private fun MessageInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onEmojiClick: () -> Unit,
+    onAttachSticker: () -> Unit,
     onAttachFile: () -> Unit,
     onAttachPhotos: () -> Unit,
     onAttachViewOnce: () -> Unit,
@@ -1320,6 +1350,14 @@ private fun MessageInputBar(
                         onClick = {
                             attachMenuOpen = false
                             onAttachContact()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sticker") },
+                        leadingIcon = { Icon(Icons.Filled.EmojiEmotions, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onAttachSticker()
                         },
                     )
                 }

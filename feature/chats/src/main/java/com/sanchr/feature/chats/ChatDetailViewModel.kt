@@ -30,11 +30,13 @@ import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
+import com.sanchr.feature.chats.stickers.StickerRenderer
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +50,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class ChatDetailViewModel
@@ -335,6 +338,20 @@ class ChatDetailViewModel
                     }
                     is Result.Loading -> Unit
                 }
+            }
+        }
+
+        /**
+         * Sends [emoji] as a sticker.
+         *
+         * Rendered here rather than in the composable so the glyph drawing
+         * and PNG encode happen off the main thread; it goes out as an
+         * ordinary image attachment, which is how iOS sends one too.
+         */
+        fun sendSticker(emoji: String) {
+            viewModelScope.launch {
+                val prepared = withContext(Dispatchers.IO) { StickerRenderer.prepare(emoji) }
+                sendAttachment(prepared)
             }
         }
 
