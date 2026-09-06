@@ -57,6 +57,13 @@ data class BackupUploadOutcome(
     val contentHash: String,
 )
 
+/** What the server has for this account, before anything is fetched. */
+data class RestorableBackup(
+    val backupId: String,
+    val createdAtMillis: Long?,
+    val sizeBytes: Long?,
+)
+
 data class BackupRestoreOutcome(
     val lineageId: String,
     val formatVersion: Int,
@@ -106,6 +113,30 @@ class ChatBackupManager
                 val material = deriveMaterial(recoveryKey)
                 performBackup(configuration, material, force = true)
             }
+
+        /**
+         * The most recent backup this account has on the server, or null.
+         *
+         * Lists only — nothing is downloaded and no recovery key is needed,
+         * because the point is to answer "is there anything to restore?"
+         * before asking the user for a key they may have to go and find.
+         *
+         * Null on any failure, including no network. A restore offer that
+         * cannot confirm a backup exists must not be shown: promising history
+         * that then fails to arrive is worse than not mentioning it.
+         */
+        suspend fun findRestorableBackup(): RestorableBackup? =
+            runCatching {
+                val backups = backupServiceClient.listBackups(ListBackupsRequest).backups
+                val configuration = recoveryKeyManager.loadConfiguration()
+                selectLatestBackup(backups, configuration?.lineageId)?.let { selected ->
+                    RestorableBackup(
+                        backupId = selected.backupId,
+                        createdAtMillis = parseInstantMillis(selected.committedAt.ifBlank { selected.createdAt }),
+                        sizeBytes = selected.byteSize.takeIf { it > 0L },
+                    )
+                }
+            }.getOrNull()
 
         suspend fun restoreLatestBackup(recoveryKeyOverride: String?): BackupRestoreOutcome =
             mutex.withLock {

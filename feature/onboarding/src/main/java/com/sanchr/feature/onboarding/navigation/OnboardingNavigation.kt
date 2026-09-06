@@ -25,6 +25,15 @@ const val ONBOARDING_AVATAR = "onboarding/avatar"
 const val ONBOARDING_CONTACT_SYNC = "onboarding/contactsync"
 const val ONBOARDING_WELCOME_CONFIRM = "onboarding/welcome-confirm"
 
+/**
+ * The post-install restore offer, between onboarding and the chat list.
+ *
+ * Outside the onboarding graph because it is not a step of onboarding: it
+ * runs once, after the graph is popped, and takes itself out of the way when
+ * the account has no backup.
+ */
+const val BACKUP_RESTORE_OFFER_ROUTE = "restore-offer"
+
 private const val TAG = "AuthFlow"
 
 /**
