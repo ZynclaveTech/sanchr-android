@@ -3,8 +3,13 @@ package com.sanchr.feature.vault
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.common.Result
+import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.VaultItem
 import com.sanchr.core.model.VaultItemType
+import com.sanchr.domain.messaging.ObserveConversationsUseCase
+import com.sanchr.domain.messaging.SendAttachmentUseCase
+import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.domain.vault.VaultRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -14,7 +19,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -96,6 +104,8 @@ class VaultViewModel
     @Inject
     constructor(
         private val vaultRepository: VaultRepository,
+        private val sendAttachmentUseCase: SendAttachmentUseCase,
+        observeConversationsUseCase: ObserveConversationsUseCase,
     ) : ViewModel() {
         companion object {
             private const val TAG = "VaultViewModel"
@@ -303,6 +313,79 @@ class VaultViewModel
             }
         }
 
+        /**
+         * The conversations a vault item can be sent to.
+         *
+         * Read lazily: the vault is often opened without sharing anything,
+         * and a chooser nobody opens should not hold a subscription.
+         */
+        val conversations: StateFlow<List<Conversation>> =
+            observeConversationsUseCase()
+                .map { result -> (result as? Result.Success)?.data.orEmpty() }
+                .catch { emit(emptyList()) }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+        /** The item awaiting a share destination, if any. */
+        private val _sharing = MutableStateFlow<VaultItem?>(null)
+        val sharing: StateFlow<VaultItem?> = _sharing.asStateFlow()
+
+        fun beginShare(item: VaultItem) {
+            _sharing.value = item
+        }
+
+        fun cancelShare() {
+            _sharing.value = null
+        }
+
+        /**
+         * Sends the item into [conversationId] as an ordinary attachment.
+         *
+         * The plaintext is downloaded here and handed straight to the send
+         * path; it never touches the filesystem, unlike the outside-Sanchr
+         * route which has to write a file for another app to read.
+         */
+        fun shareInChat(
+            item: VaultItem,
+            conversationId: String,
+        ) {
+            _sharing.value = null
+            viewModelScope.launch {
+                try {
+                    val bytes = vaultRepository.download(item)
+                    val prepared =
+                        AttachmentUploader.Prepared(
+                            bytes = bytes,
+                            mimeType = item.mimeType,
+                            fileName = item.name,
+                        )
+                    when (sendAttachmentUseCase(conversationId, prepared, null) {}) {
+                        is Result.Error -> _events.emit(VaultEvent.Error("Could not send ${item.name}"))
+                        else -> _events.emit(VaultEvent.SharedToChat)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to share vault item to chat", e)
+                    _events.emit(VaultEvent.Error("Could not send ${item.name}"))
+                }
+            }
+        }
+
+        /** Decrypts [item] so the system share sheet can be handed a file. */
+        fun shareOutside(item: VaultItem) {
+            _sharing.value = null
+            viewModelScope.launch {
+                try {
+                    _events.emit(VaultEvent.ShareOutside(item, vaultRepository.download(item)))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decrypt vault item for sharing", e)
+                    _events.emit(VaultEvent.Error("Could not open item"))
+                }
+            }
+        }
+
         fun deleteItem(itemId: String) {
             viewModelScope.launch {
                 try {
@@ -323,6 +406,15 @@ sealed interface VaultEvent {
     data object ItemAdded : VaultEvent
 
     data object ItemDeleted : VaultEvent
+
+    /** The item was sent into a conversation. */
+    data object SharedToChat : VaultEvent
+
+    /** The decrypted payload of [item], for the system share sheet. */
+    class ShareOutside(
+        val item: VaultItem,
+        val bytes: ByteArray,
+    ) : VaultEvent
 
     /** The decrypted payload of [item], ready to present. */
     class Opened(

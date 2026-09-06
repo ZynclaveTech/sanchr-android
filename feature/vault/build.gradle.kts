@@ -39,6 +39,9 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.crypto)
     implementation(projects.domain.vault)
+    // Sharing a vault item into a chat sends it through the ordinary
+    // attachment path, and needs the conversation list to pick a target.
+    implementation(projects.domain.messaging)
     implementation(projects.proto)
 
     implementation(libs.hilt.android)

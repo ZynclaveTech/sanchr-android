@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
@@ -113,6 +114,7 @@ fun VaultScreen(
                 context = context,
                 snackbarHostState = snackbarHostState,
                 onPreview = { previewing = it },
+                onShareOutside = { file, item -> shareOutside(context, file, item) },
             )
         }
     }
@@ -257,6 +259,7 @@ fun VaultScreen(
                                 },
                                 onLongPress = { if (!uiState.isSelectMode) viewModel.enterSelectMode() },
                                 onDelete = { viewModel.deleteItem(item.id) },
+                                onShare = { viewModel.beginShare(item) },
                                 modifier =
                                     Modifier.padding(
                                         horizontal = SanchrTheme.spacing.default,
@@ -279,6 +282,18 @@ fun VaultScreen(
                 }
             }
         }
+    }
+
+    val sharing by viewModel.sharing.collectAsStateWithLifecycle()
+    val conversations by viewModel.conversations.collectAsStateWithLifecycle()
+    sharing?.let { item ->
+        VaultShareSheet(
+            item = item,
+            conversations = conversations,
+            onDismiss = viewModel::cancelShare,
+            onShareInChat = { conversationId -> viewModel.shareInChat(item, conversationId) },
+            onShareOutside = { viewModel.shareOutside(item) },
+        )
     }
 
     VaultItemPreview(
@@ -424,6 +439,7 @@ private fun VaultItemCard(
     onOpen: () -> Unit,
     onLongPress: () -> Unit,
     onDelete: () -> Unit,
+    onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SanchrCard(modifier = modifier.combinedClickable(onClick = onOpen, onLongClick = onLongPress)) {
@@ -535,6 +551,17 @@ private fun VaultItemCard(
                             modifier = Modifier.size(24.dp),
                         )
                     } else {
+                        IconButton(
+                            onClick = onShare,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Share,
+                                contentDescription = "Share",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                         IconButton(
                             onClick = onDelete,
                             modifier = Modifier.size(36.dp),
@@ -657,6 +684,7 @@ private suspend fun handleVaultEvent(
     context: Context,
     snackbarHostState: SnackbarHostState,
     onPreview: (Pair<File, VaultItem>) -> Unit,
+    onShareOutside: (File, VaultItem) -> Unit,
 ) {
     when (event) {
         is VaultEvent.Opened -> {
@@ -671,6 +699,20 @@ private suspend fun handleVaultEvent(
             }
         }
 
+        is VaultEvent.ShareOutside -> {
+            // Written to the sandbox and handed out through the FileProvider.
+            // Unlike sharing into a chat, this genuinely gives another app the
+            // decrypted bytes — which is why the chooser says so before it
+            // gets here.
+            val file = writeToSandbox(context, event.item, event.bytes)
+            if (file == null) {
+                snackbarHostState.showSnackbar("Could not open ${event.item.name}")
+            } else {
+                onShareOutside(file, event.item)
+            }
+        }
+
+        VaultEvent.SharedToChat -> snackbarHostState.showSnackbar("Sent")
         is VaultEvent.Error -> snackbarHostState.showSnackbar(event.message)
         VaultEvent.ItemAdded -> snackbarHostState.showSnackbar("Added to vault")
         VaultEvent.ItemDeleted -> snackbarHostState.showSnackbar("Removed from vault")
@@ -697,6 +739,29 @@ private fun VaultItemPreview(
             onDismiss = onDismiss,
             onOpenExternally = { onOpenExternally(file, item) },
         )
+    }
+}
+
+/**
+ * Hands a decrypted vault item to the system share sheet.
+ *
+ * Separate from [openExternally], which asks one app to display the item.
+ * This offers it to any app that accepts the type, which is a larger promise
+ * and why the chooser states it plainly first.
+ */
+private fun shareOutside(
+    context: Context,
+    file: File,
+    item: VaultItem,
+) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent =
+        Intent(Intent.ACTION_SEND)
+            .setType(item.mimeType)
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, "Share ${item.name}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
 
