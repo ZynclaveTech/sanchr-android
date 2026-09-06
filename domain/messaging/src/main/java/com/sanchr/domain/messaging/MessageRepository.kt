@@ -235,6 +235,20 @@ interface MessageRepository {
     /** Archived conversations, newest message first, with their newest message attached. */
     fun observeArchivedConversations(): Flow<List<Conversation>>
 
+    /**
+     * Hides a conversation from every chat list on this device, or restores it.
+     *
+     * Local only: nothing is told to the server and nothing is deleted, so the
+     * transcript is intact when the chat is restored.
+     */
+    suspend fun setHidden(
+        conversationId: String,
+        hidden: Boolean,
+    )
+
+    /** Hidden conversations, newest first, with their newest message attached. */
+    fun observeHiddenConversations(): Flow<List<Conversation>>
+
     /** Mutes or unmutes notifications for a conversation: tells the server, then the local row. */
     suspend fun setMuted(
         conversationId: String,

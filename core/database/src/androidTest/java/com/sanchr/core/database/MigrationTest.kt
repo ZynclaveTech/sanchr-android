@@ -109,4 +109,19 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_11_to_12_adds_conversation_is_hidden_defaulting_to_visible() {
+        helper.createDatabase("migration-test-12", 11).close()
+        helper.runMigrationsAndValidate("migration-test-12", 12, true, DatabaseModule.migration11To12).use { db ->
+            db.query("PRAGMA table_info(`conversations`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(columns.contains("is_hidden")) { "conversations is missing is_hidden: $columns" }
+            }
+            // An upgrade must not hide anything the user did not hide.
+            db.query("SELECT COUNT(*) FROM conversations WHERE is_hidden != 0").use { c ->
+                check(c.moveToFirst() && c.getInt(0) == 0) { "migration hid existing conversations" }
+            }
+        }
+    }
 }

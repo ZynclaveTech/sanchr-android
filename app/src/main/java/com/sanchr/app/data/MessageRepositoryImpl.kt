@@ -68,6 +68,16 @@ class MessageRepositoryImpl
         override fun observeArchivedConversations(): Flow<List<Conversation>> =
             withNewestMessages(conversationDao.observeArchivedConversations())
 
+        override fun observeHiddenConversations(): Flow<List<Conversation>> =
+            withNewestMessages(conversationDao.observeHiddenConversations())
+
+        override suspend fun setHidden(
+            conversationId: String,
+            hidden: Boolean,
+        ) {
+            conversationDao.setHidden(conversationId, hidden)
+        }
+
         private fun withNewestMessages(rows: Flow<List<ConversationEntity>>): Flow<List<Conversation>> =
             combine(rows, messageDao.observeLatestPerConversation()) { entities, latest ->
                 val newestByConversation = latest.groupBy { it.conversationId }.mapValues { (_, rows) -> rows.maxBy { it.timestamp } }

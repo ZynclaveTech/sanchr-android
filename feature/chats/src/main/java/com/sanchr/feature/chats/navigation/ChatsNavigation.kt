@@ -9,6 +9,7 @@ import androidx.navigation.navArgument
 import com.sanchr.feature.chats.ArchivedChatsScreen
 import com.sanchr.feature.chats.ChatDetailScreen
 import com.sanchr.feature.chats.ChatsListScreen
+import com.sanchr.feature.chats.HiddenChatsScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -16,6 +17,7 @@ const val CHATS_TAB_ROUTE = "chats_tab"
 const val CHATS_LIST_ROUTE = "chats/list"
 const val CHAT_DETAIL_ROUTE = "chats/detail/{conversationId}"
 const val ARCHIVED_CHATS_ROUTE = "chats/archived"
+const val HIDDEN_CHATS_ROUTE = "chats/hidden"
 
 /**
  * Builds the chats navigation graph.
@@ -38,6 +40,14 @@ fun NavGraphBuilder.chatsGraph(
                     navController.navigate("chats/detail/$conversationId")
                 },
                 onOpenArchived = { navController.navigate(ARCHIVED_CHATS_ROUTE) },
+                onOpenHidden = { navController.navigate(HIDDEN_CHATS_ROUTE) },
+            )
+        }
+
+        composable(HIDDEN_CHATS_ROUTE) {
+            HiddenChatsScreen(
+                onConversationClick = { conversationId -> navController.navigate("chats/detail/$conversationId") },
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 

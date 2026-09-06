@@ -19,10 +19,20 @@ class QuarantineMigrationTest {
             FrameworkSQLiteOpenHelperFactory(),
         )
 
+    /**
+     * The database name is unique to this test, and the migration under test
+     * is passed explicitly.
+     *
+     * It used to share the name "migration-test" with MigrationTest's 2-to-3
+     * case and pass no migration at all, so it only succeeded when that test
+     * happened to run first and leave the file at a version where nothing was
+     * required. Adding any test to this module could reorder them and turn it
+     * red for reasons unrelated to the change.
+     */
     @Test
     fun migrate_3_to_4_creates_quarantined_envelopes_table() {
-        helper.createDatabase("migration-test", 3).close()
-        helper.runMigrationsAndValidate("migration-test", 4, true).use { db ->
+        helper.createDatabase("quarantine-migration-test", 3).close()
+        helper.runMigrationsAndValidate("quarantine-migration-test", 4, true, DatabaseModule.migration3To4).use { db ->
             db
                 .query(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='quarantined_envelopes'",
