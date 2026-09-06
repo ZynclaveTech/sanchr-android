@@ -23,9 +23,9 @@ on:
   workflow_dispatch:
     inputs:
       backend_ref:
-        description: 'sanchr-backend ref to use (default: feat/persistent-refresh-tokens)'
+        description: 'sanchr-backend ref to use (default: main)'
         required: false
-        default: 'feat/persistent-refresh-tokens'
+        default: 'main'
 
 concurrency:
   group: nightly-interop
@@ -50,10 +50,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend
-          ref: ${{ github.event.inputs.backend_ref || 'feat/persistent-refresh-tokens' }}
+          # main, not a feature branch. This was pinned to
+          # feat/persistent-refresh-tokens, which has since been merged and
+          # deleted — so every nightly run failed here, before a single test,
+          # and filed an issue saying interop had regressed. It had not: the
+          # suite never ran at all.
+          ref: ${{ github.event.inputs.backend_ref || 'main' }}
           # Private repo: the default GITHUB_TOKEN cannot read it. Same secret
-          # as android-ci's drift gate. This job has never succeeded, and this
-          # checkout is why.
+          # as android-ci's drift gate.
           token: ${{ secrets.BACKEND_READ_TOKEN }}
           path: sanchr-backend
 
@@ -91,6 +95,7 @@ jobs:
           echo "SANCHR_TEST_BACKEND_URL=http://10.0.2.2:50051" >> "$GITHUB_ENV"
 
       - name: Run interop instrumented test
+        id: interop
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -135,17 +140,30 @@ jobs:
       - name: Open / update failure issue
         if: failure() && github.event_name == 'schedule'
         uses: actions/github-script@v7
+        env:
+          INTEROP_OUTCOME: ${{ steps.interop.outcome }}
+          BACKEND_REF: ${{ github.event.inputs.backend_ref || 'main' }}
         with:
           script: |
-            const title = `[nightly-interop] Android↔iOS interop failure on ${new Date().toISOString().slice(0,10)}`;
+            // A run that fell over before the suite started is not a wire
+            // regression, and must not be reported as one — an issue saying
+            // interop broke, when interop never ran, is worse than silence.
+            const ranSuite = process.env.INTEROP_OUTCOME === 'failure';
+            const date = new Date().toISOString().slice(0,10);
+            const title = ranSuite
+              ? `[nightly-interop] Android↔iOS interop failure on ${date}`
+              : `[nightly-interop] run could not start on ${date}`;
             const body = [
-              `Nightly interop failed at run ${context.runId}.`,
+              ranSuite
+                ? `Nightly interop failed at run ${context.runId}.`
+                : `Nightly interop could not run at ${context.runId}: it failed before the suite started (setup, backend checkout, or emulator). This is not evidence of an interop regression.`,
               ``,
               `- Run URL: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              `- Backend ref: feat/persistent-refresh-tokens`,
+              `- Backend ref: ${process.env.BACKEND_REF}`,
+              `- Interop step outcome: ${process.env.INTEROP_OUTCOME || 'did not run'}`,
               ``,
               `Check the \`nightly-interop-reports\` artifact for JUnit output and backend compose logs.`,
-              `Close this issue once the regression is resolved; a new issue opens on the next failure.`,
+              `Close this issue once resolved; a new issue opens on the next failure.`,
             ].join('\n');
 
             // De-dupe by exact title within the last 30 open issues.
