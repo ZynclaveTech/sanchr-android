@@ -16,6 +16,8 @@ data class Conversation(
     val isMuted: Boolean = false,
     val isArchived: Boolean = false,
     val disappearingMessageDuration: Long? = null,
+    /** This chat's wallpaper, or null to follow the account-wide choice. */
+    val wallpaper: String? = null,
     val updatedAt: Instant,
     val createdAt: Instant,
 )

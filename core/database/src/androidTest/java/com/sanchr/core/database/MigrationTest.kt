@@ -124,4 +124,20 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_12_to_13_adds_conversation_wallpaper_defaulting_to_the_account_choice() {
+        helper.createDatabase("migration-test-13", 12).close()
+        helper.runMigrationsAndValidate("migration-test-13", 13, true, DatabaseModule.migration12To13).use { db ->
+            db.query("PRAGMA table_info(`conversations`)").use { c ->
+                val columns = generateSequence { if (c.moveToNext()) c.getString(1) else null }.toList()
+                check(columns.contains("wallpaper")) { "conversations is missing wallpaper: $columns" }
+            }
+            // Null means "follow the account-wide choice", so an upgrade must
+            // not pin every chat to a colour nobody picked.
+            db.query("SELECT COUNT(*) FROM conversations WHERE wallpaper IS NOT NULL").use { c ->
+                check(c.moveToFirst() && c.getInt(0) == 0) { "migration set a wallpaper on existing conversations" }
+            }
+        }
+    }
 }

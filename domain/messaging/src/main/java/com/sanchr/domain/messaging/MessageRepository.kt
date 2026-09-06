@@ -249,6 +249,27 @@ interface MessageRepository {
     /** Hidden conversations, newest first, with their newest message attached. */
     fun observeHiddenConversations(): Flow<List<Conversation>>
 
+    /**
+     * Sets how long messages sent in this conversation survive, or clears the
+     * timer with null.
+     *
+     * The send path has always read this per-conversation value; until now
+     * nothing could write it, so every chat fell back to the global default.
+     */
+    suspend fun setDisappearingDuration(
+        conversationId: String,
+        durationMs: Long?,
+    )
+
+    /**
+     * Sets this chat's wallpaper, or clears it with null so the chat follows
+     * the account-wide choice again.
+     */
+    suspend fun setWallpaper(
+        conversationId: String,
+        wallpaper: String?,
+    )
+
     /** Mutes or unmutes notifications for a conversation: tells the server, then the local row. */
     suspend fun setMuted(
         conversationId: String,

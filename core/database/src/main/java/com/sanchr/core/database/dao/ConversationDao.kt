@@ -64,6 +64,7 @@ interface ConversationDao {
     /**
      * Writes what the server knows about these conversations without
      * discarding what only this device knows. `is_archived`, `is_hidden`,
+     * `wallpaper`,
      * `disappearing_duration_ms` and `last_message_id` are not on the wire;
      * a plain REPLACE (see [insertConversations]) resets them to defaults,
      * which un-archives every chat, unhides every hidden one, and clears
@@ -81,6 +82,7 @@ interface ConversationDao {
                     incoming.copy(
                         isArchived = local.isArchived,
                         isHidden = local.isHidden,
+                        wallpaper = local.wallpaper,
                         disappearingDurationMs = local.disappearingDurationMs,
                         lastMessageId = local.lastMessageId,
                     )
@@ -136,6 +138,22 @@ interface ConversationDao {
     suspend fun setMuted(
         conversationId: String,
         isMuted: Boolean,
+    )
+
+    /**
+     * Per-conversation disappearing timer, in milliseconds; null clears it and
+     * the conversation falls back to the account-wide default.
+     */
+    @Query("UPDATE conversations SET disappearing_duration_ms = :durationMs WHERE id = :conversationId")
+    suspend fun setDisappearingDuration(
+        conversationId: String,
+        durationMs: Long?,
+    )
+
+    @Query("UPDATE conversations SET wallpaper = :wallpaper WHERE id = :conversationId")
+    suspend fun setWallpaper(
+        conversationId: String,
+        wallpaper: String?,
     )
 
     @Query("UPDATE conversations SET is_hidden = :isHidden WHERE id = :conversationId")

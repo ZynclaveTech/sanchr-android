@@ -71,6 +71,20 @@ class MessageRepositoryImpl
         override fun observeHiddenConversations(): Flow<List<Conversation>> =
             withNewestMessages(conversationDao.observeHiddenConversations())
 
+        override suspend fun setWallpaper(
+            conversationId: String,
+            wallpaper: String?,
+        ) {
+            conversationDao.setWallpaper(conversationId, wallpaper)
+        }
+
+        override suspend fun setDisappearingDuration(
+            conversationId: String,
+            durationMs: Long?,
+        ) {
+            conversationDao.setDisappearingDuration(conversationId, durationMs)
+        }
+
         override suspend fun setHidden(
             conversationId: String,
             hidden: Boolean,
@@ -503,6 +517,7 @@ class MessageRepositoryImpl
                 isMuted = isMuted,
                 isArchived = isArchived,
                 disappearingMessageDuration = disappearingDurationMs,
+                wallpaper = wallpaper,
                 updatedAt = Instant.fromEpochMilliseconds(updatedAt),
                 createdAt = Instant.fromEpochMilliseconds(createdAt),
             )

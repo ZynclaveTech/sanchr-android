@@ -37,6 +37,7 @@ class UserPreferences
             val NOTIFICATION_LOCKSCREEN_PREVIEW = booleanPreferencesKey("notification_lockscreen_preview")
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
+            val CHAT_WALLPAPER = stringPreferencesKey("chat_wallpaper")
             val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
@@ -190,6 +191,17 @@ class UserPreferences
         }
 
         // --- Media ---
+
+        /**
+         * The account-wide chat wallpaper. A conversation with its own choice
+         * overrides this; the Appearance picker used to be a no-op.
+         */
+        val chatWallpaper: Flow<String> = dataStore.data.map { it[Keys.CHAT_WALLPAPER] ?: "default" }
+
+        suspend fun setChatWallpaper(name: String) {
+            dataStore.edit { it[Keys.CHAT_WALLPAPER] = name }
+        }
+
         val mediaAutoDownload: Flow<String> = dataStore.data.map { it[Keys.MEDIA_AUTO_DOWNLOAD] ?: "wifi" }
 
         suspend fun setMediaAutoDownload(policy: String) {
