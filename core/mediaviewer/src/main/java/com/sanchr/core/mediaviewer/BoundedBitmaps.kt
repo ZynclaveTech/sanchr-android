@@ -1,4 +1,4 @@
-package com.sanchr.feature.chats.media
+package com.sanchr.core.mediaviewer
 
 import android.content.ContentResolver
 import android.graphics.Bitmap
