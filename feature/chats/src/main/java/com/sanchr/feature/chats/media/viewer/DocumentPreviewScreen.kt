@@ -1,7 +1,6 @@
 package com.sanchr.feature.chats.media.viewer
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -43,17 +42,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.feature.chats.media.BoundedBitmaps
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** How much of a text attachment is read before it is truncated. */
 private const val TEXT_PREVIEW_LIMIT = 512 * 1024
-
-private const val IMAGE_BYTES_PER_PIXEL = 4
-
-/** Ceiling for a decoded image; anything larger is downsampled to fit. */
-private const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
 
 /** A4-ish, used to hold a page's place until it renders. */
 private const val PAGE_PLACEHOLDER_ASPECT = 0.707f
@@ -215,7 +210,7 @@ private fun ImageBody(
     var failed by remember(file) { mutableStateOf(false) }
 
     LaunchedEffect(file) {
-        val decoded = withContext(Dispatchers.IO) { decodeBounded(file) }
+        val decoded = withContext(Dispatchers.IO) { BoundedBitmaps.decode(file) }
         if (decoded == null) failed = true else bitmap = decoded
     }
 
@@ -239,31 +234,6 @@ private fun ImageBody(
             }
     }
 }
-
-/**
- * [file] decoded at a size that fits a fixed budget.
- *
- * The dimensions are read from the header first. Decoding straight to a
- * bitmap lets the file decide the allocation, and an image is something a
- * stranger sends: a 30000x30000 PNG compresses to very little and asks for
- * gigabytes on decode. Reading the bounds costs nothing and turns that into
- * a downsample.
- */
-private fun decodeBounded(file: File): Bitmap? =
-    runCatching {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.path, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-        var sample = 1
-        while (
-            bounds.outWidth.toLong() * bounds.outHeight / (sample.toLong() * sample) * IMAGE_BYTES_PER_PIXEL >
-            MAX_IMAGE_BYTES
-        ) {
-            sample *= 2
-        }
-        BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
-    }.getOrNull()
 
 @Composable
 private fun TextBody(file: File) {
