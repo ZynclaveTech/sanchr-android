@@ -17,7 +17,6 @@ import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,6 +39,7 @@ import androidx.navigation.compose.rememberNavController
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.app.navigation.PendingDestination
+import com.sanchr.core.designsystem.component.SanchrBottomBar
 import com.sanchr.feature.auth.navigation.authGraph
 import com.sanchr.feature.calls.navigation.callsGraph
 import com.sanchr.feature.calls.navigation.outgoingCallRoute
@@ -311,7 +311,7 @@ private fun SanchrBottomBar(
     onNavigateToDestination: (TopLevelDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NavigationBar(modifier = modifier) {
+    SanchrBottomBar(modifier = modifier) {
         destinations.forEach { destination ->
             val selected =
                 currentDestination?.hierarchy?.any {

@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -25,7 +27,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Drafts
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
@@ -38,8 +40,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -47,6 +51,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,10 +68,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -118,7 +124,11 @@ fun ChatsListScreen(
 
     Scaffold(
         topBar = {
-            SanchrTopBar(title = "Chats")
+            ChatsBrandHeader(
+                onOpenArchived = onOpenArchived,
+                onOpenHidden = onOpenHidden,
+                onNewChat = viewModel::openNewChatPicker,
+            )
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -140,32 +150,6 @@ fun ChatsListScreen(
                     .fillMaxSize()
                     .padding(innerPadding),
         ) {
-            // --- E2EE indicator ---
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = SanchrTheme.spacing.default,
-                            vertical = SanchrTheme.spacing.xs,
-                        ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Lock,
-                    contentDescription = null,
-                    tint = SanchrGray400,
-                    modifier = Modifier.size(12.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "End-to-end encrypted",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SanchrGray400,
-                )
-            }
-
             // --- Search bar ---
             OutlinedTextField(
                 value = searchQuery,
@@ -204,6 +188,14 @@ fun ChatsListScreen(
                         unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     ),
             )
+
+            (uiState as? ChatsListUiState.Success)?.let { success ->
+                ChatFilterChips(
+                    selected = success.selectedFilter,
+                    onSelect = viewModel::onFilterSelected,
+                    modifier = Modifier.padding(bottom = SanchrTheme.spacing.sm),
+                )
+            }
 
             when (val state = uiState) {
                 is ChatsListUiState.Loading -> {
@@ -268,21 +260,36 @@ fun ChatsListScreen(
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            if (state.archivedCount > 0) {
-                                item(key = "archived") { ArchivedRow(count = state.archivedCount, onClick = onOpenArchived) }
-                            }
-                            if (hiddenChats.isNotEmpty()) {
-                                item(key = "hidden") {
-                                    ShelfRow(
-                                        icon = Icons.Filled.VisibilityOff,
-                                        label = "Hidden",
-                                        count = hiddenChats.size,
-                                        onClick = onOpenHidden,
+                            if (state.pinned.isNotEmpty()) {
+                                item(key = "pinned-heading") {
+                                    ChatsSectionHeading(text = "PINNED", icon = Icons.Filled.PushPin)
+                                }
+                                items(
+                                    items = state.pinned,
+                                    key = { "pinned-" + it.id },
+                                ) { conversation ->
+                                    ConversationItem(
+                                        conversation = conversation,
+                                        currentUserId = state.currentUserId,
+                                        isTyping = conversation.id in state.typingConversationIds,
+                                        onClick = { onConversationClick(conversation.id) },
+                                        actions =
+                                            ConversationActions(
+                                                onTogglePin = { viewModel.togglePin(conversation) },
+                                                onToggleMute = { viewModel.toggleMute(conversation) },
+                                                onMarkAsRead = { viewModel.markAsRead(conversation) },
+                                                onArchive = { viewModel.setArchived(conversation, archived = true) },
+                                                onDelete = { deleting = conversation },
+                                                onHide = { viewModel.setHidden(conversation, hidden = true) },
+                                                onUnarchive = { viewModel.setArchived(conversation, archived = false) },
+                                                onUnhide = { viewModel.setHidden(conversation, hidden = false) },
+                                            ),
                                     )
                                 }
+                                item(key = "all-heading") { ChatsSectionHeading(text = "ALL CHATS") }
                             }
                             items(
-                                items = state.conversations,
+                                items = state.unpinned,
                                 key = { it.id },
                             ) { conversation ->
                                 ConversationItem(
@@ -538,6 +545,148 @@ private fun ConversationMenu(
             text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
             leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             onClick = { run(actions.onDelete) },
+        )
+    }
+}
+
+/**
+ * The list's header: the app's name and an overflow menu.
+ *
+ * Mirrors iOS `SanchrBrandHeader` on this screen — the title is the product,
+ * not the tab. "Chats" restated the label already lit in the bottom bar and
+ * spent the most prominent line on the screen saying nothing.
+ *
+ * Archived and Hidden live here rather than as rows in the list, as on iOS:
+ * as rows they sat above the user's actual conversations, so the first thing
+ * on the screen was two shelves of chats they had deliberately put away.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatsBrandHeader(
+    onOpenArchived: () -> Unit,
+    onOpenHidden: () -> Unit,
+    onNewChat: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    TopAppBar(
+        title = {
+            Text(
+                text = "Sanchr",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        },
+        actions = {
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("New chat") },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onNewChat()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Archived chats") },
+                        leadingIcon = { Icon(Icons.Filled.Archive, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onOpenArchived()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Hidden chats") },
+                        leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onOpenHidden()
+                        },
+                    )
+                }
+            }
+        },
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+            ),
+    )
+}
+
+/**
+ * The filter chips, the same three iOS shows.
+ *
+ * Horizontally scrollable even at three chips: the row is the same component
+ * whatever it holds, and a fixed row that starts clipping the day a fourth
+ * filter arrives is a worse default than one that scrolls and never does.
+ */
+@Composable
+private fun ChatFilterChips(
+    selected: ChatFilter,
+    onSelect: (ChatFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = SanchrTheme.spacing.default),
+        horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
+    ) {
+        ChatFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = filter == selected,
+                onClick = { onSelect(filter) },
+                label = { Text(filter.label) },
+                shape = SanchrShapeTokens.CornerFull,
+            )
+        }
+    }
+}
+
+/**
+ * A section heading over a run of rows: "PINNED", "ALL CHATS".
+ *
+ * iOS sets these apart with letterspaced small caps; the nearest thing here is
+ * labelMedium with tracking. Without them the pinned chats merge into the rest
+ * and pinning stops looking like it did anything.
+ */
+@Composable
+private fun ChatsSectionHeading(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(
+                    start = SanchrTheme.spacing.default,
+                    end = SanchrTheme.spacing.default,
+                    top = SanchrTheme.spacing.default,
+                    bottom = SanchrTheme.spacing.xs,
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        icon?.let {
+            Icon(
+                imageVector = it,
+                contentDescription = null,
+                tint = SanchrGray400,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            letterSpacing = 1.2.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
