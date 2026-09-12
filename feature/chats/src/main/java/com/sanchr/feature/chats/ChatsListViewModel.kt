@@ -123,6 +123,17 @@ class ChatsListViewModel
     ) : ViewModel() {
         private val _searchQuery = MutableStateFlow("")
         private val _selectedFilter = MutableStateFlow(ChatFilter.ALL)
+
+        /**
+         * The lit chip, exposed on its own rather than only inside
+         * [ChatsListUiState.Success].
+         *
+         * The chip bar is part of the screen's furniture, not of the list: it
+         * shows above an empty account too, as on iOS. Reading the filter out
+         * of the success state hid the chips exactly when someone has no chats
+         * and is most likely to be looking around the screen.
+         */
+        val selectedFilter: StateFlow<ChatFilter> = _selectedFilter.asStateFlow()
         private val _isRefreshing = MutableStateFlow(false)
 
         private val _picker = MutableStateFlow(NewChatPickerState())
