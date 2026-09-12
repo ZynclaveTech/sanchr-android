@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.sanchr.core.designsystem.theme.LocalSanchrDarkTheme
 
 /**
  * The app's bottom navigation bar.
@@ -41,9 +40,11 @@ fun SanchrBottomBar(
     content: @Composable RowScope.() -> Unit,
 ) {
     val outline = MaterialTheme.colorScheme.outlineVariant
-    // LocalSanchrDarkTheme, not isSystemInDarkTheme: the app resolves its own
-    // ThemeMode, which can disagree with the device's.
-    val base = if (LocalSanchrDarkTheme.current) DarkBarBlack else MaterialTheme.colorScheme.surface
+    // The app's own surface in both themes. Vync hardcodes a near-black here,
+    // measured against the bar it was matching; Sanchr's dark surface is
+    // #1A1A24 (iOS surfaceDark) and the near-black read as a hole punched in
+    // the bottom of the page rather than as a bar.
+    val base = MaterialTheme.colorScheme.surface
 
     // The bar runs BEHIND the system navigation bar rather than stopping above
     // it. Scaffold places the bar above the navigation inset, so on its own it
@@ -93,13 +94,6 @@ fun SanchrBottomBar(
         content = content,
     )
 }
-
-/**
- * The dark bar's colour, taken from Vync's measured value rather than from the
- * theme: our dark `surface` sits noticeably lighter than the page and reads as
- * a grey shelf under it.
- */
-private val DarkBarBlack = Color(0xFF040404)
 
 private val BarHeight = 56.dp
 

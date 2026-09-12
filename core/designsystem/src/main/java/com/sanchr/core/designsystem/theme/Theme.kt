@@ -72,16 +72,6 @@ private val DefaultSanchrSpacing = SanchrSpacing()
 val LocalSanchrSurfaces = staticCompositionLocalOf { SanchrSurfacesLight }
 
 /**
- * Whether the app is currently rendering dark.
- *
- * Read this rather than `isSystemInDarkTheme()`. The app resolves its own
- * [ThemeMode], so a component asking the system directly gets the wrong
- * answer whenever the user has overridden it — light app on a dark phone
- * renders a dark component, and vice versa.
- */
-val LocalSanchrDarkTheme = staticCompositionLocalOf { false }
-
-/**
  * Sanchr application theme.
  *
  * Wraps Material3 [MaterialTheme] with Sanchr-specific color, typography, shape,
@@ -124,7 +114,6 @@ fun SanchrTheme(
     CompositionLocalProvider(
         LocalSanchrSpacing provides DefaultSanchrSpacing,
         LocalSanchrSurfaces provides surfaces,
-        LocalSanchrDarkTheme provides darkTheme,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

@@ -51,6 +51,9 @@ class ChatsListViewModelActionsTest {
             workManager = mockk<WorkManager>(relaxed = true),
             contactRepository = mockk<ContactRepository>(relaxed = true),
             messageRepository = messageRepository,
+            // Not exercised here: these tests cover listing, actions and the new-chat
+            // picker, none of which send an attachment.
+            sendAttachmentUseCase = mockk(relaxed = true),
             syncState = mockk<SyncState>(relaxed = true) { every { isSyncing } returns MutableStateFlow(false) },
             sessionManager = mockk(relaxed = true),
             realtimeManager = mockk<RealtimeManager>(relaxed = true) { every { typingCache } returns MutableStateFlow(emptyMap()) },
