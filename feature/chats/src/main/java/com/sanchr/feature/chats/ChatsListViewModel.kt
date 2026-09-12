@@ -6,6 +6,7 @@ import androidx.work.WorkManager
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
@@ -32,6 +33,17 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/**
+ * The chip bar's filters, the same three iOS offers and in the same order.
+ */
+enum class ChatFilter(
+    val label: String,
+) {
+    ALL("All"),
+    UNREAD("Unread"),
+    GROUPS("Groups"),
+}
+
 sealed interface ChatsListUiState {
     data object Loading : ChatsListUiState
 
@@ -46,7 +58,20 @@ sealed interface ChatsListUiState {
         val typingConversationIds: Set<String> = emptySet(),
         /** How many chats are archived; the list shows an "Archived" row when non-zero. */
         val archivedCount: Int = 0,
-    ) : ChatsListUiState
+        /** Which chip is lit. */
+        val selectedFilter: ChatFilter = ChatFilter.ALL,
+    ) : ChatsListUiState {
+        /**
+         * Pinned chats, which lead the list under their own heading as on iOS.
+         *
+         * Split here rather than in the composable so the ordering is a
+         * property of the state and can be asserted without mounting Compose.
+         */
+        val pinned: List<Conversation> get() = conversations.filter { it.isPinned }
+
+        /** Everything else, under "ALL CHATS". */
+        val unpinned: List<Conversation> get() = conversations.filterNot { it.isPinned }
+    }
 
     data object Empty : ChatsListUiState
 
@@ -97,6 +122,7 @@ class ChatsListViewModel
         realtimeManager: RealtimeManager,
     ) : ViewModel() {
         private val _searchQuery = MutableStateFlow("")
+        private val _selectedFilter = MutableStateFlow(ChatFilter.ALL)
         private val _isRefreshing = MutableStateFlow(false)
 
         private val _picker = MutableStateFlow(NewChatPickerState())
@@ -141,15 +167,15 @@ class ChatsListViewModel
             combine(
                 observeConversationsUseCase(),
                 _searchQuery,
-                combine(_isRefreshing, syncState.isSyncing) { r, s -> r to s },
+                combine(_isRefreshing, syncState.isSyncing, _selectedFilter) { r, s, f -> Triple(r, s, f) },
                 realtimeManager.typingCache,
                 archived,
-            ) { result, query, (refreshing, syncing), typing, archivedList ->
+            ) { result, query, (refreshing, syncing, filter), typing, archivedList ->
                 when (result) {
                     is Result.Loading -> ChatsListUiState.Loading
 
                     is Result.Success -> {
-                        val filtered =
+                        val searched =
                             if (query.isBlank()) {
                                 result.data
                             } else {
@@ -157,7 +183,18 @@ class ChatsListViewModel
                                     conversation.title?.contains(query, ignoreCase = true) == true
                                 }
                             }
-                        if (filtered.isEmpty() && query.isBlank()) {
+                        val filtered =
+                            when (filter) {
+                                ChatFilter.ALL -> searched
+                                ChatFilter.UNREAD -> searched.filter { it.unreadCount > 0 }
+                                ChatFilter.GROUPS -> searched.filter { it.type == ConversationType.GROUP }
+                            }
+                        // Empty only counts as "nothing here at all" when no
+                        // search and no filter are narrowing the list. A chip
+                        // that matches nothing is a filtered list with no rows,
+                        // not an account with no chats — showing the onboarding
+                        // empty state there tells the user their chats are gone.
+                        if (filtered.isEmpty() && query.isBlank() && filter == ChatFilter.ALL) {
                             ChatsListUiState.Empty
                         } else {
                             ChatsListUiState.Success(
@@ -168,6 +205,7 @@ class ChatsListViewModel
                                 currentUserId = sessionManager.getUserId().orEmpty(),
                                 typingConversationIds = typing.filterValues { it.isTyping }.keys,
                                 archivedCount = archivedList.size,
+                                selectedFilter = filter,
                             )
                         }
                     }
@@ -237,6 +275,12 @@ class ChatsListViewModel
                     _actionError.value = e.message ?: "Something went wrong"
                 }
             }
+        }
+
+        /** Lights a chip and narrows the list to it. */
+
+        fun onFilterSelected(filter: ChatFilter) {
+            _selectedFilter.value = filter
         }
 
         fun onSearchQueryChanged(query: String) {
