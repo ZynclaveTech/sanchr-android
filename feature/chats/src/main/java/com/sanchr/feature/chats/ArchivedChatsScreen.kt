@@ -1,6 +1,7 @@
 package com.sanchr.feature.chats
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +45,9 @@ fun ArchivedChatsScreen(
         )
     }
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = "Archived", onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->

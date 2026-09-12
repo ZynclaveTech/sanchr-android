@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,6 +60,9 @@ fun CallsListScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(title = "Calls")
         },
@@ -76,7 +80,7 @@ fun CallsListScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = SanchrTheme.spacing.lg,
                             vertical = SanchrTheme.spacing.sm,
                         ),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
@@ -189,7 +193,7 @@ private fun CallEntryRow(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.md,
                 ),
         verticalAlignment = Alignment.CenterVertically,

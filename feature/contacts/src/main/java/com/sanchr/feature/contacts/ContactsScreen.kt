@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -75,6 +76,9 @@ fun ContactsScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = "Contacts",
@@ -118,7 +122,7 @@ fun ContactsScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = SanchrTheme.spacing.lg,
                             vertical = SanchrTheme.spacing.sm,
                         ),
             )
@@ -313,7 +317,7 @@ private fun SectionHeader(letter: Char) {
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.xs,
                 ),
     ) {
@@ -349,7 +353,7 @@ private fun ContactRow(
                     onClick = onClick,
                     onLongClick = { showContextMenu = true },
                 ).padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.md,
                 ),
         verticalAlignment = Alignment.CenterVertically,
