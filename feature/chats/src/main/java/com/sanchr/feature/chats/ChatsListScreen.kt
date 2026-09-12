@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,13 +28,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Drafts
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Visibility
@@ -49,7 +54,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -65,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -79,8 +84,10 @@ import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
+import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.MessageStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -341,6 +348,126 @@ class ConversationActions(
     val onUnhide: (() -> Unit)? = null,
 )
 
+/** iOS `SanchrSpacing.chatRowVPadding`. */
+private val IosRowVPadding = 12.dp
+
+/** The gap between avatar and text, iOS `HStack(spacing: 12)`. */
+private val IosRowGap = 12.dp
+
+/** iOS `SanchrSpacing.namePreviewGap` (xxs). */
+private val IosNamePreviewGap = 4.dp
+
+/** iOS `SanchrSpacing.chatAvatarSize`. Android drew 48. */
+private val IosAvatarSize = 56.dp
+
+/** iOS `SanchrSpacing.statusIndicatorSize` / `statusIndicatorBorder`. */
+private val IosStatusDot = 16.dp
+private val IosStatusDotBorder = 2.dp
+
+/** iOS `SanchrSpacing.unreadBadgeSize`, as a minimum width rather than a fixed one. */
+private val IosBadgeMinWidth = 20.dp
+
+// iOS type scale: sm 16, xs 14, xxs 12.
+private val IosNameSize = 16.sp
+private val IosPreviewSize = 14.sp
+private val IosTimestampSize = 12.sp
+private val IosBadgeSize = 12.sp
+
+/**
+ * The row's avatar: 56dp, ringed, with a presence dot.
+ *
+ * The ring is what separates a dark avatar from a dark page; without it a
+ * photo with dark edges bleeds into the background and the row loses its
+ * left margin. The dot sits bottom-trailing with its own border so it reads
+ * against the photo rather than melting into it.
+ */
+@Composable
+private fun ConversationAvatar(conversation: Conversation) {
+    val ringColour = MaterialTheme.colorScheme.background
+    Box(modifier = Modifier.size(IosAvatarSize)) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .border(2.dp, ringColour, CircleShape),
+        ) {
+            if (conversation.avatarUrl != null) {
+                AsyncImage(
+                    model = conversation.avatarUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            // iOS: primary at 14%, with the initial in primary.
+                            .background(SanchrIndigo500.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = (conversation.title ?: "?").take(1).uppercase(),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SanchrIndigo500,
+                    )
+                }
+            }
+        }
+
+        // Presence, which the Android row did not show at all: the online dot
+        // is how the list answers "can I reach them now" without opening a chat.
+        val peerOnline =
+            conversation.type == ConversationType.DIRECT &&
+                conversation.participants.any { it.isOnline }
+        if (peerOnline) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(IosStatusDot)
+                        .align(Alignment.BottomEnd)
+                        .clip(CircleShape)
+                        .background(ringColour)
+                        .padding(IosStatusDotBorder)
+                        .clip(CircleShape)
+                        .background(SanchrSuccess),
+            )
+        }
+    }
+}
+
+/**
+ * The tick beside an outgoing preview.
+ *
+ * Android drew the same double tick for every state, so "sending" and
+ * "delivered" were indistinguishable and a failed send looked delivered.
+ */
+@Composable
+private fun DeliveryStatusIcon(status: MessageStatus) {
+    val tint =
+        when (status) {
+            MessageStatus.READ -> SanchrIndigo500
+            MessageStatus.FAILED -> MaterialTheme.colorScheme.error
+            else -> SanchrGray400
+        }
+    val icon =
+        when (status) {
+            MessageStatus.SENDING -> Icons.Filled.Schedule
+            MessageStatus.SENT -> Icons.Filled.Check
+            MessageStatus.FAILED -> Icons.Filled.ErrorOutline
+            else -> Icons.Filled.DoneAll
+        }
+    Icon(
+        imageVector = icon,
+        contentDescription = status.name.lowercase(),
+        tint = tint,
+        modifier = Modifier.size(14.dp),
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ConversationItem(
@@ -361,119 +488,113 @@ internal fun ConversationItem(
                 modifier
                     .fillMaxWidth()
                     .combinedClickable(onClick = onClick, onLongClick = { if (actions != null) menuOpen = true })
-                    .padding(
-                        horizontal = SanchrTheme.spacing.default,
-                        vertical = SanchrTheme.spacing.md,
-                    ),
+                    .padding(horizontal = IosScreenHorizontal, vertical = IosRowVPadding),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(IosRowGap),
         ) {
-            // --- Avatar: 48dp circle, AsyncImage or initials fallback ---
-            Box(
-                modifier =
-                    Modifier
-                        .size(48.dp)
-                        .clip(CircleShape),
-            ) {
-                if (conversation.avatarUrl != null) {
-                    AsyncImage(
-                        model = conversation.avatarUrl,
-                        contentDescription = "${conversation.title} avatar",
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = CircleShape,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = (conversation.title ?: "?").take(1).uppercase(),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                    }
-                }
-            }
+            ConversationAvatar(conversation = conversation)
 
-            Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
-
-            // --- Name + last message ---
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.spacedBy(IosNamePreviewGap),
             ) {
-                Text(
-                    text = conversation.title ?: "Unknown",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                if (isTyping) {
+                // Name and timestamp share a row, as on iOS. Android had the
+                // timestamp in a trailing column of its own, which pushed it
+                // away from the name it belongs to and left the badge floating
+                // under it.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text(
-                        text = "typing…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SanchrIndigo500,
+                        text = conversation.title ?: "Unknown",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontSize = IosNameSize,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.5).sp,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    conversation.lastMessage?.let { last ->
+                        Text(
+                            text = formatChatTimestamp(last.timestamp.toEpochMilliseconds()),
+                            fontSize = IosTimestampSize,
+                            fontWeight = FontWeight.Medium,
+                            // Plain secondary whether or not there is anything
+                            // unread: iOS does not colour the time, and a blue
+                            // timestamp competes with the badge that is already
+                            // saying the same thing.
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (isTyping) {
+                        Text(
+                            text = "typing…",
+                            fontSize = IosPreviewSize,
+                            fontWeight = FontWeight.Medium,
+                            color = SanchrIndigo500,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    } else {
                         val last = conversation.lastMessage
                         if (last != null && last.senderId == currentUserId) {
-                            Icon(
-                                imageVector = Icons.Filled.DoneAll,
-                                contentDescription = last.status.name.lowercase(),
-                                modifier = Modifier.size(14.dp),
-                                tint = if (last.status == MessageStatus.READ) SanchrIndigo500 else SanchrGray400,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            DeliveryStatusIcon(status = last.status)
                         }
                         val prefix = conversation.senderPrefix(currentUserId)
                         Text(
                             text = if (prefix != null) prefix + conversation.previewText() else conversation.previewText(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (conversation.unreadCount > 0) MaterialTheme.colorScheme.onSurface else SanchrGray500,
-                            fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = IosPreviewSize,
+                            fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Medium,
+                            color =
+                                if (conversation.unreadCount > 0) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
+                    Spacer(modifier = Modifier.weight(1f))
 
-            // --- Timestamp + unread badge ---
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = conversation.lastMessage?.let { formatChatTimestamp(it.timestamp.toEpochMilliseconds()) }.orEmpty(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color =
-                        if (conversation.unreadCount > 0) {
-                            SanchrIndigo500
-                        } else {
-                            SanchrGray400
-                        },
-                )
+                    if (conversation.isMuted) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsOff,
+                            contentDescription = "Muted",
+                            tint = SanchrGray400,
+                            modifier = Modifier.size(10.dp),
+                        )
+                    }
 
-                if (conversation.unreadCount > 0) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = SanchrIndigo500,
-                        modifier = Modifier.size(22.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
+                    if (conversation.unreadCount > 0) {
+                        // A capsule with a minimum width, not a fixed circle:
+                        // a three-digit count clipped inside the 22dp circle
+                        // Android drew before.
+                        Box(
+                            modifier =
+                                Modifier
+                                    .defaultMinSize(minWidth = IosBadgeMinWidth)
+                                    .clip(SanchrShapeTokens.CornerFull)
+                                    .background(SanchrIndigo500)
+                                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Text(
-                                text = if (conversation.unreadCount > 99) "99+" else conversation.unreadCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                text = conversation.unreadCount.toString(),
+                                fontSize = IosBadgeSize,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
                             )
                         }
                     }
