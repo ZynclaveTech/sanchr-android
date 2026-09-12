@@ -16,10 +16,7 @@ import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +37,7 @@ import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.app.navigation.PendingDestination
 import com.sanchr.core.designsystem.component.SanchrBottomBar
+import com.sanchr.core.designsystem.component.SanchrBottomBarItem
 import com.sanchr.feature.auth.navigation.authGraph
 import com.sanchr.feature.calls.navigation.callsGraph
 import com.sanchr.feature.calls.navigation.outgoingCallRoute
@@ -318,16 +316,11 @@ private fun SanchrBottomBar(
                     it.route == destination.route
                 } == true
 
-            NavigationBarItem(
+            SanchrBottomBarItem(
                 selected = selected,
                 onClick = { onNavigateToDestination(destination) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
-                        contentDescription = destination.label,
-                    )
-                },
-                label = { Text(text = destination.label) },
+                icon = if (selected) destination.selectedIcon else destination.unselectedIcon,
+                label = destination.label,
             )
         }
     }

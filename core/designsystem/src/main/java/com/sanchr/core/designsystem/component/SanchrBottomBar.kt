@@ -5,13 +5,20 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.sanchr.core.designsystem.theme.LocalSanchrDarkTheme
 
@@ -95,3 +102,48 @@ fun SanchrBottomBar(
 private val DarkBarBlack = Color(0xFF040404)
 
 private val BarHeight = 56.dp
+
+/** 28dp, not M3's 24dp — measured off the bar this matches. */
+private val TabIconSize = 28.dp
+
+/**
+ * One tab.
+ *
+ * Icon only, and no selection pill. M3's indicator is a filled
+ * `secondaryContainer` capsule, which on this bar is the only opaque shape in
+ * the row and reads as a chip sitting on the surface rather than as a
+ * selection; tint alone carries it, which is what the reference bar does.
+ *
+ * The label is not drawn but is still the content description, so the tab
+ * keeps its name for screen readers and for tests.
+ */
+@Composable
+fun RowScope.SanchrBottomBarItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(TabIconSize),
+            )
+        },
+        colors =
+            NavigationBarItemDefaults.colors(
+                indicatorColor = Color.Transparent,
+                selectedIconColor = MaterialTheme.colorScheme.primary,
+                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        modifier =
+            modifier.semantics(mergeDescendants = true) {
+                contentDescription = label
+            },
+    )
+}

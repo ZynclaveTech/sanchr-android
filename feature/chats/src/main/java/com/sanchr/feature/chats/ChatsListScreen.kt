@@ -2,6 +2,8 @@ package com.sanchr.feature.chats
 
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -40,7 +42,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,7 +64,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,6 +94,7 @@ fun ChatsListScreen(
     viewModel: ChatsListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
     val pickerState by viewModel.picker.collectAsStateWithLifecycle()
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
     val hiddenChats by viewModel.hidden.collectAsStateWithLifecycle()
@@ -189,9 +193,9 @@ fun ChatsListScreen(
                     ),
             )
 
-            (uiState as? ChatsListUiState.Success)?.let { success ->
+            if (uiState !is ChatsListUiState.Loading) {
                 ChatFilterChips(
-                    selected = success.selectedFilter,
+                    selected = selectedFilter,
                     onSelect = viewModel::onFilterSelected,
                     modifier = Modifier.padding(bottom = SanchrTheme.spacing.sm),
                 )
@@ -549,6 +553,19 @@ private fun ConversationMenu(
     }
 }
 
+/** iOS `SanchrExportMetrics.screenHorizontal`. Android's `default` is 16. */
+private val IosScreenHorizontal = 20.dp
+
+/** iOS `SanchrSpacing.filterTabHeight`. */
+private val IosChipHeight = 32.dp
+
+/** iOS `SanchrSpacing.filterTabHPadding`. */
+private val IosChipHPadding = 16.dp
+
+/** The brand mark in iOS `SanchrBrandHeader`, and the gap beside it. */
+private val IosBrandMark = 40.dp
+private val IosBrandGap = 12.dp
+
 /**
  * The list's header: the app's name and an overflow menu.
  *
@@ -570,12 +587,23 @@ private fun ChatsBrandHeader(
     var menuOpen by remember { mutableStateOf(false) }
     TopAppBar(
         title = {
-            Text(
-                text = "Sanchr",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(IosBrandGap),
+            ) {
+                Image(
+                    painter = painterResource(id = com.sanchr.core.designsystem.R.drawable.sanchr_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(IosBrandMark),
+                )
+                Text(
+                    text = "Sanchr",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         },
+        windowInsets = TopAppBarDefaults.windowInsets,
         actions = {
             Box {
                 IconButton(onClick = { menuOpen = true }) {
@@ -634,16 +662,37 @@ private fun ChatFilterChips(
             modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = SanchrTheme.spacing.default),
+                .padding(horizontal = IosScreenHorizontal),
         horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
     ) {
         ChatFilter.entries.forEach { filter ->
-            FilterChip(
-                selected = filter == selected,
-                onClick = { onSelect(filter) },
-                label = { Text(filter.label) },
-                shape = SanchrShapeTokens.CornerFull,
-            )
+            val isSelected = filter == selected
+            Box(
+                modifier =
+                    Modifier
+                        .height(IosChipHeight)
+                        .clip(SanchrShapeTokens.CornerFull)
+                        .then(
+                            // Selected is a solid primary capsule, not a tinted
+                            // one: iOS found a tint over the surface read as
+                            // washed out, with the background showing through
+                            // as a second shape behind the pill.
+                            if (isSelected) {
+                                Modifier.background(SanchrIndigo500)
+                            } else {
+                                Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            },
+                        ).clickable { onSelect(filter) }
+                        .padding(horizontal = IosChipHPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = filter.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -666,10 +715,11 @@ private fun ChatsSectionHeading(
             modifier
                 .fillMaxWidth()
                 .padding(
-                    start = SanchrTheme.spacing.default,
-                    end = SanchrTheme.spacing.default,
-                    top = SanchrTheme.spacing.default,
-                    bottom = SanchrTheme.spacing.xs,
+                    start = IosScreenHorizontal,
+                    end = IosScreenHorizontal,
+                    // iOS SanchrSectionEyebrow: 8 above, 4 below.
+                    top = 8.dp,
+                    bottom = 4.dp,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
