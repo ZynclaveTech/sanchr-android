@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -151,7 +152,12 @@ fun LoginPhoneScreen(
             if (errorMessage != null) errorColor.copy(alpha = 0.35f) else lineColor
         }
     val logoShape = remember(cardCorner) { RoundedCornerShape(cardCorner) }
-    Scaffold(modifier = modifier) { innerPadding ->
+    Scaffold(
+        // The NavHost\'s Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = modifier,
+    ) { innerPadding ->
         Column(
             modifier =
                 Modifier

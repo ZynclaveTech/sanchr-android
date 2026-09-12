@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,6 +75,9 @@ fun SettingsScreen(
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(title = "Settings")
         },
@@ -91,7 +95,7 @@ fun SettingsScreen(
                 onClick = onNavigateToProfile,
                 modifier =
                     Modifier.padding(
-                        horizontal = SanchrTheme.spacing.default,
+                        horizontal = SanchrTheme.spacing.lg,
                         vertical = SanchrTheme.spacing.sm,
                     ),
             ) {
@@ -256,7 +260,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clickable { showDeleteAccountDialog = true }
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = SanchrTheme.spacing.lg,
                             vertical = SanchrTheme.spacing.md,
                         ),
                 verticalAlignment = Alignment.CenterVertically,
@@ -403,7 +407,7 @@ private fun SettingsGroupLabel(
         color = MaterialTheme.colorScheme.primary,
         modifier =
             modifier.padding(
-                horizontal = SanchrTheme.spacing.default,
+                horizontal = SanchrTheme.spacing.lg,
                 vertical = SanchrTheme.spacing.sm,
             ),
     )
@@ -423,7 +427,7 @@ internal fun SettingsItem(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.md,
                 ),
         verticalAlignment = Alignment.CenterVertically,

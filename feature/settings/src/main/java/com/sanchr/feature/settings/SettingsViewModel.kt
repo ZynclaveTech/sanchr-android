@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
 import com.sanchr.core.crypto.RecoveryKeyManager
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.domain.messaging.DeleteAccountUseCase
@@ -91,6 +92,7 @@ class SettingsViewModel
         private val chatBackupManager: ChatBackupManager,
         private val deleteAccountUseCase: DeleteAccountUseCase,
         private val profileUpdater: EncryptedProfileUpdater,
+        private val sessionManager: SessionManager,
     ) : ViewModel() {
         companion object {
             private const val TAG = "SettingsViewModel"
@@ -173,7 +175,15 @@ class SettingsViewModel
                 },
             ) { prefs, remote, storage, loading, extras ->
                 SettingsUiState(
-                    displayName = remote?.displayName ?: "",
+                    // The session first, the server second. GetSettings reads
+                    // the user_settings row, which has no profile columns at
+                    // all — display name, avatar and phone live on `users` —
+                    // so those fields come back empty from every call and the
+                    // screen said "Set up your profile" to someone who had
+                    // one. iOS reads the session here for the same reason.
+                    displayName =
+                        remote?.displayName?.takeIf { it.isNotBlank() }
+                            ?: sessionManager.getDisplayName().orEmpty(),
                     phoneNumber = remote?.phoneNumber ?: "",
                     avatarUrl = remote?.avatarUrl ?: "",
                     bio = remote?.bio ?: "",

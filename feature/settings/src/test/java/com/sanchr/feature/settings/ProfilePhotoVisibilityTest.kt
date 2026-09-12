@@ -65,6 +65,9 @@ class ProfilePhotoVisibilityTest {
             chatBackupManager = mockk<ChatBackupManager>(relaxed = true),
             deleteAccountUseCase = deleteAccountUseCase,
             profileUpdater = mockk(relaxed = true),
+            // The display name falls back to the session when the server sends
+            // none; these tests do not exercise the profile card.
+            sessionManager = mockk(relaxed = true),
         )
 
     @Test
