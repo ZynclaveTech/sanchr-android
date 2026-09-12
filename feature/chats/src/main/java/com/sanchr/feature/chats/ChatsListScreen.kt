@@ -1,6 +1,8 @@
 package com.sanchr.feature.chats
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,10 +15,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,10 +28,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
@@ -36,9 +42,11 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -50,15 +58,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +77,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -89,6 +98,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.MessageStatus
+import com.sanchr.feature.chats.media.CapturedPhotos
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,6 +112,18 @@ fun ChatsListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
+    val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
+
+    // The camera writes into a file we name up front; TakePicture reports only
+    // success, so the URI has to be held across the launch.
+    var pendingCapture by remember { mutableStateOf<android.net.Uri?>(null) }
+    var captureToSend by remember { mutableStateOf<android.net.Uri?>(null) }
+    val takePicture =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            captureToSend = if (saved) pendingCapture else null
+            pendingCapture = null
+        }
+
     val pickerState by viewModel.picker.collectAsStateWithLifecycle()
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
     val hiddenChats by viewModel.hidden.collectAsStateWithLifecycle()
@@ -124,23 +146,33 @@ fun ChatsListScreen(
         )
     }
     var searchQuery by remember { mutableStateOf("") }
+    captureToSend?.let { uri ->
+        val ready = (uiState as? ChatsListUiState.Success)?.conversations.orEmpty()
+        CaptureDestinationPicker(
+            conversations = ready,
+            onDismiss = { captureToSend = null },
+            onPicked = { conversationId ->
+                captureToSend = null
+                viewModel.sendCapturedPhoto(context, uri, conversationId)
+            },
+        )
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is NewChatEvent.OpenConversation -> onOpenConversation(event.conversationId)
+                is NewChatEvent.Failed -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     Scaffold(
-        topBar = {
-            ChatsBrandHeader(
-                onOpenArchived = onOpenArchived,
-                onOpenHidden = onOpenHidden,
-                onNewChat = viewModel::openNewChatPicker,
-            )
-        },
+        // Zero, because the NavHost's Scaffold has already inset the content
+        // for the system bars. Two nested Scaffolds each applying them counted
+        // the status bar twice, which is the gap that appeared above the
+        // header — 107px of it on this handset.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(
                 onClick = viewModel::openNewChatPicker,
@@ -161,50 +193,43 @@ fun ChatsListScreen(
                     .fillMaxSize()
                     .padding(innerPadding),
         ) {
-            // --- Search bar ---
-            OutlinedTextField(
+            ChatsBrandHeader(
+                onOpenArchived = onOpenArchived,
+                onOpenHidden = onOpenHidden,
+                onNewChat = viewModel::openNewChatPicker,
+                onCapturePhoto = {
+                    val uri = CapturedPhotos.newUri(context)
+                    if (uri == null) {
+                        Toast.makeText(context, "Could not open the camera", Toast.LENGTH_SHORT).show()
+                    } else {
+                        pendingCapture = uri
+                        takePicture.launch(uri)
+                    }
+                },
+            )
+
+            ChatsSearchField(
                 value = searchQuery,
                 onValueChange = { query ->
                     searchQuery = query
                     viewModel.onSearchQueryChanged(query)
                 },
+                sortOrder = sortOrder,
+                onSortOrderSelected = viewModel::onSortOrderSelected,
+                // iOS: screenHorizontal aside, 2 above the field.
                 modifier =
                     Modifier
-                        .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
-                            vertical = SanchrTheme.spacing.sm,
-                        ),
-                placeholder = {
-                    Text(
-                        text = "Search conversations...",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "Search",
-                        tint = SanchrGray400,
-                    )
-                },
-                singleLine = true,
-                shape = SanchrShapeTokens.CornerFull,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SanchrIndigo500,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    ),
+                            horizontal = IosScreenHorizontal,
+                            vertical = 0.dp,
+                        ).padding(top = 2.dp),
             )
 
             if (uiState !is ChatsListUiState.Loading) {
                 ChatFilterChips(
                     selected = selectedFilter,
                     onSelect = viewModel::onFilterSelected,
-                    modifier = Modifier.padding(bottom = SanchrTheme.spacing.sm),
+                    modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
                 )
             }
 
@@ -677,6 +702,20 @@ private fun ConversationMenu(
 /** iOS `SanchrExportMetrics.screenHorizontal`. Android's `default` is 16. */
 private val IosScreenHorizontal = 20.dp
 
+/** iOS `SanchrExportMetrics.rootTop`. */
+private val IosRootTop = 16.dp
+
+/** iOS `SanchrExportMetrics.iconButtonSize`. */
+private val IosIconButtonSize = 40.dp
+
+/** iOS `SanchrSpacing.searchBarHeight` / `searchIconSize`. */
+private val IosSearchHeight = 44.dp
+private val IosSearchIconSize = 15.dp
+
+/** iOS `chatListTitle` is xl (24) bold; search text is xs (14) medium. */
+private val IosBrandTitleSize = 24.sp
+private val IosSearchTextSize = 14.sp
+
 /** iOS `SanchrSpacing.filterTabHeight`. */
 private val IosChipHeight = 32.dp
 
@@ -686,6 +725,49 @@ private val IosChipHPadding = 16.dp
 /** The brand mark in iOS `SanchrBrandHeader`, and the gap beside it. */
 private val IosBrandMark = 40.dp
 private val IosBrandGap = 12.dp
+
+/**
+ * Where a photo taken from the chats list should go.
+ *
+ * iOS shows the same thing after a home-screen capture: the photo exists
+ * before a conversation has been chosen, so the picker is the step between.
+ * Dismissing sends nothing and leaves the file in the cache for the system to
+ * reclaim.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CaptureDestinationPicker(
+    conversations: List<Conversation>,
+    onDismiss: () -> Unit,
+    onPicked: (String) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = SanchrTheme.spacing.default)) {
+            Text(
+                text = "Send photo to",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = IosScreenHorizontal, vertical = SanchrTheme.spacing.sm),
+            )
+            if (conversations.isEmpty()) {
+                Text(
+                    text = "No conversations yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = IosScreenHorizontal),
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    items(items = conversations, key = { it.id }) { conversation ->
+                        ListItem(
+                            headlineContent = { Text(conversation.title ?: "Conversation") },
+                            modifier = Modifier.clickable { onPicked(conversation.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * The list's header: the app's name and an overflow menu.
@@ -698,71 +780,185 @@ private val IosBrandGap = 12.dp
  * as rows they sat above the user's actual conversations, so the first thing
  * on the screen was two shelves of chats they had deliberately put away.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatsBrandHeader(
     onOpenArchived: () -> Unit,
     onOpenHidden: () -> Unit,
     onNewChat: () -> Unit,
+    onCapturePhoto: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    TopAppBar(
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(IosBrandGap),
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = IosScreenHorizontal,
+                    end = IosScreenHorizontal,
+                    // iOS SanchrBrandHeader: rootTop above, 12 below. A
+                    // TopAppBar was 64dp of its own plus a second copy of the
+                    // status-bar inset, which is where the gap came from.
+                    top = IosRootTop,
+                    bottom = 12.dp,
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(IosBrandGap),
+    ) {
+        Image(
+            painter = painterResource(id = com.sanchr.core.designsystem.R.drawable.sanchr_logo),
+            contentDescription = null,
+            modifier = Modifier.size(IosBrandMark),
+        )
+        Text(
+            text = "Sanchr",
+            fontSize = IosBrandTitleSize,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        IconButton(onClick = onCapturePhoto, modifier = Modifier.size(IosIconButtonSize)) {
+            Icon(Icons.Filled.PhotoCamera, contentDescription = "Take a photo")
+        }
+
+        Box {
+            IconButton(
+                onClick = { menuOpen = true },
+                modifier = Modifier.size(IosIconButtonSize),
             ) {
-                Image(
-                    painter = painterResource(id = com.sanchr.core.designsystem.R.drawable.sanchr_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(IosBrandMark),
+                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("New chat") },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null) },
+                    onClick = {
+                        menuOpen = false
+                        onNewChat()
+                    },
                 )
+                DropdownMenuItem(
+                    text = { Text("Archived chats") },
+                    leadingIcon = { Icon(Icons.Filled.Archive, contentDescription = null) },
+                    onClick = {
+                        menuOpen = false
+                        onOpenArchived()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Hidden chats") },
+                    leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                    onClick = {
+                        menuOpen = false
+                        onOpenHidden()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The search field, as iOS draws it: a capsule, not an outlined box.
+ *
+ * 44 tall with 16 of padding and a 12 gap, which is what makes it read as a
+ * single control rather than a form input. Material's OutlinedTextField
+ * brought its own border, label slot and 56dp minimum, none of which iOS has.
+ */
+@Composable
+private fun ChatsSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    sortOrder: ChatSortOrder,
+    onSortOrderSelected: (ChatSortOrder) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(IosSearchHeight)
+                .clip(SanchrShapeTokens.CornerFull)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Search,
+            contentDescription = "Search",
+            tint = SanchrGray400,
+            modifier = Modifier.size(IosSearchIconSize),
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle =
+                    LocalTextStyle.current.copy(
+                        fontSize = IosSearchTextSize,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                cursorBrush = SolidColor(SanchrIndigo500),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (value.isEmpty()) {
                 Text(
-                    text = "Sanchr",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    text = "Search chats...",
+                    fontSize = IosSearchTextSize,
+                    fontWeight = FontWeight.Medium,
+                    color = SanchrGray400,
                 )
             }
-        },
-        windowInsets = TopAppBarDefaults.windowInsets,
-        actions = {
+        }
+        // Empty means sort, typing means clear. iOS notes that a single
+        // button which always cleared while showing a sort icon advertised a
+        // control that did nothing.
+        if (value.isEmpty()) {
             Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                IconButton(onClick = { sortMenuOpen = true }, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = "Sort chats, currently " + sortOrder.label,
+                        // Tinted only when the order is not the default, so the
+                        // icon says at a glance whether anything is reordered.
+                        tint = if (sortOrder == ChatSortOrder.RECENT) SanchrGray400 else SanchrIndigo500,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("New chat") },
-                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Message, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onNewChat()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Archived chats") },
-                        leadingIcon = { Icon(Icons.Filled.Archive, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onOpenArchived()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Hidden chats") },
-                        leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
-                        onClick = {
-                            menuOpen = false
-                            onOpenHidden()
-                        },
-                    )
+                DropdownMenu(expanded = sortMenuOpen, onDismissRequest = { sortMenuOpen = false }) {
+                    ChatSortOrder.entries.forEach { order ->
+                        DropdownMenuItem(
+                            text = { Text(order.label) },
+                            trailingIcon = {
+                                if (order == sortOrder) {
+                                    Icon(Icons.Filled.Check, contentDescription = null, tint = SanchrIndigo500)
+                                }
+                            },
+                            onClick = {
+                                sortMenuOpen = false
+                                onSortOrderSelected(order)
+                            },
+                        )
+                    }
                 }
             }
-        },
-        colors =
-            TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background,
-            ),
-    )
+        } else {
+            IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Cancel,
+                    contentDescription = "Clear search",
+                    tint = SanchrGray400,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
 }
 
 /**
