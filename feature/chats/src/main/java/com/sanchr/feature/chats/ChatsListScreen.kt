@@ -1077,7 +1077,7 @@ private fun ShelfRow(
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = SanchrTheme.spacing.default, vertical = SanchrTheme.spacing.md),
+                .padding(horizontal = IosSpacing.screenHorizontal, vertical = SanchrTheme.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = SanchrGray400)

@@ -211,7 +211,7 @@ fun VaultScreen(
                             SecureStorageInfoCard(
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -223,7 +223,7 @@ fun VaultScreen(
                                 stats = uiState.stats,
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -236,7 +236,7 @@ fun VaultScreen(
                                 onFilterSelected = viewModel::setFilter,
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -249,7 +249,7 @@ fun VaultScreen(
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = SanchrTheme.spacing.default),
+                                            .padding(horizontal = IosSpacing.screenHorizontal),
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
@@ -272,7 +272,7 @@ fun VaultScreen(
                                 onShare = { viewModel.beginShare(item) },
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -283,7 +283,7 @@ fun VaultScreen(
                             EncryptionNotice(
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.default,
                                     ),
                             )

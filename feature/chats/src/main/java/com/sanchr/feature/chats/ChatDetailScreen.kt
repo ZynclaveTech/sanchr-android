@@ -290,7 +290,7 @@ fun ChatDetailScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = SanchrTheme.spacing.default, vertical = 2.dp),
+                            .padding(horizontal = IosSpacing.screenHorizontal, vertical = 2.dp),
                     horizontalArrangement = Arrangement.Center,
                 ) {
                     Surface(
@@ -437,7 +437,7 @@ fun ChatDetailScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(
-                                horizontal = SanchrTheme.spacing.default,
+                                horizontal = IosSpacing.screenHorizontal,
                                 vertical = SanchrTheme.spacing.sm,
                             ),
                     verticalAlignment = Alignment.CenterVertically,
@@ -487,7 +487,7 @@ fun ChatDetailScreen(
                     color = SanchrGray400,
                     modifier =
                         Modifier.padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = IosSpacing.screenHorizontal,
                             vertical = 2.dp,
                         ),
                 )
@@ -510,7 +510,7 @@ fun ChatDetailScreen(
                         // background, so an unknown stored name degrades to
                         // plain rather than to some arbitrary colour.
                         .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
-                        .padding(horizontal = SanchrTheme.spacing.default),
+                        .padding(horizontal = IosSpacing.screenHorizontal),
                 state = listState,
                 reverseLayout = true,
                 verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),

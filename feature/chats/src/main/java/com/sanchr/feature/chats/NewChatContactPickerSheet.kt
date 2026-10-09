@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrTextField
+import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
@@ -88,7 +89,7 @@ fun NewChatContactPickerSheet(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = IosSpacing.screenHorizontal,
                             vertical = SanchrTheme.spacing.sm,
                         ),
             )
@@ -108,7 +109,7 @@ fun NewChatContactPickerSheet(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = IosSpacing.screenHorizontal,
                             vertical = SanchrTheme.spacing.xs,
                         ),
             )
@@ -120,7 +121,7 @@ fun NewChatContactPickerSheet(
                         Modifier
                             .fillMaxWidth()
                             .padding(
-                                horizontal = SanchrTheme.spacing.default,
+                                horizontal = IosSpacing.screenHorizontal,
                                 vertical = SanchrTheme.spacing.xs,
                             ),
                 )
@@ -252,7 +253,7 @@ private fun ContactPickerRow(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = IosSpacing.screenHorizontal,
                     vertical = SanchrTheme.spacing.sm,
                 ),
         verticalAlignment = Alignment.CenterVertically,

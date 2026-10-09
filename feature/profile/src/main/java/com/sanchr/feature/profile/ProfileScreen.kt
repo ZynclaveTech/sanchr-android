@@ -72,6 +72,7 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import kotlinx.coroutines.Dispatchers
@@ -365,7 +366,7 @@ fun ProfileScreen(
             // Info card with phone and status
             if (!uiState.isEditing) {
                 SanchrCard(
-                    modifier = Modifier.padding(horizontal = SanchrTheme.spacing.default),
+                    modifier = Modifier.padding(horizontal = IosSpacing.screenHorizontal),
                 ) {
                     Column(
                         modifier =

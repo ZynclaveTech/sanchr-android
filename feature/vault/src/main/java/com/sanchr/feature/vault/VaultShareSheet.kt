@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.model.Conversation
@@ -54,7 +55,7 @@ fun VaultShareSheet(
             Text(
                 text = item.name,
                 style = IosType.cardTitle,
-                modifier = Modifier.padding(horizontal = SanchrTheme.spacing.default),
+                modifier = Modifier.padding(horizontal = IosSpacing.screenHorizontal),
             )
 
             if (pickingConversation) {
