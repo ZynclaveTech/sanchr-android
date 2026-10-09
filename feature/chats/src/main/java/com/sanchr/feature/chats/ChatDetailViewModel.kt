@@ -515,6 +515,10 @@ class ChatDetailViewModel
             val allowed =
                 MediaAutoSavePolicy.shouldAutoSave(
                     isViewOnce = message.isViewOnce,
+                    // A disappearing message's media must not outlive it in a
+                    // photo library, so the expiry is read from the domain row
+                    // rather than the UI model, which does not carry it.
+                    isEphemeral = domainMessages[message.id]?.expiresAt != null,
                     autoSaveEnabled = enabled,
                     galleryVisible = galleryVisible,
                     isOutgoing = message.isFromMe,

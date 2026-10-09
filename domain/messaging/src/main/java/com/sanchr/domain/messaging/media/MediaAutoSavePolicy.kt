@@ -12,6 +12,8 @@ package com.sanchr.domain.messaging.media
 object MediaAutoSavePolicy {
     /**
      * @param isViewOnce whether the sender marked the media view-once.
+     * @param isEphemeral whether the message expires on a disappearing-messages
+     *   timer.
      * @param autoSaveEnabled the Media Auto-Save switch.
      * @param galleryVisible the per-conversation Media Visibility switch.
      * @param isOutgoing whether this device sent the media.
@@ -19,6 +21,7 @@ object MediaAutoSavePolicy {
      */
     fun shouldAutoSave(
         isViewOnce: Boolean,
+        isEphemeral: Boolean,
         autoSaveEnabled: Boolean,
         galleryVisible: Boolean,
         isOutgoing: Boolean,
@@ -28,6 +31,10 @@ object MediaAutoSavePolicy {
         // permanently what the sender chose to show once, and deleting the
         // message later does not reach a photo library that has already synced.
         if (isViewOnce) return false
+        // Disappearing media is excluded for the same reason: the timer is a
+        // promise that the picture goes away, and a gallery copy outlives both
+        // the message and any later deletion.
+        if (isEphemeral) return false
         if (!isSaveableType(mimeType)) return false
         return autoSaveEnabled && galleryVisible && !isOutgoing
     }

@@ -7,12 +7,14 @@ import kotlin.test.assertTrue
 class MediaAutoSavePolicyTest {
     private fun shouldSave(
         isViewOnce: Boolean = false,
+        isEphemeral: Boolean = false,
         autoSaveEnabled: Boolean = true,
         galleryVisible: Boolean = true,
         isOutgoing: Boolean = false,
         mimeType: String = "image/jpeg",
     ) = MediaAutoSavePolicy.shouldAutoSave(
         isViewOnce = isViewOnce,
+        isEphemeral = isEphemeral,
         autoSaveEnabled = autoSaveEnabled,
         galleryVisible = galleryVisible,
         isOutgoing = isOutgoing,
@@ -28,6 +30,11 @@ class MediaAutoSavePolicyTest {
     @Test
     fun `never saves view-once media`() {
         assertFalse(shouldSave(isViewOnce = true))
+    }
+
+    @Test
+    fun `never saves media on a disappearing timer`() {
+        assertFalse(shouldSave(isEphemeral = true))
     }
 
     @Test
