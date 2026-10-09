@@ -8,9 +8,8 @@ import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.MessageRepository
-import com.sanchr.proto.settings.GetSettingsRequest
-import com.sanchr.proto.settings.SettingsServiceClient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -46,10 +45,10 @@ class ProfileViewModel
     @Inject
     constructor(
         savedStateHandle: SavedStateHandle,
-        private val settingsServiceClient: SettingsServiceClient,
         private val avatarUploader: AvatarUploader,
         private val profileUpdater: EncryptedProfileUpdater,
         private val contactRepository: ContactRepository,
+        private val contactProfileResolver: ContactProfileResolver,
         private val messageRepository: MessageRepository,
         private val sessionManager: SessionManager,
     ) : ViewModel() {
@@ -75,24 +74,41 @@ class ProfileViewModel
                 try {
                     val isOwn = userId == "me"
                     val blocked = if (isOwn) false else runCatching { contactRepository.isBlocked(userId) }.getOrDefault(false)
-                    val settings =
-                        settingsServiceClient.getSettings(
-                            GetSettingsRequest(userId = if (isOwn) "" else userId),
-                        )
+                    // Neither side of this comes from GetSettings any more. That
+                    // call authenticates the caller and returns their own
+                    // `user_settings` row, which carries no profile columns at
+                    // all: opening a contact's profile fetched ours, and both
+                    // rendered blank because name, bio and avatar are not in
+                    // that row. Our own profile is what this device last set;
+                    // a peer's is what we decrypted under their Profile Key.
+                    val profile =
+                        if (isOwn) {
+                            ProfileSnapshot(
+                                userId = sessionManager.getUserId().orEmpty(),
+                                displayName = sessionManager.getDisplayName().orEmpty(),
+                                bio = sessionManager.getProfileBio().orEmpty(),
+                                avatarUrl = sessionManager.getProfileAvatarUrl().orEmpty(),
+                                phoneNumber = sessionManager.getStoredPhoneE164().orEmpty(),
+                            )
+                        } else {
+                            contactProfileResolver.resolvedProfile(userId).let {
+                                ProfileSnapshot(it.userId, it.displayName, it.bio, it.avatarUrl, it.phoneNumber)
+                            }
+                        }
 
                     _uiState.update {
                         it.copy(
                             // Our own profile is routed as "me"; the QR must carry the real id, as iOS reads it from the session.
-                            userId = if (isOwn) sessionManager.getUserId().orEmpty() else userId,
-                            displayName = settings.displayName,
-                            phoneNumber = settings.phoneNumber,
-                            avatarUrl = settings.avatarUrl,
-                            bio = settings.bio,
+                            userId = profile.userId,
+                            displayName = profile.displayName,
+                            phoneNumber = profile.phoneNumber,
+                            avatarUrl = profile.avatarUrl,
+                            bio = profile.bio,
                             isOwnProfile = isOwn,
                             isBlocked = blocked,
                             isLoading = false,
-                            editDisplayName = settings.displayName,
-                            editBio = settings.bio,
+                            editDisplayName = profile.displayName,
+                            editBio = profile.bio,
                         )
                     }
                 } catch (e: Exception) {
@@ -182,6 +198,13 @@ class ProfileViewModel
                             avatarUrl = current.avatarUrl,
                         )
                     if (response.success) {
+                        // The device is the only place this plaintext lives, so
+                        // the write has to land here too or a relaunch forgets it.
+                        sessionManager.saveProfileDetails(
+                            displayName = current.editDisplayName,
+                            bio = current.editBio,
+                            avatarUrl = current.avatarUrl,
+                        )
                         _uiState.update {
                             it.copy(
                                 displayName = current.editDisplayName,
@@ -225,6 +248,11 @@ class ProfileViewModel
                         bio = current.bio,
                         avatarUrl = avatarUrl,
                     )
+                    sessionManager.saveProfileDetails(
+                        displayName = current.displayName,
+                        bio = current.bio,
+                        avatarUrl = avatarUrl,
+                    )
                     _uiState.update { it.copy(avatarUrl = avatarUrl, isUploadingAvatar = false) }
                 } catch (e: CancellationException) {
                     throw e
@@ -236,6 +264,15 @@ class ProfileViewModel
             }
         }
     }
+
+/** One profile as the screen needs it, whoever it belongs to. */
+private data class ProfileSnapshot(
+    val userId: String,
+    val displayName: String,
+    val bio: String,
+    val avatarUrl: String,
+    val phoneNumber: String,
+)
 
 sealed interface ProfileEvent {
     data object ProfileSaved : ProfileEvent

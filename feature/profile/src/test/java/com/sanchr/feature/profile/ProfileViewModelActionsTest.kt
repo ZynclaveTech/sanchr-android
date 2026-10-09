@@ -6,9 +6,9 @@ import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.MessageRepository
-import com.sanchr.proto.settings.SettingsServiceClient
-import com.sanchr.proto.settings.UserSettings
+import com.sanchr.domain.messaging.ResolvedProfile
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -31,14 +31,28 @@ import kotlinx.coroutines.test.setMain
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProfileViewModelActionsTest {
     private val dispatcher = StandardTestDispatcher()
-    private val settingsClient = mockk<SettingsServiceClient>()
+    private val contactProfileResolver = mockk<ContactProfileResolver>()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
-    private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "user-42" }
+    private val sessionManager =
+        mockk<SessionManager> {
+            every { getUserId() } returns "user-42"
+            every { getDisplayName() } returns "Me"
+            every { getProfileBio() } returns ""
+            every { getProfileAvatarUrl() } returns ""
+            every { getStoredPhoneE164() } returns "+15550199"
+        }
 
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        coEvery { settingsClient.getSettings(any()) } returns UserSettings(displayName = "Ada", phoneNumber = "+15550100")
+        coEvery { contactProfileResolver.resolvedProfile(any(), any()) } returns
+            ResolvedProfile(
+                userId = "peer-1",
+                displayName = "Ada",
+                bio = "",
+                avatarUrl = "",
+                phoneNumber = "+15550100",
+            )
     }
 
     @AfterTest
@@ -47,10 +61,10 @@ class ProfileViewModelActionsTest {
     private fun vm(userId: String) =
         ProfileViewModel(
             SavedStateHandle(mapOf("userId" to userId)),
-            settingsClient,
             mockk<AvatarUploader>(relaxed = true),
             mockk<EncryptedProfileUpdater>(relaxed = true),
             mockk<ContactRepository>(relaxed = true),
+            contactProfileResolver,
             messageRepository,
             sessionManager,
         )

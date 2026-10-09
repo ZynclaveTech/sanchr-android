@@ -132,6 +132,23 @@ class SettingsViewModel
                 .catch { emit("default") }
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "default")
 
+        /**
+         * Our own profile, read from the device rather than the server.
+         *
+         * A state flow and not a direct read inside the combine: the combine
+         * only re-runs when one of its sources emits, so an edit made on this
+         * screen would not have shown until something else happened to change.
+         */
+        private val _localProfile = MutableStateFlow(readLocalProfile())
+
+        private fun readLocalProfile() =
+            LocalProfile(
+                displayName = sessionManager.getDisplayName().orEmpty(),
+                phoneNumber = sessionManager.getStoredPhoneE164().orEmpty(),
+                avatarUrl = sessionManager.getProfileAvatarUrl().orEmpty(),
+                bio = sessionManager.getProfileBio().orEmpty(),
+            )
+
         private val _pendingSync = MutableStateFlow(0L)
 
         private val _events = MutableSharedFlow<SettingsEvent>()
@@ -165,9 +182,11 @@ class SettingsViewModel
                         BackupUiGroup(backupConfiguration, backupBusy)
                     },
                     _profilePhotoVisibility,
-                ) { basic, backup, photoVisibility ->
+                    _localProfile,
+                ) { basic, backup, photoVisibility, profile ->
                     ExtrasGroup(
                         profilePhotoVisibility = photoVisibility,
+                        profile = profile,
                         screenLockEnabled = basic.screenLockEnabled,
                         screenshotProtection = basic.screenshotProtection,
                         enterSendsMessage = basic.enterSendsMessage,
@@ -179,18 +198,16 @@ class SettingsViewModel
                 },
             ) { prefs, remote, storage, loading, extras ->
                 SettingsUiState(
-                    // The session first, the server second. GetSettings reads
-                    // the user_settings row, which has no profile columns at
-                    // all — display name, avatar and phone live on `users` —
-                    // so those fields come back empty from every call and the
-                    // screen said "Set up your profile" to someone who had
-                    // one. iOS reads the session here for the same reason.
-                    displayName =
-                        remote?.displayName?.takeIf { it.isNotBlank() }
-                            ?: sessionManager.getDisplayName().orEmpty(),
-                    phoneNumber = remote?.phoneNumber ?: "",
-                    avatarUrl = remote?.avatarUrl ?: "",
-                    bio = remote?.bio ?: "",
+                    // The session, not the server. GetSettings reads the
+                    // user_settings row, which has no profile columns at all —
+                    // name, bio, avatar and phone live on `users` and come back
+                    // only from UpdateProfile — so reading them from there gave
+                    // four permanently empty strings and the screen said "Set
+                    // up your profile" to someone who had one.
+                    displayName = extras.profile.displayName,
+                    phoneNumber = extras.profile.phoneNumber,
+                    avatarUrl = extras.profile.avatarUrl,
+                    bio = extras.profile.bio,
                     themeMode = prefs.themeMode,
                     dynamicColorEnabled = prefs.dynamicColorEnabled,
                     fontSize = remote?.fontSize ?: "medium",
@@ -292,6 +309,9 @@ class SettingsViewModel
                             GetSettingsRequest(userId = ""),
                         )
                     _remoteSettings.value = settings
+                    // The profile may have been edited on the profile screen,
+                    // which writes to the same store this reads.
+                    _localProfile.value = readLocalProfile()
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to load settings from backend", e)
                 } finally {
@@ -678,14 +698,17 @@ class SettingsViewModel
             viewModelScope.launch {
                 try {
                     // Encrypted under our Profile Key — see EncryptedProfileUpdater.
+                    val avatarUrl = sessionManager.getProfileAvatarUrl().orEmpty()
                     profileUpdater.update(
                         displayName = displayName,
                         bio = bio,
-                        avatarUrl = _remoteSettings.value?.avatarUrl ?: "",
+                        avatarUrl = avatarUrl,
                     )
-                    _remoteSettings.update {
-                        it?.copy(displayName = displayName, bio = bio)
-                    }
+                    // Stored here, not pushed into the remote-settings cache:
+                    // the wire settings message carries no profile fields, so
+                    // that copy was invisible to every later read.
+                    sessionManager.saveProfileDetails(displayName = displayName, bio = bio, avatarUrl = avatarUrl)
+                    _localProfile.value = readLocalProfile()
                     _events.emit(SettingsEvent.ProfileUpdated)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to update profile", e)
@@ -854,6 +877,7 @@ private data class PrefsGroup(
 
 private data class ExtrasGroup(
     val profilePhotoVisibility: String,
+    val profile: LocalProfile,
     val screenLockEnabled: Boolean,
     val screenshotProtection: Boolean,
     val enterSendsMessage: Boolean,
@@ -861,6 +885,14 @@ private data class ExtrasGroup(
     val disappearingMessagesDefault: String,
     val backupConfiguration: com.sanchr.core.datastore.BackupConfiguration?,
     val backupBusy: Boolean,
+)
+
+/** Our own profile as this device holds it. */
+private data class LocalProfile(
+    val displayName: String,
+    val phoneNumber: String,
+    val avatarUrl: String,
+    val bio: String,
 )
 
 private data class BackupUiGroup(

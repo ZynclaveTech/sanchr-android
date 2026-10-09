@@ -11,11 +11,12 @@ data class GetSettingsRequest(
 @Serializable
 data class UserSettings(
     @SerialName("user_id") val userId: String = "",
-    @SerialName("display_name") val displayName: String = "",
-    @SerialName("avatar_url") val avatarUrl: String = "",
-    val bio: String = "",
-    val email: String = "",
-    @SerialName("phone_number") val phoneNumber: String = "",
+    // No profile fields here on purpose. `settings.proto`'s UserSettings has
+    // none: name, bio, avatar and phone live on `users` and are returned by
+    // UpdateProfile / GetUserProfiles. Declaring them here gave five fields
+    // that no response could ever fill, and the screens that read them
+    // rendered an empty profile. Own profile: SessionManager. Peers:
+    // ContactProfileResolver.
     @SerialName("notification_enabled") val notificationEnabled: Boolean = true,
     @SerialName("notification_sound") val notificationSound: String = "default",
     @SerialName("notification_vibrate") val notificationVibrate: Boolean = true,

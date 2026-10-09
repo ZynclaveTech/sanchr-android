@@ -103,6 +103,45 @@ class ContactProfileResolver
             if (userIds.isNotEmpty()) Log.d(TAG, "re-resolved ${userIds.size} contact profile(s)")
         }
 
+        /**
+         * Everything we can show about [userId] without the server: their
+         * resolved name, the bio and avatar decrypted from their Profile Key,
+         * and the phone number from the address book.
+         *
+         * The profile screen used to ask the server for this with
+         * `GetSettings`, which authenticates the caller and returns *their*
+         * settings row — so opening someone else's profile fetched our own
+         * (and the row has no profile columns either, so every field came back
+         * empty). Peers' profiles only ever exist here, decrypted under the key
+         * they sent us.
+         *
+         * [refreshFirst] asks the server for newer ciphertext before reading;
+         * it is best-effort and never fails the call.
+         */
+        suspend fun resolvedProfile(
+            userId: String,
+            refreshFirst: Boolean = true,
+        ): ResolvedProfile {
+            if (refreshFirst) {
+                try {
+                    refresh(userId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.d(TAG, "profile refresh for $userId failed; showing what is stored", e)
+                }
+            }
+            val contact = contactDao.getContactById(userId)
+            val profile = contactProfileDao.getByUserId(userId)
+            return ResolvedProfile(
+                userId = userId,
+                displayName = ContactDisplayName.resolve(contact?.displayName, contact?.phoneNumber, profile?.displayName),
+                bio = profile?.bio.orEmpty(),
+                avatarUrl = profile?.avatarUrl.orEmpty(),
+                phoneNumber = contact?.phoneNumber.orEmpty(),
+            )
+        }
+
         /** What to call [userId] right now, by [ContactDisplayName] precedence. */
         suspend fun displayNameFor(userId: String): String {
             val contact = contactDao.getContactById(userId)
@@ -153,3 +192,12 @@ class ContactProfileResolver
             const val TAG = "ContactProfileResolver"
         }
     }
+
+/** A peer's profile as this device can show it. */
+data class ResolvedProfile(
+    val userId: String,
+    val displayName: String,
+    val bio: String,
+    val avatarUrl: String,
+    val phoneNumber: String,
+)
