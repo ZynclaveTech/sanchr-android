@@ -78,6 +78,13 @@ data class MessageUiModel(
     val quote: ReplyQuote? = null,
     /** Unopened view-once media: never rendered inline, opened in the secure viewer, then wiped. */
     val isViewOnce: Boolean = false,
+    /**
+     * Whether this message is on a disappearing-messages timer. Carried on the
+     * UI model rather than looked up when needed: the decision it drives —
+     * whether media may be copied to the gallery — must not depend on whether a
+     * mutable cache still holds the row.
+     */
+    val isEphemeral: Boolean = false,
 ) {
     /** Whether the attachment is a video, which the placeholder and the secure viewer both need to know. */
     val isVideoAttachment: Boolean
