@@ -72,10 +72,14 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/** iOS ProfileView's avatar frame. */
+private val IosProfileAvatar = 96.dp
 
 @Composable
 fun ProfileScreen(
@@ -162,9 +166,10 @@ fun ProfileScreen(
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // Large avatar (120dp) with edit overlay
+            // 96dp, as iOS. Android drew 120, which pushed the name and
+            // every field below it down a quarter of the screen.
             Box(
-                modifier = Modifier.size(120.dp),
+                modifier = Modifier.size(IosProfileAvatar),
                 contentAlignment = Alignment.Center,
             ) {
                 if (uiState.avatarUrl.isNotEmpty()) {
@@ -173,7 +178,7 @@ fun ProfileScreen(
                         contentDescription = "${uiState.displayName} avatar",
                         modifier =
                             Modifier
-                                .size(120.dp)
+                                .size(IosProfileAvatar)
                                 .clip(CircleShape),
                         contentScale = ContentScale.Crop,
                     )
@@ -181,7 +186,7 @@ fun ProfileScreen(
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(120.dp),
+                        modifier = Modifier.size(IosProfileAvatar),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -272,7 +277,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                     Text(
                         text = uiState.phoneNumber,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -281,7 +286,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                     Text(
                         text = uiState.bio,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xxl),
@@ -411,7 +416,7 @@ private fun ProfileActionButton(
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -426,12 +431,12 @@ private fun ProfileInfoRow(
     Column(modifier = modifier) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
         )
     }
 }
@@ -547,7 +552,7 @@ private fun ProfileQrDialog(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
                     Text(
                         text = "Scan this to open my Sanchr profile.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )

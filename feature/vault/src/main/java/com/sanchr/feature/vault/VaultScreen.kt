@@ -83,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
@@ -164,7 +165,7 @@ fun VaultScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Add to Vault",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = IosType.bodyBold,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
@@ -333,12 +334,12 @@ private fun SecureStorageInfoCard(modifier: Modifier = Modifier) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Secure Storage",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = "All items are encrypted end-to-end. Only you can access your vault.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -393,12 +394,12 @@ private fun StatItem(
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
         Text(
             text = "$count",
-            style = MaterialTheme.typography.titleMedium,
+            style = IosType.cardTitle,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -421,7 +422,7 @@ private fun FilterChipsRow(
                 label = {
                     Text(
                         text = filter.label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = IosType.sectionLabel,
                     )
                 },
                 colors =
@@ -504,13 +505,13 @@ private fun VaultItemCard(
                                 VaultItemType.NOTE -> "Note"
                                 VaultItemType.DOCUMENT -> "File"
                             },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
                 Text(
                     text = formatFileSize(item.sizeBytes),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier =
                         Modifier
@@ -530,7 +531,7 @@ private fun VaultItemCard(
             ) {
                 Text(
                     text = item.name,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -538,7 +539,7 @@ private fun VaultItemCard(
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                 Text(
                     text = item.expiresAt?.let { "Expires ${formatExpiry(it.toEpochMilliseconds())}" } ?: "Encrypted on this device",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = if (item.expiresAt != null) SanchrWarning else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
@@ -600,12 +601,12 @@ private fun VaultEmptyState() {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
             Text(
                 text = "Your encrypted vault",
-                style = MaterialTheme.typography.headlineSmall,
+                style = IosType.sectionHeader,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Store photos, videos, and files\nwith end-to-end encryption.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
@@ -629,7 +630,7 @@ private fun EncryptionNotice(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
         Text(
             text = "End-to-end encrypted",
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -865,7 +866,7 @@ private fun VaultToolbarMenu(
             )
             Text(
                 text = "Sort by",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
