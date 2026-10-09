@@ -1925,8 +1925,22 @@ private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> 
     return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
+            val tooLarge =
+                withContext(Dispatchers.IO) {
+                    AttachmentPreparer.reportedSize(context, uri)?.let { it > AttachmentPreparer.MAX_BYTES } == true
+                }
+            if (tooLarge) {
+                // Said before anything is read: reading costs about three
+                // times the file in heap, and the server refuses it anyway.
+                Toast.makeText(context, "That file is too large to send (100 MB maximum).", Toast.LENGTH_LONG).show()
+                return@launch
+            }
             val prepared = withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, uri) }
-            if (prepared != null) onPicked(prepared)
+            if (prepared != null) {
+                onPicked(prepared)
+            } else {
+                Toast.makeText(context, "That file couldn't be read.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }

@@ -17,12 +17,40 @@ import com.sanchr.domain.messaging.media.AttachmentUploader
  * Call from a background dispatcher: it reads the whole file.
  */
 object AttachmentPreparer {
-    /** The file at [uri], or null when it cannot be read. */
+    /**
+     * Largest file that may be sent, matching the server's own limit
+     * (`MAX_UPLOAD_SIZE`, 100 MiB) and iOS's `FileSource.maxBytes`.
+     *
+     * Checked here, before the bytes are read, because reading comes first and
+     * costs about three times the file in heap — the file, its ciphertext and
+     * the copy handed to the upload. Android had no limit at all, so a long 4K
+     * clip was an unavoidable `OutOfMemoryError` on the way to an upload the
+     * server would have refused anyway.
+     */
+    const val MAX_BYTES: Long = 100L * 1024 * 1024
+
+    /** Whether a file of [bytes] may be sent. */
+    fun isSizeAcceptable(bytes: Long): Boolean = bytes in 1..MAX_BYTES
+
+    /** The size the provider reports for [uri], or null when it will not say. */
+    fun reportedSize(
+        context: Context,
+        uri: Uri,
+    ): Long? =
+        runCatching {
+            context.contentResolver
+                .query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+                ?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null }
+        }.getOrNull()
+
+    /** The file at [uri], or null when it cannot be read or is too large to send. */
     fun prepare(
         context: Context,
         uri: Uri,
     ): AttachmentUploader.Prepared? {
         val resolver = context.contentResolver
+        val reported = reportedSize(context, uri)
+        if (reported != null && reported > MAX_BYTES) return null
         val sourceMime = resolver.getType(uri) ?: "application/octet-stream"
         // Photos are re-encoded rather than forwarded as picked. The original
         // carries EXIF — including GPS — and whatever size and format the
