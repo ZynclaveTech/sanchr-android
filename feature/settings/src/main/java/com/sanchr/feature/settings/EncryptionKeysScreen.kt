@@ -43,6 +43,7 @@ import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.core.designsystem.theme.SanchrWarning
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -52,6 +53,7 @@ fun EncryptionKeysScreen(
     viewModel: EncryptionKeysViewModel = hiltViewModel(),
 ) {
     val fingerprintBlocks by viewModel.fingerprintBlocks.collectAsStateWithLifecycle()
+    val keyState by viewModel.keyState.collectAsStateWithLifecycle()
     Scaffold(
         // The NavHost's Scaffold has already inset this for the system
         // bars; applying them again counts the status bar twice.
@@ -193,37 +195,51 @@ fun EncryptionKeysScreen(
                             .fillMaxWidth()
                             .padding(SanchrTheme.spacing.default),
                 ) {
+                    // Read from the store, not asserted. This card used to
+                    // print "Active" in green unconditionally beside a literal
+                    // "Key ID: SPK-0001" and two "--" lines: fabricated
+                    // security state, on the one screen whose whole purpose is
+                    // to report the real thing.
+                    val signedPreKey = keyState.signedPreKey
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Filled.VpnKey,
                             contentDescription = null,
-                            tint = SanchrSuccess,
+                            tint = if (keyState.isActive) SanchrSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp),
                         )
                         Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
                         Text(
-                            text = "Active",
+                            text =
+                                when {
+                                    !keyState.loaded -> "Checking…"
+                                    keyState.isActive -> "Active"
+                                    else -> "Not generated yet"
+                                },
                             style = IosType.sectionLabel,
-                            color = SanchrSuccess,
+                            color = if (keyState.isActive) SanchrSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
                         )
                     }
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
-                    Text(
-                        text = "Key ID: SPK-0001",
-                        style = IosType.captionSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "Generated: --",
-                        style = IosType.captionSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "Last rotated: --",
-                        style = IosType.captionSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (signedPreKey != null) {
+                        Text(
+                            text = "Key ID: " + signedPreKey.id,
+                            style = IosType.captionSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "Generated: " + formatKeyDate(signedPreKey.createdAtMillis),
+                            style = IosType.captionSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else if (keyState.loaded) {
+                        Text(
+                            text = "This device has not published a signed pre-key yet.",
+                            style = IosType.captionSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
@@ -261,9 +277,19 @@ fun EncryptionKeysScreen(
                     }
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
-                        text = "-- keys remaining on server",
+                        text =
+                            when {
+                                !keyState.loaded -> "Counting…"
+                                keyState.remainingPreKeys < 0 -> "The count could not be read."
+                                else -> keyState.remainingPreKeys.toString() + " unused keys on this device"
+                            },
                         style = IosType.captionSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color =
+                            if (keyState.loaded && keyState.remainingPreKeys in 0 until LOW_PREKEY_THRESHOLD) {
+                                SanchrWarning
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
@@ -289,3 +315,12 @@ fun EncryptionKeysScreen(
         }
     }
 }
+
+/** Below this many unused one-time pre-keys the count is worth drawing attention to. */
+private const val LOW_PREKEY_THRESHOLD = 10
+
+/** A key's creation date, in the device's own format. */
+private fun formatKeyDate(epochMillis: Long): String =
+    java.text.DateFormat
+        .getDateInstance(java.text.DateFormat.MEDIUM)
+        .format(java.util.Date(epochMillis))
