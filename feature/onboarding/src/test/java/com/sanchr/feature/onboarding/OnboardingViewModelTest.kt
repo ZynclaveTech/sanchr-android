@@ -6,6 +6,7 @@ import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.mediaviewer.ImageSendEncoder
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.proto.settings.ProfileResponse
 import io.mockk.Runs
@@ -14,6 +15,8 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -91,12 +94,21 @@ class OnboardingViewModelTest {
         // The avatar step writes the profile; these are the two calls it makes.
         coEvery { profileUpdater.update(any(), any(), any()) } returns ProfileResponse(success = true)
         coEvery { avatarUploader.upload(any(), any()) } returns "https://cdn/avatar.jpg"
-        every { contentResolver.getType(any()) } returns "image/jpeg"
-        every { contentResolver.openInputStream(any()) } answers { java.io.ByteArrayInputStream(byteArrayOf(1, 2, 3)) }
+        // The re-encoder needs a real BitmapFactory, which a JVM test does
+        // not have; what matters here is that the step uploads what it returns.
+        mockkObject(ImageSendEncoder)
+        every { ImageSendEncoder.encode(any(), any(), any(), any()) } returns
+            ImageSendEncoder.Encoded(
+                bytes = byteArrayOf(1, 2, 3),
+                mimeType = "image/jpeg",
+                width = 100,
+                height = 100,
+            )
     }
 
     @AfterTest
     fun tearDown() {
+        unmockkObject(ImageSendEncoder)
         Dispatchers.resetMain()
     }
 

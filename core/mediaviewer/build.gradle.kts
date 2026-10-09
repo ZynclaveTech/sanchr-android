@@ -40,5 +40,6 @@ dependencies {
     testImplementation(libs.kotlin.test)
     // The renderers produce real android.graphics.Bitmaps.
     testImplementation(libs.robolectric)
+    testImplementation(libs.mockk)
     testImplementation(libs.androidx.test.core)
 }

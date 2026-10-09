@@ -75,9 +75,16 @@ import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.core.mediaviewer.ImageSendEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * Avatars are displayed at 96dp here and smaller everywhere else, so 1024 is
+ * already more than any surface shows.
+ */
+private const val AVATAR_MAX_EDGE = 1024
 
 /** iOS ProfileView's avatar frame. */
 private val IosProfileAvatar = 96.dp
@@ -458,11 +465,12 @@ private fun rememberAvatarPicker(
         scope.launch {
             val picked =
                 withContext(Dispatchers.IO) {
-                    val type = context.contentResolver.getType(uri) ?: "image/jpeg"
-                    context.contentResolver
-                        .openInputStream(uri)
-                        ?.use { it.readBytes() }
-                        ?.let { it to type }
+                    // Re-encoded, not forwarded: a camera photo's EXIF carries
+                    // the location it was taken, and an avatar is the most
+                    // widely shared image an account has.
+                    ImageSendEncoder
+                        .encode(context.contentResolver, uri, maxLongEdge = AVATAR_MAX_EDGE)
+                        ?.let { it.bytes to it.mimeType }
                 }
             if (picked != null) onPicked(picked.first, picked.second)
         }

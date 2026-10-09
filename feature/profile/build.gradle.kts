@@ -38,6 +38,7 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.crypto)
     implementation(projects.core.designsystem)
+    implementation(projects.core.mediaviewer)
     implementation(projects.core.model)
     implementation(projects.core.datastore)
     implementation(projects.core.network)

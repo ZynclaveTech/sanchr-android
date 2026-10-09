@@ -1,14 +1,15 @@
 package com.sanchr.feature.onboarding
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.mediaviewer.ImageSendEncoder
 import com.sanchr.core.network.media.AvatarUploader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -163,14 +164,17 @@ class OnboardingViewModel
         private suspend fun uploadAvatar(uri: String): String {
             val picked =
                 withContext(dispatchers.io) {
-                    val parsed = Uri.parse(uri)
-                    val type = appContext.contentResolver.getType(parsed) ?: "image/jpeg"
-                    appContext.contentResolver
-                        .openInputStream(parsed)
-                        ?.use { it.readBytes() }
-                        ?.let { it to type }
+                    // Re-encoded rather than uploaded as picked: the original
+                    // carries EXIF, and a camera photo's EXIF carries where it
+                    // was taken. An avatar is the most widely shared image an
+                    // account has, so it is the last one to publish a location.
+                    ImageSendEncoder.encode(
+                        appContext.contentResolver,
+                        uri.toUri(),
+                        maxLongEdge = AVATAR_MAX_EDGE,
+                    )
                 } ?: error("could not read the selected photo")
-            return avatarUploader.upload(picked.first, picked.second)
+            return avatarUploader.upload(picked.bytes, picked.mimeType)
         }
 
         /**
@@ -284,6 +288,8 @@ class OnboardingViewModel
         }
 
         companion object {
+            /** Avatars never render above 96dp, so 1024 is already generous. */
+            private const val AVATAR_MAX_EDGE = 1024
             private const val MAX_NAME_LENGTH = 128
             private const val TAG = "OnboardingViewModel"
         }
