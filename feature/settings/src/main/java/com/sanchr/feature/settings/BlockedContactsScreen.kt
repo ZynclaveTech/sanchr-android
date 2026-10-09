@@ -36,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -73,11 +74,11 @@ fun BlockedContactsScreen(
                 ) {
                     Icon(imageVector = Icons.Filled.Block, contentDescription = null, tint = SanchrGray400, modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-                    Text(text = "No blocked contacts", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(text = "No blocked contacts", style = IosType.bodyBold, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "You can block someone from their profile.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = SanchrGray400,
                     )
                 }

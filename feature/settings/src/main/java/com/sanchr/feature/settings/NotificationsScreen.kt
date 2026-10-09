@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -66,7 +67,7 @@ fun NotificationsScreen(
             // -- Message Notifications --
             Text(
                 text = "Message Notifications",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 color = MaterialTheme.colorScheme.primary,
             )
 
@@ -91,7 +92,7 @@ fun NotificationsScreen(
             // -- Call Notifications --
             Text(
                 text = "Call Notifications",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 color = MaterialTheme.colorScheme.primary,
             )
 
@@ -109,7 +110,7 @@ fun NotificationsScreen(
             // -- Sound & Vibration --
             Text(
                 text = "Sound & Vibration",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 color = MaterialTheme.colorScheme.primary,
             )
 
@@ -134,7 +135,7 @@ fun NotificationsScreen(
             // -- Notification Preview --
             Text(
                 text = "Notification Preview",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 color = MaterialTheme.colorScheme.primary,
             )
 
@@ -142,7 +143,7 @@ fun NotificationsScreen(
 
             Text(
                 text = "Controls what is shown in notification previews",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -195,11 +196,11 @@ private fun NotificationPreviewOption(
         Column(modifier = Modifier.weight(1f).padding(start = SanchrTheme.spacing.sm)) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
             )
             Text(
                 text = description,
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -224,12 +225,12 @@ internal fun SettingsToggleRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

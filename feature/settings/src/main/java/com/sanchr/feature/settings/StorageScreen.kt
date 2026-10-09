@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrOutlinedButton
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -65,7 +66,7 @@ fun StorageScreen(
             // Storage Usage visualization
             Text(
                 text = "Storage Usage",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -85,7 +86,7 @@ fun StorageScreen(
                     ) {
                         Text(
                             text = "Total: ${formatBytes(storage.totalBytes)}",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = IosType.cardTitle,
                             fontWeight = FontWeight.Bold,
                         )
 
@@ -126,7 +127,7 @@ fun StorageScreen(
             } else {
                 Text(
                     text = "Calculating storage usage...",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -136,7 +137,7 @@ fun StorageScreen(
             // Auto-download settings
             Text(
                 text = "Media Auto-Download",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -158,7 +159,7 @@ fun StorageScreen(
                     )
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
                     )
                 }
@@ -179,7 +180,7 @@ fun StorageScreen(
             // Clear Cache
             Text(
                 text = "Cache",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -189,7 +190,7 @@ fun StorageScreen(
             val cacheSize = storage?.cacheBytes?.let { formatBytes(it) } ?: "Calculating..."
             Text(
                 text = "Cache size: $cacheSize",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -222,11 +223,11 @@ private fun StorageBarItem(
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
             )
             Text(
                 text = formatBytes(bytes),
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

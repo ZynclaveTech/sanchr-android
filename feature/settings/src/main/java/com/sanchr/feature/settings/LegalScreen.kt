@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.sanchr.core.common.support.SupportLinks
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -60,13 +61,13 @@ fun LegalScreen(
                 Column(modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.default)) {
                     Text(
                         text = "Built so we can't read your messages",
-                        style = MaterialTheme.typography.titleSmall,
+                        style = IosType.bodyBold,
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "These documents say exactly what Sanchr keeps, what it never sees, and the rules for using it.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -100,7 +101,7 @@ fun LegalScreen(
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                 Text(
                     text = "Sanchr ${SupportLinks.appVersion(context)} · Zynclave Tech Private Limited",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                     textAlign = TextAlign.Center,
                 )

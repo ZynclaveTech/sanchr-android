@@ -177,6 +177,10 @@ fun ChatsListScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(
+                // iOS fabSize. Material's default is 56, and next to a 64dp
+                // iOS button the Android one reads as a smaller affordance for
+                // the same action.
+                modifier = Modifier.size(IosSpacing.fabSize),
                 onClick = viewModel::openNewChatPicker,
                 containerColor = SanchrIndigo500,
                 contentColor = MaterialTheme.colorScheme.onPrimary,

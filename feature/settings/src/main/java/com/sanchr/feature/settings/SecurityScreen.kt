@@ -28,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -62,7 +63,7 @@ fun SecurityScreen(
             // Screen Lock section
             Text(
                 text = "Screen Lock",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -81,7 +82,7 @@ fun SecurityScreen(
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 Text(
                     text = "Lock Timeout",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     fontWeight = FontWeight.Medium,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
@@ -109,7 +110,7 @@ fun SecurityScreen(
                         )
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = IosType.body,
                             modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
                         )
                     }
@@ -121,7 +122,7 @@ fun SecurityScreen(
             // Biometric Authentication
             Text(
                 text = "Biometric Authentication",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -140,7 +141,7 @@ fun SecurityScreen(
             // Screenshot Protection
             Text(
                 text = "Screen Security",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -173,7 +174,7 @@ fun SecurityScreen(
             // Sanchr Mode
             Text(
                 text = "Sanchr Mode",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -189,7 +190,7 @@ fun SecurityScreen(
                 ) {
                     Text(
                         text = "Sanchr Mode hides sensitive conversations and vault items when enabled.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))

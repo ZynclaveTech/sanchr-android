@@ -40,6 +40,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -74,7 +75,7 @@ fun EncryptionKeysScreen(
             // Identity Fingerprint section
             Text(
                 text = "Your Identity Fingerprint",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -100,7 +101,7 @@ fun EncryptionKeysScreen(
 
                     Text(
                         text = "Safety Number Fingerprint",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
@@ -109,7 +110,7 @@ fun EncryptionKeysScreen(
                     if (fingerprintBlocks.isEmpty()) {
                         Text(
                             text = "Your key isn't available yet.",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = IosType.captionSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -159,7 +160,7 @@ fun EncryptionKeysScreen(
                 ) {
                     Text(
                         text = "Verify a contact",
-                        style = MaterialTheme.typography.titleSmall,
+                        style = IosType.bodyBold,
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
@@ -167,7 +168,7 @@ fun EncryptionKeysScreen(
                         text =
                             "Security codes are shared between two people. Open a contact's profile and " +
                                 "tap Verify security code to compare or scan theirs.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -178,7 +179,7 @@ fun EncryptionKeysScreen(
             // Signed Pre-Key Info
             Text(
                 text = "Signed Pre-Key",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -202,7 +203,7 @@ fun EncryptionKeysScreen(
                         Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
                         Text(
                             text = "Active",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = IosType.sectionLabel,
                             color = SanchrSuccess,
                             fontWeight = FontWeight.Bold,
                         )
@@ -210,17 +211,17 @@ fun EncryptionKeysScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "Key ID: SPK-0001",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = "Generated: --",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = "Last rotated: --",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -231,7 +232,7 @@ fun EncryptionKeysScreen(
             // OTP Key Count
             Text(
                 text = "One-Time Pre-Keys",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -255,19 +256,19 @@ fun EncryptionKeysScreen(
                         Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
                         Text(
                             text = "Available Keys",
-                            style = MaterialTheme.typography.titleSmall,
+                            style = IosType.bodyBold,
                         )
                     }
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "-- keys remaining on server",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "Keys are automatically replenished when the count drops below threshold.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -280,7 +281,7 @@ fun EncryptionKeysScreen(
                 text =
                     "You'll be notified when a contact's security key changes, " +
                         "which could mean they reinstalled the app or changed devices.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 

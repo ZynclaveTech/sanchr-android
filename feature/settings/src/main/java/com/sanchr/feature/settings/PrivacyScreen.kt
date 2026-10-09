@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -64,7 +65,7 @@ fun PrivacyScreen(
         ) {
             Text(
                 text = "Messaging Privacy",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -120,7 +121,7 @@ fun PrivacyScreen(
             // Profile Photo Visibility dropdown
             Text(
                 text = "Profile Photo Visibility",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -142,7 +143,7 @@ fun PrivacyScreen(
             Column {
                 Text(
                     text = "Who can see your profile photo",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
@@ -156,12 +157,12 @@ fun PrivacyScreen(
                 ) {
                     Text(
                         text = currentLabel,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
                         text = "Change",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = IosType.sectionLabel,
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
@@ -186,7 +187,7 @@ fun PrivacyScreen(
             // Disappearing Messages default duration
             Text(
                 text = "Disappearing Messages",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -195,7 +196,7 @@ fun PrivacyScreen(
 
             Text(
                 text = "Set a default timer for new conversations. Messages will be automatically deleted after the timer expires.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -226,7 +227,7 @@ fun PrivacyScreen(
                     )
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
                     )
                 }

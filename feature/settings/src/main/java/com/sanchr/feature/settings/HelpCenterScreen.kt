@@ -44,6 +44,7 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -77,7 +78,7 @@ fun HelpCenterScreen(
             // FAQ expandable sections
             Text(
                 text = "Frequently Asked Questions",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -107,7 +108,7 @@ fun HelpCenterScreen(
             // Contact form
             Text(
                 text = "Contact Support",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -199,14 +200,14 @@ fun HelpCenterScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Emergency Support",
-                            style = MaterialTheme.typography.titleSmall,
+                            style = IosType.bodyBold,
                             fontWeight = FontWeight.Bold,
                             color = SanchrError,
                         )
                         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                         Text(
                             text = "If you believe your account has been compromised, contact emergency support immediately.",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = IosType.captionSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
@@ -231,7 +232,7 @@ fun HelpCenterScreen(
                             Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
                             Text(
                                 text = "security@sanchr.com",
-                                style = MaterialTheme.typography.labelMedium,
+                                style = IosType.sectionLabel,
                                 color = SanchrError,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -245,7 +246,7 @@ fun HelpCenterScreen(
             // Legal section
             Text(
                 text = "Legal",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -261,7 +262,7 @@ fun HelpCenterScreen(
             ).forEach { (item, url) ->
                 Text(
                     text = item,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     color = MaterialTheme.colorScheme.primary,
                     modifier =
                         Modifier
@@ -295,7 +296,7 @@ private fun FaqItem(
         ) {
             Text(
                 text = question,
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 modifier = Modifier.weight(1f),
             )
             Icon(
@@ -312,7 +313,7 @@ private fun FaqItem(
         ) {
             Text(
                 text = answer,
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = SanchrTheme.spacing.md),
             )

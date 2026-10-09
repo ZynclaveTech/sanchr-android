@@ -83,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -150,6 +151,10 @@ fun VaultScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
+                // iOS fabSize. Material's default is 56, and next to a 64dp
+                // iOS button the Android one reads as a smaller affordance for
+                // the same action.
+                modifier = Modifier.size(IosSpacing.fabSize),
                 onClick = { pickFile.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
