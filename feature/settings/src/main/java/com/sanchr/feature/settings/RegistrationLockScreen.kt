@@ -77,8 +77,8 @@ fun RegistrationLockScreen(
     fun submit(
         enabled: Boolean,
         pin: String,
-        currentPin: String,
         success: String,
+        currentPin: String = "",
     ) {
         busy = true
         scope.launch {
@@ -182,7 +182,12 @@ fun RegistrationLockScreen(
                         title = "Enter PIN",
                         subtitle = "Enter your current Registration Lock PIN to turn it off.",
                         error = error,
-                        onComplete = { pin -> submit(enabled = false, pin = "", currentPin = pin, success = "Registration Lock is off") },
+                        // The server verifies `pin` on the disable branch and
+                        // ignores `current_pin`, so sending the PIN as
+                        // `currentPin` meant it compared against an empty
+                        // string: Registration Lock could never be turned off,
+                        // whatever the user typed.
+                        onComplete = { pin -> submit(enabled = false, pin = pin, success = "Registration Lock is off") },
                         onCancel = { phase = LockPhase.IDLE },
                     )
             }

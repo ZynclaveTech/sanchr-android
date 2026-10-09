@@ -49,6 +49,7 @@ class SettingsViewModelRegistrationLockTest {
             // The display name falls back to the session when the server sends
             // none; these tests do not exercise the profile card.
             sessionManager = mockk(relaxed = true),
+            mediaCacheCleaner = mockk(relaxed = true),
         )
 
     @Test
@@ -63,7 +64,10 @@ class SettingsViewModelRegistrationLockTest {
 
             coVerify { settingsServiceClient.setRegistrationLock(match { it.enabled && it.pin == "123456" && it.currentPin == "" }) }
             coVerify { settingsServiceClient.setRegistrationLock(match { it.enabled && it.pin == "654321" && it.currentPin == "123456" }) }
-            coVerify { settingsServiceClient.setRegistrationLock(match { !it.enabled && it.currentPin == "654321" }) }
+            // Disable must carry the PIN in `pin`: that is the field the
+            // server verifies, and sending it as `current_pin` meant the
+            // comparison ran against an empty string and always failed.
+            coVerify { settingsServiceClient.setRegistrationLock(match { !it.enabled && it.pin == "654321" }) }
         }
 
     @Test

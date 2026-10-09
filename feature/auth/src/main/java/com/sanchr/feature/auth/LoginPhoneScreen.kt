@@ -122,12 +122,12 @@ fun LoginPhoneScreen(
             loginPhone.countryCode == "+1" &&
             deviceDefault.dialCode != "+1"
         ) {
-            viewModel.onLoginPhoneChanged(deviceDefault.dialCode, "")
+            viewModel.onLoginPhoneChanged(deviceDefault.dialCode, "", deviceDefault.iso)
         }
     }
 
     val selectedCountry =
-        findCountryByDialCode(loginPhone.countryCode)
+        findCountryByDialCode(loginPhone.countryCode, loginPhone.countryIso.ifEmpty { null })
             ?: deviceDefault.takeIf { it.dialCode == loginPhone.countryCode }
             ?: deviceDefault
 
@@ -227,7 +227,7 @@ fun LoginPhoneScreen(
                 CountryCodePickerInlineChip(
                     selected = selectedCountry,
                     onSelected = { country ->
-                        viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone)
+                        viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone, country.iso)
                     },
                 )
                 BasicTextField(

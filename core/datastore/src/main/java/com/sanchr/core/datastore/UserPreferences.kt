@@ -35,6 +35,16 @@ class UserPreferences
             val NOTIFICATION_VIBRATE = booleanPreferencesKey("notification_vibrate")
             val NOTIFICATION_PREVIEW = stringPreferencesKey("notification_preview") // "always", "contacts", "never"
             val NOTIFICATION_LOCKSCREEN_PREVIEW = booleanPreferencesKey("notification_lockscreen_preview")
+
+            /**
+             * The three per-kind notification switches and the sound/vibrate
+             * pair. They were pushed to the server and stored nowhere, so the
+             * screen could not read back what the user had chosen: every
+             * switch sprang straight back to on.
+             */
+            val NOTIFY_MESSAGES = booleanPreferencesKey("notify_messages")
+            val NOTIFY_GROUPS = booleanPreferencesKey("notify_groups")
+            val NOTIFY_CALLS = booleanPreferencesKey("notify_calls")
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
             val CHAT_WALLPAPER = stringPreferencesKey("chat_wallpaper")
@@ -143,6 +153,36 @@ class UserPreferences
         }
 
         val notificationPreview: Flow<String> = dataStore.data.map { it[Keys.NOTIFICATION_PREVIEW] ?: "always" }
+
+        val messageNotificationsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFY_MESSAGES] ?: true }
+
+        val groupNotificationsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFY_GROUPS] ?: true }
+
+        val callNotificationsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFY_CALLS] ?: true }
+
+        val notificationSoundEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFICATION_SOUND] ?: true }
+
+        val notificationVibrateEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFICATION_VIBRATE] ?: true }
+
+        suspend fun setMessageNotificationsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFY_MESSAGES] = enabled }
+        }
+
+        suspend fun setGroupNotificationsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFY_GROUPS] = enabled }
+        }
+
+        suspend fun setCallNotificationsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFY_CALLS] = enabled }
+        }
+
+        suspend fun setNotificationSoundEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFICATION_SOUND] = enabled }
+        }
+
+        suspend fun setNotificationVibrateEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFICATION_VIBRATE] = enabled }
+        }
 
         suspend fun setNotificationPreview(preview: String) {
             dataStore.edit { it[Keys.NOTIFICATION_PREVIEW] = preview }

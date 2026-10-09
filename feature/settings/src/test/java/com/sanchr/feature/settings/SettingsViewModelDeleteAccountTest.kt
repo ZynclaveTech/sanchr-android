@@ -67,6 +67,7 @@ class SettingsViewModelDeleteAccountTest {
             // The display name falls back to the session when the server sends
             // none; these tests do not exercise the profile card.
             sessionManager = mockk(relaxed = true),
+            mediaCacheCleaner = mockk(relaxed = true),
         )
 
     @Test

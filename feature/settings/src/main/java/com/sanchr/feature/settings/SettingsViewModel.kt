@@ -10,6 +10,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.domain.messaging.DeleteAccountUseCase
+import com.sanchr.domain.messaging.media.MediaCacheCleaner
 import com.sanchr.proto.notifications.NotificationServiceClient
 import com.sanchr.proto.notifications.UpdateNotificationPrefsRequest
 import com.sanchr.proto.settings.GetSettingsRequest
@@ -97,6 +98,7 @@ class SettingsViewModel
         private val deleteAccountUseCase: DeleteAccountUseCase,
         private val profileUpdater: EncryptedProfileUpdater,
         private val sessionManager: SessionManager,
+        private val mediaCacheCleaner: MediaCacheCleaner,
     ) : ViewModel() {
         companion object {
             private const val TAG = "SettingsViewModel"
@@ -149,6 +151,22 @@ class SettingsViewModel
                 bio = sessionManager.getProfileBio().orEmpty(),
             )
 
+        /**
+         * What the cache actually holds, measured on this device.
+         *
+         * The screen used to show `getStorageUsage().cacheBytes` — a server
+         * figure for a directory only the phone can see, so it reported the
+         * wrong number for the thing the adjacent button deletes.
+         */
+        private val _localCacheBytes = MutableStateFlow(0L)
+        val localCacheBytes: StateFlow<Long> = _localCacheBytes.asStateFlow()
+
+        private fun refreshCacheSize() {
+            viewModelScope.launch {
+                _localCacheBytes.value = runCatching { mediaCacheCleaner.cachedBytes() }.getOrDefault(0L)
+            }
+        }
+
         private val _pendingSync = MutableStateFlow(0L)
 
         private val _events = MutableSharedFlow<SettingsEvent>()
@@ -157,14 +175,38 @@ class SettingsViewModel
         val uiState: StateFlow<SettingsUiState> =
             combine(
                 combine(
-                    userPreferences.themeMode,
-                    userPreferences.dynamicColorEnabled,
-                    userPreferences.notificationsEnabled,
-                    userPreferences.readReceiptsEnabled,
-                    userPreferences.biometricEnabled,
-                ) { theme, dynamic, notifications, readReceipts, biometric ->
-                    PrefsGroup(theme, dynamic, notifications, readReceipts, biometric)
-                },
+                    combine(
+                        userPreferences.themeMode,
+                        userPreferences.dynamicColorEnabled,
+                        userPreferences.notificationsEnabled,
+                        userPreferences.readReceiptsEnabled,
+                        userPreferences.biometricEnabled,
+                    ) { theme, dynamic, notifications, readReceipts, biometric ->
+                        PrefsGroup(theme, dynamic, notifications, readReceipts, biometric)
+                    },
+                    // The notification switches, which used to reach the server
+                    // and nowhere else: the screen read its own data-class
+                    // defaults, so every switch sprang back to on when tapped.
+                    combine(
+                        userPreferences.notificationPreview,
+                        userPreferences.messageNotificationsEnabled,
+                        userPreferences.groupNotificationsEnabled,
+                        userPreferences.callNotificationsEnabled,
+                        combine(
+                            userPreferences.notificationSoundEnabled,
+                            userPreferences.notificationVibrateEnabled,
+                        ) { sound, vibrate -> sound to vibrate },
+                    ) { preview, messages, groups, calls, soundAndVibrate ->
+                        NotificationsGroup(
+                            preview = preview,
+                            messages = messages,
+                            groups = groups,
+                            calls = calls,
+                            sound = soundAndVibrate.first,
+                            vibrate = soundAndVibrate.second,
+                        )
+                    },
+                ) { prefs, notifications -> prefs to notifications },
                 _remoteSettings,
                 _storageUsage,
                 _isLoadingSettings,
@@ -183,10 +225,19 @@ class SettingsViewModel
                     },
                     _profilePhotoVisibility,
                     _localProfile,
-                ) { basic, backup, photoVisibility, profile ->
+                    // These three were read as `.value` inside the combine,
+                    // which is not a source: the screen did not update when any
+                    // of them changed, only when something else happened to.
+                    combine(
+                        _mediaAutoSave,
+                        _bubbleStyle,
+                        userPreferences.mediaAutoDownload,
+                    ) { autoSave, bubble, autoDownload -> ChatPrefsGroup(autoSave, bubble, autoDownload) },
+                ) { basic, backup, photoVisibility, profile, chat ->
                     ExtrasGroup(
                         profilePhotoVisibility = photoVisibility,
                         profile = profile,
+                        chat = chat,
                         screenLockEnabled = basic.screenLockEnabled,
                         screenshotProtection = basic.screenshotProtection,
                         enterSendsMessage = basic.enterSendsMessage,
@@ -196,7 +247,9 @@ class SettingsViewModel
                         backupBusy = backup.isBusy,
                     )
                 },
-            ) { prefs, remote, storage, loading, extras ->
+            ) { prefsAndNotifications, remote, storage, loading, extras ->
+                val prefs = prefsAndNotifications.first
+                val notifications = prefsAndNotifications.second
                 SettingsUiState(
                     // The session, not the server. GetSettings reads the
                     // user_settings row, which has no profile columns at all —
@@ -212,6 +265,12 @@ class SettingsViewModel
                     dynamicColorEnabled = prefs.dynamicColorEnabled,
                     fontSize = remote?.fontSize ?: "medium",
                     notificationsEnabled = prefs.notificationsEnabled,
+                    notificationPreview = notifications.preview,
+                    messageNotificationsEnabled = notifications.messages,
+                    groupNotificationsEnabled = notifications.groups,
+                    callNotificationsEnabled = notifications.calls,
+                    notificationSoundEnabled = notifications.sound,
+                    notificationVibrationEnabled = notifications.vibrate,
                     readReceiptsEnabled = prefs.readReceiptsEnabled,
                     typingIndicatorsEnabled = remote?.typingIndicatorsEnabled ?: true,
                     onlineStatusVisible = remote?.onlineStatusVisible ?: true,
@@ -221,12 +280,15 @@ class SettingsViewModel
                     screenshotProtection = extras.screenshotProtection,
                     sanchrModeEnabled = remote?.sanchrModeEnabled ?: false,
                     registrationLockEnabled = remote?.registrationLockEnabled ?: false,
-                    mediaAutoDownload = remote?.autoDownloadMedia?.let { if (it) "always" else "wifi" } ?: "wifi",
+                    // Read from the stored value, not from the wire boolean:
+                    // collapsing three options into a bool meant "Never" could
+                    // be chosen and never shown as chosen.
+                    mediaAutoDownload = extras.chat.mediaAutoDownload,
                     lowDataMode = extras.lowDataMode,
                     storageUsage = storage,
                     enterSendsMessage = extras.enterSendsMessage,
-                    mediaAutoSave = _mediaAutoSave.value,
-                    bubbleStyle = _bubbleStyle.value,
+                    mediaAutoSave = extras.chat.mediaAutoSave,
+                    bubbleStyle = extras.chat.bubbleStyle,
                     backupEnabled = extras.backupConfiguration?.isEnabled ?: false,
                     lastBackupAtMillis = extras.backupConfiguration?.lastBackupAtMillis,
                     isBackupBusy = extras.backupBusy,
@@ -251,6 +313,7 @@ class SettingsViewModel
             }
             loadSettingsFromBackend()
             loadStorageUsage()
+            refreshCacheSize()
             observeDebouncedSync()
             restoreDisappearingDefault()
             restoreAppLock()
@@ -388,18 +451,21 @@ class SettingsViewModel
 
         fun setMessageNotificationsEnabled(enabled: Boolean) {
             viewModelScope.launch {
+                userPreferences.setMessageNotificationsEnabled(enabled)
                 syncNotificationPrefsToBackend(messagesEnabled = enabled)
             }
         }
 
         fun setCallNotificationsEnabled(enabled: Boolean) {
             viewModelScope.launch {
+                userPreferences.setCallNotificationsEnabled(enabled)
                 syncNotificationPrefsToBackend(callsEnabled = enabled)
             }
         }
 
         fun setGroupNotificationsEnabled(enabled: Boolean) {
             viewModelScope.launch {
+                userPreferences.setGroupNotificationsEnabled(enabled)
                 syncNotificationPrefsToBackend(groupEnabled = enabled)
             }
         }
@@ -414,12 +480,14 @@ class SettingsViewModel
 
         fun setNotificationSoundEnabled(enabled: Boolean) {
             viewModelScope.launch {
+                userPreferences.setNotificationSoundEnabled(enabled)
                 syncNotificationPrefsToBackend(soundEnabled = enabled)
             }
         }
 
         fun setNotificationVibrationEnabled(enabled: Boolean) {
             viewModelScope.launch {
+                userPreferences.setNotificationVibrateEnabled(enabled)
                 syncNotificationPrefsToBackend(vibrationEnabled = enabled)
             }
         }
@@ -455,9 +523,14 @@ class SettingsViewModel
             currentPin: String = "",
         ): String? =
             try {
+                // On the disable branch the server verifies `pin` and ignores
+                // `current_pin`. A caller that puts the user's PIN in
+                // `currentPin` — which the screen did — had it compared against
+                // an empty string, so the lock could never be turned off.
+                val verifiedPin = if (!enabled && pin.isEmpty()) currentPin else pin
                 val response =
                     settingsServiceClient.setRegistrationLock(
-                        SetRegistrationLockRequest(enabled = enabled, pin = pin, currentPin = currentPin),
+                        SetRegistrationLockRequest(enabled = enabled, pin = verifiedPin, currentPin = currentPin),
                     )
                 if (!response.success) {
                     "The PIN was not accepted"
@@ -585,9 +658,25 @@ class SettingsViewModel
             viewModelScope.launch { userPreferences.setLowDataMode(enabled) }
         }
 
+        /**
+         * Empties the app's cache. This used to emit the success event and
+         * delete nothing, so the button reported freeing space it had not
+         * freed and the same figure came back on the next refresh.
+         */
         fun clearCache() {
             viewModelScope.launch {
-                _events.emit(SettingsEvent.CacheCleared)
+                val freed =
+                    try {
+                        mediaCacheCleaner.clear()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to clear the cache", e)
+                        _events.emit(SettingsEvent.Error("Couldn't clear the cache"))
+                        return@launch
+                    }
+                _events.emit(SettingsEvent.CacheCleared(freedBytes = freed))
+                refreshCacheSize()
                 loadStorageUsage()
             }
         }
@@ -827,7 +916,10 @@ sealed interface AccountDeletionState {
 sealed interface SettingsEvent {
     data object ProfileUpdated : SettingsEvent
 
-    data object CacheCleared : SettingsEvent
+    /** @param freedBytes what the delete actually recovered, so the message can say so. */
+    data class CacheCleared(
+        val freedBytes: Long,
+    ) : SettingsEvent
 
     data object BackupCompleted : SettingsEvent
 
@@ -875,9 +967,26 @@ private data class PrefsGroup(
     val biometricEnabled: Boolean,
 )
 
+private data class NotificationsGroup(
+    val preview: String,
+    val messages: Boolean,
+    val groups: Boolean,
+    val calls: Boolean,
+    val sound: Boolean,
+    val vibrate: Boolean,
+)
+
+/** Chat-surface preferences stored on the device. */
+private data class ChatPrefsGroup(
+    val mediaAutoSave: Boolean,
+    val bubbleStyle: String,
+    val mediaAutoDownload: String,
+)
+
 private data class ExtrasGroup(
     val profilePhotoVisibility: String,
     val profile: LocalProfile,
+    val chat: ChatPrefsGroup,
     val screenLockEnabled: Boolean,
     val screenshotProtection: Boolean,
     val enterSendsMessage: Boolean,

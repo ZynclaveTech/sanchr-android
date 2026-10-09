@@ -1,5 +1,6 @@
 package com.sanchr.feature.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,9 +19,11 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,6 +45,22 @@ fun StorageScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cacheBytes by viewModel.localCacheBytes.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // Nothing on this screen collected the view model's events, so a cleared
+    // cache — and a failure to clear one — were both silent.
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is SettingsEvent.CacheCleared ->
+                    Toast
+                        .makeText(context, "Cache cleared (${formatBytes(event.freedBytes)} freed)", Toast.LENGTH_SHORT)
+                        .show()
+                is SettingsEvent.Error -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                else -> Unit
+            }
+        }
+    }
 
     Scaffold(
         // The NavHost's Scaffold has already inset this for the system
@@ -187,9 +206,8 @@ fun StorageScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
-            val cacheSize = storage?.cacheBytes?.let { formatBytes(it) } ?: "Calculating..."
             Text(
-                text = "Cache size: $cacheSize",
+                text = "Cache size: " + formatBytes(cacheBytes),
                 style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
