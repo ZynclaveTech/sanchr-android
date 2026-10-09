@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -129,7 +130,7 @@ fun SettingsScreen(
                                             .take(1)
                                             .uppercase()
                                             .ifEmpty { "?" },
-                                    style = MaterialTheme.typography.titleLarge,
+                                    style = IosType.sectionHeader,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
                             }
@@ -141,13 +142,13 @@ fun SettingsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = uiState.displayName.ifEmpty { "Set up your profile" },
-                            style = MaterialTheme.typography.titleMedium,
+                            style = IosType.cardTitle,
                             fontWeight = FontWeight.Bold,
                         )
                         if (uiState.bio.isNotEmpty()) {
                             Text(
                                 text = uiState.bio,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                             )
@@ -155,7 +156,7 @@ fun SettingsScreen(
                         if (uiState.phoneNumber.isNotEmpty()) {
                             Text(
                                 text = uiState.phoneNumber,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -274,7 +275,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(SanchrTheme.spacing.default))
                 Text(
                     text = "Delete Account",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -283,7 +284,7 @@ fun SettingsScreen(
 
             Text(
                 text = "Sanchr v1.0.0",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
@@ -402,7 +403,7 @@ private fun SettingsGroupLabel(
 ) {
     Text(
         text = text.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
+        style = IosType.sectionLabel,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
         modifier =
@@ -444,12 +445,13 @@ internal fun SettingsItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                // iOS rows: bodyBold for the title, captionSmall beneath.
+                style = IosType.bodyBold,
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

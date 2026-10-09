@@ -56,6 +56,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -149,7 +151,7 @@ fun ContactsScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = "Something went wrong",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = IosType.cardTitle,
                                 color = MaterialTheme.colorScheme.error,
                             )
                             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
@@ -200,13 +202,13 @@ private fun EmptyContactsState() {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
             Text(
                 text = "No contacts found",
-                style = MaterialTheme.typography.titleMedium,
+                style = IosType.cardTitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Sync your contacts to find friends on Sanchr",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -285,7 +287,7 @@ private fun ContactsList(
                                 )
                                 Text(
                                     text = label,
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = IosType.captionSmall,
                                     color = MaterialTheme.colorScheme.onPrimary,
                                 )
                             }
@@ -323,7 +325,7 @@ private fun SectionHeader(letter: Char) {
     ) {
         Text(
             text = letter.toString(),
-            style = MaterialTheme.typography.titleSmall,
+            style = IosType.sectionLabel,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -359,14 +361,14 @@ private fun ContactRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Avatar with online indicator
-        Box(modifier = Modifier.size(48.dp)) {
+        Box(modifier = Modifier.size(IosSpacing.chatAvatarSize)) {
             if (contact.avatarUrl.isNotEmpty()) {
                 AsyncImage(
                     model = contact.avatarUrl,
                     contentDescription = "${contact.displayName} avatar",
                     modifier =
                         Modifier
-                            .size(48.dp)
+                            .size(IosSpacing.chatAvatarSize)
                             .clip(CircleShape),
                     contentScale = ContentScale.Crop,
                 )
@@ -374,7 +376,7 @@ private fun ContactRow(
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(IosSpacing.chatAvatarSize),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
