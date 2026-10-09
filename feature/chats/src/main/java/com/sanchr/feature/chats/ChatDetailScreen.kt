@@ -135,6 +135,7 @@ import com.sanchr.core.designsystem.theme.ChatWallpapers
 import com.sanchr.core.designsystem.theme.IosRadius
 import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
+import com.sanchr.core.designsystem.theme.LocalBubbleStyle
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
@@ -927,22 +928,30 @@ private fun MessageBubble(
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
     var pickerOpen by remember(message.id) { mutableStateOf(false) }
 
-    // iOS bubbleMainRadius / bubbleTailRadius. Android drew 16 where iOS
-    // draws 20, which is enough to read as a different shape language.
+    // The chosen shape, which Android stored and then ignored: the picker in
+    // Chat Settings lit up and the chat never changed. iOS's vocabulary —
+    // classic is a pill, compact is tighter, modern is the default 20.
+    val bubbleStyle by LocalBubbleStyle.current
+    val mainRadius =
+        when (bubbleStyle) {
+            "classic" -> IosRadius.full
+            "compact" -> IosRadius.bubbleCompact
+            else -> IosRadius.bubbleMain
+        }
     val bubbleShape =
         if (message.isFromMe) {
             RoundedCornerShape(
-                topStart = IosRadius.bubbleMain,
-                topEnd = IosRadius.bubbleMain,
-                bottomStart = IosRadius.bubbleMain,
+                topStart = mainRadius,
+                topEnd = mainRadius,
+                bottomStart = mainRadius,
                 bottomEnd = IosRadius.bubbleTail,
             )
         } else {
             RoundedCornerShape(
                 topStart = IosRadius.bubbleTail,
-                topEnd = IosRadius.bubbleMain,
-                bottomStart = IosRadius.bubbleMain,
-                bottomEnd = IosRadius.bubbleMain,
+                topEnd = mainRadius,
+                bottomStart = mainRadius,
+                bottomEnd = mainRadius,
             )
         }
 

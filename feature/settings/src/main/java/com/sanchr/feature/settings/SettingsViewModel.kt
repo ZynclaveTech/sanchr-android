@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -106,7 +107,7 @@ class SettingsViewModel
 
         private val _enterSendsMessage = MutableStateFlow(false)
         private val _mediaAutoSave = MutableStateFlow(true)
-        private val _bubbleStyle = MutableStateFlow("default")
+        private val _bubbleStyle = MutableStateFlow("modern")
         private val _backupConfiguration = MutableStateFlow(recoveryKeyManager.loadConfiguration())
         private val _backupBusy = MutableStateFlow(false)
         private val _pendingRecoveryKey = MutableStateFlow<String?>(null)
@@ -219,6 +220,12 @@ class SettingsViewModel
             )
 
         init {
+            viewModelScope.launch {
+                // firstOrNull, not first: a store that emits nothing — a
+                // fresh install mid-migration, or a stubbed one — should leave
+                // the default standing rather than throw out of init.
+                _bubbleStyle.value = userPreferences.chatBubbleStyle.firstOrNull() ?: "modern"
+            }
             loadSettingsFromBackend()
             loadStorageUsage()
             observeDebouncedSync()
@@ -560,8 +567,16 @@ class SettingsViewModel
 
         // --- Chat Settings ---
 
+        /**
+         * Persists the bubble shape.
+         *
+         * This only moved an in-memory flow before, so the choice was gone
+         * the moment the view model was — the picker lit up, the chat never
+         * changed, and a relaunch forgot even the lit state.
+         */
         fun setBubbleStyle(style: String) {
             _bubbleStyle.value = style
+            viewModelScope.launch { userPreferences.setChatBubbleStyle(style) }
         }
 
         fun setEnterSendsMessage(enabled: Boolean) {

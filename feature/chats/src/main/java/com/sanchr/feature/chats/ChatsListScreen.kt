@@ -231,6 +231,14 @@ fun ChatsListScreen(
                         ).padding(top = 2.dp),
             )
 
+            // iOS shows this under the chips while a sync runs. Android
+            // carried isSyncing all the way into the UI state and then never
+            // drew it, so a sync that took a while looked like an app that had
+            // stopped.
+            if ((uiState as? ChatsListUiState.Success)?.isSyncing == true) {
+                SyncingIndicator()
+            }
+
             if (uiState !is ChatsListUiState.Loading) {
                 ChatFilterChips(
                     selected = selectedFilter,
@@ -769,6 +777,31 @@ private fun CaptureDestinationPicker(
                 }
             }
         }
+    }
+}
+
+/** "Syncing…", as iOS shows it while the conversation list is catching up. */
+@Composable
+private fun SyncingIndicator() {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            color = SanchrIndigo500,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(modifier = Modifier.width(IosSpacing.xs))
+        Text(
+            text = "Syncing...",
+            style = IosType.captionSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

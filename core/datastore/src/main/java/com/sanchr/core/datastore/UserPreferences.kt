@@ -38,6 +38,14 @@ class UserPreferences
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
             val CHAT_WALLPAPER = stringPreferencesKey("chat_wallpaper")
+
+            /**
+             * Bubble shape. "modern", "classic" or "compact" — iOS's
+             * vocabulary, read from `sanchr.chatBubbleStyle` there. Android
+             * offered "default"/"rounded"/"flat", which iOS cannot interpret,
+             * so the same account rendered differently on each phone.
+             */
+            val CHAT_BUBBLE_STYLE = stringPreferencesKey("chat_bubble_style")
             val CRASH_REPORTING_ENABLED = booleanPreferencesKey("crash_reporting_enabled")
             val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
@@ -57,6 +65,13 @@ class UserPreferences
 
         // --- Theme ---
         val themeMode: Flow<String> = dataStore.data.map { it[Keys.THEME_MODE] ?: "system" }
+
+        /** The chosen bubble shape; "modern" is iOS's default too. */
+        val chatBubbleStyle: Flow<String> = dataStore.data.map { it[Keys.CHAT_BUBBLE_STYLE] ?: "modern" }
+
+        suspend fun setChatBubbleStyle(style: String) {
+            dataStore.edit { it[Keys.CHAT_BUBBLE_STYLE] = style }
+        }
 
         suspend fun setThemeMode(mode: String) {
             dataStore.edit { it[Keys.THEME_MODE] = mode }

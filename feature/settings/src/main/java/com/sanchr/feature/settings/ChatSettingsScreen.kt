@@ -102,10 +102,12 @@ fun ChatSettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
             ) {
                 val styles =
+                    // iOS's vocabulary, read from the same stored value:
+                    // anything else renders as "modern" over there.
                     listOf(
-                        "default" to "Default",
-                        "rounded" to "Rounded",
-                        "flat" to "Flat",
+                        "modern" to "Modern",
+                        "classic" to "Classic",
+                        "compact" to "Compact",
                     )
                 styles.forEach { (value, label) ->
                     val isSelected = uiState.bubbleStyle == value
