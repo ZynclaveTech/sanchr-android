@@ -20,6 +20,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -57,11 +59,11 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GppMaybe
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -70,8 +72,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -291,63 +293,6 @@ fun ChatDetailScreen(
         },
         bottomBar = {
             Column {
-                // --- Bottom action bar: Voice + Vault ---
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = IosSpacing.screenHorizontal, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Surface(
-                        shape = SanchrShapeTokens.CornerFull,
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.GraphicEq,
-                                contentDescription = "Voice",
-                                modifier = Modifier.size(16.dp),
-                                tint = SanchrGray400,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Voice",
-                                style = IosType.captionSmall,
-                                color = SanchrGray400,
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = SanchrShapeTokens.CornerFull,
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Shield,
-                                contentDescription = "Vault",
-                                modifier = Modifier.size(16.dp),
-                                tint = SanchrGray400,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Vault",
-                                style = IosType.captionSmall,
-                                color = SanchrGray400,
-                            )
-                        }
-                    }
-                }
-
                 // --- Message input bar ---
                 MessageDialogs(
                     viewModel = viewModel,
@@ -466,27 +411,6 @@ fun ChatDetailScreen(
                 }
             }
 
-            // --- "Today" date chip ---
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = SanchrTheme.spacing.sm),
-                contentAlignment = Alignment.Center,
-            ) {
-                Surface(
-                    shape = SanchrShapeTokens.CornerFull,
-                    color = SanchrGray100,
-                ) {
-                    Text(
-                        text = "Today",
-                        style = IosType.captionSmall,
-                        color = SanchrGray400,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                }
-            }
-
             // --- Typing indicator ---
             if (uiState.peerTyping) {
                 Text(
@@ -508,44 +432,86 @@ fun ChatDetailScreen(
                 onAccept = viewModel::acceptIdentityChange,
             )
 
-            val wallpaper = ChatWallpapers.colorOf(uiState.wallpaper, isSystemInDarkTheme())
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        // Null means the chat keeps the ordinary theme
-                        // background, so an unknown stored name degrades to
-                        // plain rather than to some arbitrary colour.
-                        .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
-                        .padding(horizontal = IosSpacing.screenHorizontal),
-                state = listState,
-                reverseLayout = true,
-                verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
-            ) {
-                items(
-                    items = uiState.messages.reversed(),
-                    key = { it.id },
-                ) { message ->
+            TranscriptList(
+                uiState = uiState,
+                viewModel = viewModel,
+                actions = actions,
+                listState = listState,
+                focusedResultId = focusedResultId,
+                onOpenViewOnce = { viewOnceOpen = it },
+                onOpenMedia = { tapped -> gallery = GallerySelection.from(uiState.messages, tapped.id) },
+                onPreviewDocument = { file, attachment -> documentPreview = file to attachment },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/**
+ * The transcript itself: day separators and message rows, newest at the
+ * bottom.
+ *
+ * Extracted from the screen so the screen stays inside detekt's complexity
+ * limit, and so the list's own state — which row is highlighted by a search
+ * hit, which wallpaper is behind it — reads in one place.
+ */
+@Composable
+private fun TranscriptList(
+    uiState: ChatDetailUiState,
+    viewModel: ChatDetailViewModel,
+    actions: MessageActions,
+    listState: LazyListState,
+    focusedResultId: String?,
+    onOpenViewOnce: (MessageUiModel) -> Unit,
+    onOpenMedia: (MessageUiModel) -> Unit,
+    onPreviewDocument: (File, MediaAttachment) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val wallpaper = ChatWallpapers.colorOf(uiState.wallpaper, isSystemInDarkTheme())
+    // Remembered, not recomputed: the list used to call `messages.reversed()`
+    // inside `items`, allocating a copy of the whole transcript on every
+    // recomposition of the busiest screen in the app. Day separators come from
+    // the same pass.
+    val rows = remember(uiState.messages) { transcriptRows(uiState.messages) }
+    LazyColumn(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                // Null means the chat keeps the ordinary theme background, so
+                // an unknown stored name degrades to plain rather than to some
+                // arbitrary colour.
+                .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
+                .padding(horizontal = IosSpacing.screenHorizontal),
+        state = listState,
+        reverseLayout = true,
+        verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
+    ) {
+        items(
+            items = rows,
+            key = { it.key },
+            contentType = { it is TranscriptRow.Day },
+        ) { row ->
+            when (row) {
+                is TranscriptRow.Day -> DaySeparator(row.label)
+                is TranscriptRow.Msg ->
                     Box(
                         modifier =
-                            if (message.id == focusedResultId) {
+                            if (row.message.id == focusedResultId) {
                                 Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
                             } else {
                                 Modifier
                             },
                     ) {
                         MessageRow(
-                            message = message,
+                            message = row.message,
                             viewModel = viewModel,
                             actions = actions,
-                            onOpenViewOnce = { viewOnceOpen = it },
-                            onOpenMedia = { tapped -> gallery = GallerySelection.from(uiState.messages, tapped.id) },
-                            onPreviewDocument = { file, attachment -> documentPreview = file to attachment },
+                            onOpenViewOnce = onOpenViewOnce,
+                            onOpenMedia = onOpenMedia,
+                            onPreviewDocument = onPreviewDocument,
                             loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
                         )
                     }
-                }
             }
         }
     }
@@ -756,6 +722,27 @@ private fun ComposerSheets(
     }
 }
 
+/** The date chip above a day's first message. */
+@Composable
+private fun DaySeparator(label: String) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = SanchrTheme.spacing.sm),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(shape = SanchrShapeTokens.CornerFull, color = SanchrGray100) {
+            Text(
+                text = label,
+                style = IosType.captionSmall,
+                color = SanchrGray400,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
 /** Picks the bubble for one transcript row. */
 @Composable
 private fun MessageRow(
@@ -771,31 +758,48 @@ private fun MessageRow(
     when {
         message.contentType == "system" -> SystemNote(message.text)
 
-        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
+        // Every bubble below is wrapped in [MessageActionHost]. Only the plain
+        // text bubble used to carry the long-press menu, so a photo, video,
+        // voice note, pin, contact card or view-once message could not be
+        // replied to, forwarded, deleted or reacted to at all — the actions
+        // existed and most of the transcript could not reach them.
+        message.isViewOnce ->
+            MessageActionHost(message, viewModel, actions) {
+                ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
+            }
 
         message.contentType == "image" ->
-            ImageMessageBubble(
-                message = message,
-                openAttachment = viewModel::openAttachment,
-                onOpen = { onOpenMedia(message) },
-                // Cached media always shows: the policy only holds back a
-                // fetch that would actually spend data.
-                autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
-            )
+            MessageActionHost(message, viewModel, actions) {
+                ImageMessageBubble(
+                    message = message,
+                    openAttachment = viewModel::openAttachment,
+                    onOpen = { onOpenMedia(message) },
+                    // Cached media always shows: the policy only holds back a
+                    // fetch that would actually spend data.
+                    autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
+                )
+            }
 
         message.contentType == "voice" && message.attachment != null ->
-            VoiceMessageBubble(
-                message = message,
-                openAttachment = viewModel::openAttachment,
-            )
+            MessageActionHost(message, viewModel, actions) {
+                VoiceMessageBubble(
+                    message = message,
+                    openAttachment = viewModel::openAttachment,
+                )
+            }
 
         message.contentType == "location" && LocationPayload.decode(message.text) != null ->
-            LocationMessageBubble(
-                message = message,
-                pin = requireNotNull(LocationPayload.decode(message.text)),
-            )
+            MessageActionHost(message, viewModel, actions) {
+                LocationMessageBubble(
+                    message = message,
+                    pin = requireNotNull(LocationPayload.decode(message.text)),
+                )
+            }
 
-        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
+        message.contact != null ->
+            MessageActionHost(message, viewModel, actions) {
+                ContactMessageBubble(message = message, card = message.contact)
+            }
 
         message.attachment != null ->
             MessageBubble(
@@ -824,6 +828,53 @@ private fun MessageRow(
                 actions = actions,
                 loadLinkPreview = loadLinkPreview,
             )
+    }
+}
+
+/**
+ * Wraps a bubble that draws itself — media, voice, a pin, a contact card — in
+ * the long-press menu and reaction chips the plain text bubble has always had.
+ *
+ * The menu is anchored to the bubble, so it opens where the finger is, and the
+ * chips sit under it exactly as they do under text. A tap still reaches the
+ * bubble's own handler: the host adds a long press, it does not consume
+ * anything.
+ */
+@Composable
+private fun MessageActionHost(
+    message: MessageUiModel,
+    viewModel: ChatDetailViewModel,
+    actions: MessageActions,
+    content: @Composable () -> Unit,
+) {
+    var pickerOpen by remember(message.id) { mutableStateOf(false) }
+    Column(
+        horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier =
+                Modifier.combinedClickable(
+                    // No ripple and no click action of its own: the bubble
+                    // inside owns the tap.
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                    onLongClick = { pickerOpen = true },
+                ),
+        ) {
+            content()
+            ReactionPicker(
+                open = pickerOpen,
+                onDismiss = { pickerOpen = false },
+                message = message,
+                actions = actions,
+            ) { emoji ->
+                pickerOpen = false
+                viewModel.toggleReaction(message.id, emoji)
+            }
+        }
+        ReactionChips(message.reactions) { emoji -> viewModel.toggleReaction(message.id, emoji) }
     }
 }
 
@@ -1264,26 +1315,39 @@ private fun MessageStatusIcon(message: MessageUiModel) {
                 tint = tint,
             )
         }
-        else -> {
+        // The ladder iOS draws: clock while it is still here, one tick once
+        // the server has it, two once the device has it, two in accent once it
+        // has been read. Every state but FAILED used to draw two ticks and
+        // differ only in tint, so a message that had not left the phone looked
+        // delivered on a bad connection.
+        MessageStatus.SENDING ->
+            Icon(
+                imageVector = Icons.Filled.Schedule,
+                contentDescription = "Sending",
+                modifier = Modifier.size(14.dp),
+                tint = SanchrGray400.copy(alpha = 0.5f),
+            )
+        MessageStatus.SENT ->
+            Icon(
+                imageVector = Icons.Filled.Done,
+                contentDescription = "Sent",
+                modifier = Modifier.size(14.dp),
+                tint = SanchrGray400,
+            )
+        MessageStatus.DELIVERED ->
             Icon(
                 imageVector = Icons.Filled.DoneAll,
-                contentDescription =
-                    when (message.status) {
-                        MessageStatus.READ -> "Read"
-                        MessageStatus.DELIVERED -> "Delivered"
-                        else -> "Sent"
-                    },
+                contentDescription = "Delivered",
                 modifier = Modifier.size(14.dp),
-                tint =
-                    when (message.status) {
-                        MessageStatus.READ -> SanchrIndigo500
-                        MessageStatus.DELIVERED -> SanchrGray400
-                        MessageStatus.SENT -> SanchrGray400
-                        MessageStatus.SENDING -> SanchrGray400.copy(alpha = 0.5f)
-                        MessageStatus.FAILED -> MaterialTheme.colorScheme.error
-                    },
+                tint = SanchrGray400,
             )
-        }
+        MessageStatus.READ ->
+            Icon(
+                imageVector = Icons.Filled.DoneAll,
+                contentDescription = "Read",
+                modifier = Modifier.size(14.dp),
+                tint = SanchrIndigo500,
+            )
     }
 }
 
