@@ -84,7 +84,7 @@ fun VoiceRecordButton(
             ) {
                 Icon(Icons.Filled.Close, contentDescription = "Discard recording", tint = MaterialTheme.colorScheme.error)
             }
-            Text(text = formatClock(elapsedMs), style = MaterialTheme.typography.labelMedium)
+            Text(text = formatClock(elapsedMs), style = IosType.sectionLabel)
             Spacer(modifier = Modifier.width(4.dp))
         }
         FilledIconButton(

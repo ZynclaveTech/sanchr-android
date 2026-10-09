@@ -186,7 +186,7 @@ fun LoginPhoneScreen(
                 Spacer(modifier = Modifier.height(40.dp))
                 Text(
                     text = "Welcome to Sanchr",
-                    style = MaterialTheme.typography.displayMedium,
+                    style = IosType.displayTitle,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
                 )
@@ -242,7 +242,7 @@ fun LoginPhoneScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     textStyle =
                         LocalTextStyle.current.merge(
-                            MaterialTheme.typography.bodyLarge.copy(
+                            IosType.bodyLarge.copy(
                                 color = MaterialTheme.colorScheme.onBackground,
                             ),
                         ),

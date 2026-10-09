@@ -201,7 +201,7 @@ private fun ToggleRow(
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(text = title, style = IosType.bodyLarge)
             Text(text = subtitle, style = IosType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)

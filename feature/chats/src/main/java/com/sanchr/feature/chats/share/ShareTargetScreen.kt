@@ -188,7 +188,7 @@ private fun ShareComposer(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.default),
     ) {
-        Text(text = content.summary(), style = MaterialTheme.typography.bodyMedium)
+        Text(text = content.summary(), style = IosType.body)
         Text(
             text = "Sending to ${uiState.selectedIds.size} chat${if (uiState.selectedIds.size == 1) "" else "s"}",
             style = IosType.caption,

@@ -195,7 +195,7 @@ fun ProfileScreen(
                                         .take(1)
                                         .uppercase()
                                         .ifEmpty { "?" },
-                                style = MaterialTheme.typography.displaySmall,
+                                style = IosType.screenTitle,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
@@ -557,7 +557,7 @@ private fun ProfileQrDialog(
                         textAlign = TextAlign.Center,
                     )
                 } else {
-                    Text(text = "This code isn't ready yet.", style = MaterialTheme.typography.bodySmall)
+                    Text(text = "This code isn't ready yet.", style = IosType.caption)
                 }
             }
         },

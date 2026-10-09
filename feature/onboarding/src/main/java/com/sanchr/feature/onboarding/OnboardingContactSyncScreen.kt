@@ -118,7 +118,7 @@ fun OnboardingContactSyncScreen(
                     Text(
                         text = "Skip",
                         style =
-                            MaterialTheme.typography.labelLarge.copy(
+                            IosType.button.copy(
                                 fontWeight = FontWeight.SemiBold,
                             ),
                         color = SanchrIndigo500,
@@ -171,7 +171,7 @@ fun OnboardingContactSyncScreen(
             // iOS parity: `ContactSyncView.swift:99` ("Find Your Friends").
             Text(
                 text = "Find Your Friends",
-                style = MaterialTheme.typography.displayMedium,
+                style = IosType.displayTitle,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(12.dp))

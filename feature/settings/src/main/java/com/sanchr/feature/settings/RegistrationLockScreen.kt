@@ -238,7 +238,7 @@ private fun IdleContent(
                 text = "• Choose a PIN you'll remember; losing it means a 7-day waiting period to regain access.",
                 style = IosType.captionSmall,
             )
-            Text(text = "• You can change or disable the lock at any time.", style = MaterialTheme.typography.bodySmall)
+            Text(text = "• You can change or disable the lock at any time.", style = IosType.caption)
         }
     }
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))

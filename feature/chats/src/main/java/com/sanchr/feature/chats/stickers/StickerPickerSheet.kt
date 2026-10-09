@@ -82,7 +82,7 @@ fun StickerPickerSheet(
                 items(pack.stickers) { sticker ->
                     Text(
                         text = sticker,
-                        style = MaterialTheme.typography.displaySmall,
+                        style = IosType.screenTitle,
                         modifier =
                             Modifier
                                 .clickable {

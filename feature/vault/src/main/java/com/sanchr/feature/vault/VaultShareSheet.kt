@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.VaultItem
@@ -52,7 +53,7 @@ fun VaultShareSheet(
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = SanchrTheme.spacing.default)) {
             Text(
                 text = item.name,
-                style = MaterialTheme.typography.titleMedium,
+                style = IosType.cardTitle,
                 modifier = Modifier.padding(horizontal = SanchrTheme.spacing.default),
             )
 
@@ -60,7 +61,7 @@ fun VaultShareSheet(
                 if (conversations.isEmpty()) {
                     Text(
                         text = "No conversations yet.",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(SanchrTheme.spacing.default),
                     )

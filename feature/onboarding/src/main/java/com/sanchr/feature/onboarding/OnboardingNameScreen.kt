@@ -161,7 +161,7 @@ private fun NameEntryBody(
 
         Text(
             text = "What's your name?",
-            style = MaterialTheme.typography.displayMedium,
+            style = IosType.displayTitle,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(8.dp))
@@ -204,7 +204,7 @@ private fun NameEntryBody(
                     onDone = { if (nameState.name.isNotBlank()) onSubmit() },
                 ),
             textStyle =
-                MaterialTheme.typography.bodyMedium.copy(
+                IosType.body.copy(
                     color = MaterialTheme.colorScheme.onBackground,
                 ),
             colors =

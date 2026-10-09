@@ -178,7 +178,7 @@ fun OnboardingWelcomeScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
         Spacer(Modifier.height(16.dp))
         Text(
             text = "Welcome, ${welcomeState.name}!",
-            style = MaterialTheme.typography.displaySmall,
+            style = IosType.screenTitle,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(4.dp))
@@ -256,7 +256,7 @@ private fun AvatarFallback(
                     .firstOrNull()
                     ?.uppercase()
                     ?: "",
-            style = MaterialTheme.typography.displayLarge.copy(color = Color.White),
+            style = IosType.heroTitle.copy(color = Color.White),
         )
     }
 }

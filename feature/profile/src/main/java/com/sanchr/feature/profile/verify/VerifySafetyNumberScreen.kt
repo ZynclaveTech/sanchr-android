@@ -189,7 +189,7 @@ private fun DigitGrid(groups: List<String>) {
                     row.forEach { group ->
                         Text(
                             text = group,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                            style = IosType.bodyLarge.copy(fontFamily = FontFamily.Monospace),
                         )
                     }
                 }
@@ -215,7 +215,7 @@ private fun VerificationStatus(verifiedAtMillis: Long?) {
             contentDescription = null,
             tint = if (verifiedAtMillis == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
         )
-        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        Text(text = label, style = IosType.body)
     }
 }
 
@@ -233,7 +233,7 @@ private fun UnavailableNotice(message: String) {
             horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
         ) {
             Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-            Text(text = message, style = MaterialTheme.typography.bodyMedium)
+            Text(text = message, style = IosType.body)
         }
     }
 }

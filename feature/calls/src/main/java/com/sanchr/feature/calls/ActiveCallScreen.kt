@@ -237,7 +237,7 @@ private fun CallerInfoSection(
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = initial,
-                        style = MaterialTheme.typography.displayLarge,
+                        style = IosType.heroTitle,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }

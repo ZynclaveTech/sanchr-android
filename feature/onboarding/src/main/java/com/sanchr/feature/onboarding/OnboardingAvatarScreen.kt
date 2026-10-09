@@ -142,7 +142,7 @@ fun OnboardingAvatarScreen(
         Spacer(Modifier.height(12.dp))
         Text(
             text = "Add a photo",
-            style = MaterialTheme.typography.displayMedium,
+            style = IosType.displayTitle,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(8.dp))

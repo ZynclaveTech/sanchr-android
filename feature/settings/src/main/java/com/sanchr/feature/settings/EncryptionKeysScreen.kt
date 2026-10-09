@@ -131,7 +131,7 @@ fun EncryptionKeysScreen(
                                 Text(
                                     text = block.uppercase(),
                                     style =
-                                        MaterialTheme.typography.bodyMedium.copy(
+                                        IosType.body.copy(
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Medium,
                                         ),
