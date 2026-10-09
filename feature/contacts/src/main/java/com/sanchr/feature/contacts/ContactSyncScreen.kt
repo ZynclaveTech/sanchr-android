@@ -168,23 +168,29 @@ fun ContactSyncScreen(
             PrivacyRationaleCard(
                 icon = Icons.Filled.Lock,
                 title = "Private",
-                description = "Your contacts never leave this device. Only blinded values the server cannot read are sent.",
+                description =
+                    "Your address book stays on this device. Names are never " +
+                        "uploaded, and contacts who are not on Sanchr are never revealed.",
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
             PrivacyRationaleCard(
                 icon = Icons.Filled.Tag,
-                title = "Hash Only",
-                // The copy used to describe SHA-256 hashing, which is not
-                // what the client does: `discoverRegistered` runs an OPRF
-                // private set intersection, where the server evaluates blinded
-                // points and learns neither the numbers nor which matched. A
-                // specific, checkable cryptographic claim has to name the
-                // protocol actually in use.
+                title = "Blinded Lookup",
+                // Two earlier versions of this copy overclaimed, so state
+                // exactly what the two calls do.
+                //
+                // `discoverRegistered` is an OPRF private set intersection:
+                // the server evaluates blinded points and learns none of the
+                // numbers. `resolveAndStore` then sends hashes of *only the
+                // numbers that matched* to `SyncContacts`, because that is how
+                // the accounts behind them are returned — so the server does
+                // learn which of its own users are in this address book. What
+                // it never learns is the rest of the book.
                 description =
-                    "Numbers are blinded before they are sent, so the server " +
-                        "learns neither your contacts nor which of them matched.",
+                    "Discovery is blinded, so the server never sees your " +
+                        "numbers. Accounts are then fetched for the ones that matched.",
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
