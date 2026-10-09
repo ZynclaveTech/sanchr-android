@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -238,10 +239,16 @@ fun OnboardingAvatarScreen(
                     .padding(bottom = 36.dp),
         ) {
             SanchrOnboardingProgress(currentStep = 2)
-            // TODO: error surface when AvatarEntry exposes errorMessage
-            // (server-side avatar upload lands in a later phase, see
-            // OnboardingViewModel.swift:86-97). Today there is no failure
-            // path for this step on Android.
+            // This step writes the profile, so it is the one step in
+            // onboarding that can fail for a reason the user can act on.
+            avatarState.errorMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = IosType.caption,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+            }
             SanchrGradientButton(
                 text = "Continue",
                 onClick = viewModel::submitAvatar,

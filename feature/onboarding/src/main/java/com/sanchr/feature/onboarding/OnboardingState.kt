@@ -39,6 +39,12 @@ sealed interface OnboardingState {
         val name: String,
         val avatarUri: String? = null,
         val isSubmitting: Boolean = false,
+        /**
+         * Why the profile could not be saved. The step writes the name and
+         * avatar to the server, so it is the one place in onboarding that can
+         * fail for a reason the user can act on.
+         */
+        val errorMessage: String? = null,
     ) : OnboardingState
 
     data class ContactSync(

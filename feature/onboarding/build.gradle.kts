@@ -38,8 +38,12 @@ android {
 }
 
 dependencies {
+    implementation(projects.core.common)
+    implementation(projects.core.crypto)
     implementation(projects.core.designsystem)
     implementation(projects.core.datastore)
+    implementation(projects.core.network)
+    implementation(projects.proto)
     implementation(projects.core.model)
     // The post-install restore offer asks the backup manager whether this
     // account has anything to restore.
