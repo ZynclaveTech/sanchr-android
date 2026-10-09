@@ -77,6 +77,7 @@ class ChatDetailViewModelPrivacySettingsTest {
         linkPreviewFetcher = mockk(relaxed = true),
         safetyNumbers = mockk(relaxed = true),
         connectivityMonitor = connectivityMonitor,
+        appContext = mockk(relaxed = true),
     )
 
     @Test

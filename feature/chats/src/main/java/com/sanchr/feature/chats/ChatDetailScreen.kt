@@ -44,6 +44,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -119,6 +121,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -136,6 +140,7 @@ import com.sanchr.core.designsystem.theme.IosRadius
 import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalBubbleStyle
+import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
@@ -395,9 +400,11 @@ fun ChatDetailScreen(
                     onStickerDismiss = { stickerPickerOpen = false },
                     onStickerSelect = viewModel::sendSticker,
                 )
+                val enterSendsMessage by LocalEnterSendsMessage.current
                 MessageInputBar(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
+                    enterSendsMessage = enterSendsMessage,
                     onEmojiClick = { emojiPickerOpen = true },
                     onAttachSticker = { stickerPickerOpen = true },
                     onSend = viewModel::sendMessage,
@@ -1355,6 +1362,7 @@ private fun ImageMessageBubble(
 private fun MessageInputBar(
     value: String,
     onValueChange: (String) -> Unit,
+    enterSendsMessage: Boolean,
     onSend: () -> Unit,
     onEmojiClick: () -> Unit,
     onAttachSticker: () -> Unit,
@@ -1397,6 +1405,19 @@ private fun MessageInputBar(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
+                // The Enter-sends setting, which nothing read before: the
+                // toggle in Chat Settings moved and the key kept inserting a
+                // newline. iOS switches the return key between Send and
+                // Return on the same preference.
+                keyboardOptions =
+                    KeyboardOptions(
+                        imeAction = if (enterSendsMessage) ImeAction.Send else ImeAction.Default,
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
+                keyboardActions =
+                    KeyboardActions(
+                        onSend = { if (value.isNotBlank() && !isSending) onSend() },
+                    ),
                 placeholder = {
                     Text(
                         text = "Type a message...",

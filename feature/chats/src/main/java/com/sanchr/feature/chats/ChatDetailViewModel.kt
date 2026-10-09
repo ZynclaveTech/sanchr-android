@@ -1,5 +1,6 @@
 package com.sanchr.feature.chats
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -29,11 +30,14 @@ import com.sanchr.domain.messaging.ToggleReactionUseCase
 import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.domain.messaging.media.GallerySaver
 import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
+import com.sanchr.domain.messaging.media.MediaAutoSavePolicy
 import com.sanchr.feature.chats.location.LocationPayload
 import com.sanchr.feature.chats.stickers.StickerRenderer
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -74,6 +78,7 @@ class ChatDetailViewModel
         private val linkPreviewFetcher: LinkPreviewFetcher,
         private val safetyNumbers: SafetyNumberManager,
         private val connectivityMonitor: ConnectivityMonitor,
+        @ApplicationContext private val appContext: Context,
     ) : ViewModel() {
         private companion object {
             const val TAG = "ChatDetailViewModel"
@@ -472,8 +477,14 @@ class ChatDetailViewModel
         /** The decrypted file for a message's attachment, downloading it if needed. */
         suspend fun openAttachment(message: MessageUiModel): File? {
             val attachment = message.attachment ?: return null
+            // Checked before the fetch: a file already on disk was either
+            // auto-saved when it first arrived or deliberately not, and
+            // re-reading a cached bubble must not copy it to the gallery again.
+            val wasCached = runCatching { attachmentDownloader.isCached(message.id, attachment) }.getOrDefault(false)
             return try {
-                attachmentDownloader.open(message.id, attachment)
+                attachmentDownloader.open(message.id, attachment).also { file ->
+                    if (!wasCached) autoSaveToGallery(message, attachment, file)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -481,6 +492,37 @@ class ChatDetailViewModel
                 _uiState.update { it.copy(error = e.message ?: "Could not open attachment") }
                 null
             }
+        }
+
+        /**
+         * Copies freshly downloaded incoming media into the system gallery when
+         * Media Auto-Save is on, as iOS does from `MediaBubbleImage`. Nothing
+         * read the Android switch before: it moved, synced to the server, and
+         * no photo was ever saved.
+         *
+         * Failures are deliberately silent — the gallery copy is a convenience,
+         * and the message itself has already been delivered.
+         */
+        private suspend fun autoSaveToGallery(
+            message: MessageUiModel,
+            attachment: MediaAttachment,
+            file: File,
+        ) {
+            val mimeType = attachment.mimeType
+            if (!MediaAutoSavePolicy.isSaveableType(mimeType)) return
+            val enabled = userPreferences.mediaAutoSave.first()
+            val galleryVisible = userPreferences.mediaVisibleInGallery(conversationId).first()
+            val allowed =
+                MediaAutoSavePolicy.shouldAutoSave(
+                    isViewOnce = message.isViewOnce,
+                    autoSaveEnabled = enabled,
+                    galleryVisible = galleryVisible,
+                    isOutgoing = message.isFromMe,
+                    mimeType = mimeType,
+                )
+            if (!allowed) return
+            val saved = withContext(Dispatchers.IO) { GallerySaver.save(appContext, file, mimeType) }
+            if (!saved) Log.w(TAG, "auto-save to gallery failed for ${message.id}")
         }
 
         fun loadMoreMessages() {

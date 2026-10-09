@@ -100,6 +100,7 @@ class ChatDetailViewModelMarkAsReadTest {
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
             connectivityMonitor = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
 
     private fun message(

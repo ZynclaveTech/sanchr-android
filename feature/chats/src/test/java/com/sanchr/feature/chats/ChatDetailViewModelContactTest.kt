@@ -86,6 +86,7 @@ class ChatDetailViewModelContactTest {
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
             connectivityMonitor = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
 
     @Test

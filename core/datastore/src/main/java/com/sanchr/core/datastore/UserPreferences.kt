@@ -46,6 +46,15 @@ class UserPreferences
              * so the same account rendered differently on each phone.
              */
             val CHAT_BUBBLE_STYLE = stringPreferencesKey("chat_bubble_style")
+
+            /** Enter sends rather than inserting a newline. True on iOS too. */
+            val ENTER_SENDS_MESSAGE = booleanPreferencesKey("enter_sends_message")
+
+            /** Save received media to the gallery automatically. */
+            val MEDIA_AUTO_SAVE = booleanPreferencesKey("media_auto_save")
+
+            /** Hold back anything that spends data until asked. */
+            val LOW_DATA_MODE = booleanPreferencesKey("low_data_mode")
             val CRASH_REPORTING_ENABLED = booleanPreferencesKey("crash_reporting_enabled")
             val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
@@ -65,6 +74,49 @@ class UserPreferences
 
         // --- Theme ---
         val themeMode: Flow<String> = dataStore.data.map { it[Keys.THEME_MODE] ?: "system" }
+
+        /**
+         * These three were in-memory flows that nothing persisted and nothing
+         * read: a toggle moved, the session honoured it in Settings alone, and
+         * a relaunch forgot it. iOS stores all three and acts on them, so the
+         * same switch did different things on each phone.
+         */
+        val enterSendsMessage: Flow<Boolean> = dataStore.data.map { it[Keys.ENTER_SENDS_MESSAGE] ?: true }
+
+        val mediaAutoSave: Flow<Boolean> = dataStore.data.map { it[Keys.MEDIA_AUTO_SAVE] ?: false }
+
+        val lowDataMode: Flow<Boolean> = dataStore.data.map { it[Keys.LOW_DATA_MODE] ?: false }
+
+        suspend fun setEnterSendsMessage(enabled: Boolean) {
+            dataStore.edit { it[Keys.ENTER_SENDS_MESSAGE] = enabled }
+        }
+
+        suspend fun setMediaAutoSave(enabled: Boolean) {
+            dataStore.edit { it[Keys.MEDIA_AUTO_SAVE] = enabled }
+        }
+
+        suspend fun setLowDataMode(enabled: Boolean) {
+            dataStore.edit { it[Keys.LOW_DATA_MODE] = enabled }
+        }
+
+        /**
+         * Whether media from one conversation may reach the system gallery
+         * through Media Auto-Save. Per-conversation, visible by default, and
+         * keyed exactly as iOS keys it in the App Group defaults
+         * (`sanchr.chatMediaVisibility.<id>`) so the two platforms describe the
+         * same switch.
+         */
+        fun mediaVisibleInGallery(conversationId: String): Flow<Boolean> =
+            dataStore.data.map { it[mediaVisibilityKey(conversationId)] ?: true }
+
+        suspend fun setMediaVisibleInGallery(
+            conversationId: String,
+            visible: Boolean,
+        ) {
+            dataStore.edit { it[mediaVisibilityKey(conversationId)] = visible }
+        }
+
+        private fun mediaVisibilityKey(conversationId: String) = booleanPreferencesKey("sanchr.chatMediaVisibility.$conversationId")
 
         /** The chosen bubble shape; "modern" is iOS's default too. */
         val chatBubbleStyle: Flow<String> = dataStore.data.map { it[Keys.CHAT_BUBBLE_STYLE] ?: "modern" }

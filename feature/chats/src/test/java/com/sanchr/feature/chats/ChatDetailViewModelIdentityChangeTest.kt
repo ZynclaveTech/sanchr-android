@@ -76,6 +76,7 @@ class ChatDetailViewModelIdentityChangeTest {
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = safetyNumbers,
             connectivityMonitor = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
 
     @Test

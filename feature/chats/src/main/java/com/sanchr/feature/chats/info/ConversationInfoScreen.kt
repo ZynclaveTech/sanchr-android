@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -112,6 +113,13 @@ fun ConversationInfoScreen(
                         subtitle = "Stop notifications for this chat",
                         checked = uiState.isMuted,
                         onCheckedChange = viewModel::setMuted,
+                    )
+                    ToggleRow(
+                        icon = Icons.Filled.Photo,
+                        title = "Media visibility",
+                        subtitle = "Allow media from this chat in gallery auto-save",
+                        checked = uiState.mediaVisibleInGallery,
+                        onCheckedChange = viewModel::setMediaVisibleInGallery,
                     )
                     InfoRow(
                         icon = Icons.Filled.Palette,

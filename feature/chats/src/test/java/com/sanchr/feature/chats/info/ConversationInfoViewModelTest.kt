@@ -53,7 +53,12 @@ class ConversationInfoViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = ConversationInfoViewModel(messageRepository, SavedStateHandle(mapOf("conversationId" to "c1")))
+    private fun viewModel() =
+        ConversationInfoViewModel(
+            messageRepository,
+            mockk { every { mediaVisibleInGallery("c1") } returns flowOf(true) },
+            SavedStateHandle(mapOf("conversationId" to "c1")),
+        )
 
     @Test
     fun `the stored timer decides which option is shown`() {

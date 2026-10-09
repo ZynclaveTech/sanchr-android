@@ -1,10 +1,5 @@
 package com.sanchr.feature.chats.media
 
-import android.content.ContentValues
-import android.content.Context
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import android.view.WindowManager
 import android.widget.VideoView
 import androidx.compose.foundation.background
@@ -52,6 +47,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.theme.IosType
+import com.sanchr.domain.messaging.media.GallerySaver
 import com.sanchr.feature.chats.MessageUiModel
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -274,7 +270,7 @@ private fun GalleryChrome(
                         val saved =
                             file != null &&
                                 withContext(Dispatchers.IO) {
-                                    saveToGallery(context, file, message.attachment?.mimeType ?: "image/jpeg", message.isVideoAttachment)
+                                    GallerySaver.save(context, file, message.attachment?.mimeType ?: "image/jpeg")
                                 }
                         onToast(if (saved) "Saved to your gallery" else "Couldn't save this file")
                     }
@@ -319,41 +315,6 @@ private fun Filmstrip(
         }
     }
 }
-
-/**
- * Copies a decrypted attachment into the device's shared gallery.
- *
- * Uses MediaStore rather than a raw file write so it works without storage
- * permission on Android 10 and up, which is every device this app supports
- * bar the oldest. Returns whether the copy actually landed.
- */
-private fun saveToGallery(
-    context: Context,
-    file: File,
-    mimeType: String,
-    isVideo: Boolean,
-): Boolean =
-    runCatching {
-        val collection =
-            if (isVideo) {
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            } else {
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-            }
-        val directory = if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
-        val values =
-            ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, "sanchr-${System.currentTimeMillis()}")
-                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "$directory/Sanchr")
-                }
-            }
-        val uri = context.contentResolver.insert(collection, values) ?: return@runCatching false
-        context.contentResolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
-            ?: return@runCatching false
-        true
-    }.getOrDefault(false)
 
 private const val MIN_SCALE = 1f
 private const val MAX_SCALE = 5f

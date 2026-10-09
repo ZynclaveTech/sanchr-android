@@ -69,9 +69,12 @@ data class SettingsUiState(
     val mediaAutoDownload: String = "wifi",
     val lowDataMode: Boolean = false,
     val storageUsage: StorageUsageResponse? = null,
-    val enterSendsMessage: Boolean = false,
-    val mediaAutoSave: Boolean = true,
-    val bubbleStyle: String = "default",
+    // Initial values, shown for the one frame before DataStore answers. They
+    // have to equal the stored defaults (and iOS's), or the switch visibly
+    // flips under the user on every visit to the screen.
+    val enterSendsMessage: Boolean = true,
+    val mediaAutoSave: Boolean = false,
+    val bubbleStyle: String = "modern",
     val backupEnabled: Boolean = false,
     val lastBackupAtMillis: Long? = null,
     val isBackupBusy: Boolean = false,
@@ -105,8 +108,8 @@ class SettingsViewModel
         private val _screenLockEnabled = MutableStateFlow(false)
         private val _screenLockTimeout = MutableStateFlow("immediately")
 
-        private val _enterSendsMessage = MutableStateFlow(false)
-        private val _mediaAutoSave = MutableStateFlow(true)
+        private val _enterSendsMessage = MutableStateFlow(true)
+        private val _mediaAutoSave = MutableStateFlow(false)
         private val _bubbleStyle = MutableStateFlow("modern")
         private val _backupConfiguration = MutableStateFlow(recoveryKeyManager.loadConfiguration())
         private val _backupBusy = MutableStateFlow(false)
@@ -225,6 +228,9 @@ class SettingsViewModel
                 // fresh install mid-migration, or a stubbed one — should leave
                 // the default standing rather than throw out of init.
                 _bubbleStyle.value = userPreferences.chatBubbleStyle.firstOrNull() ?: "modern"
+                _enterSendsMessage.value = userPreferences.enterSendsMessage.firstOrNull() ?: true
+                _mediaAutoSave.value = userPreferences.mediaAutoSave.firstOrNull() ?: false
+                _lowDataMode.value = userPreferences.lowDataMode.firstOrNull() ?: false
             }
             loadSettingsFromBackend()
             loadStorageUsage()
@@ -556,6 +562,7 @@ class SettingsViewModel
 
         fun setLowDataMode(enabled: Boolean) {
             _lowDataMode.value = enabled
+            viewModelScope.launch { userPreferences.setLowDataMode(enabled) }
         }
 
         fun clearCache() {
@@ -581,10 +588,12 @@ class SettingsViewModel
 
         fun setEnterSendsMessage(enabled: Boolean) {
             _enterSendsMessage.value = enabled
+            viewModelScope.launch { userPreferences.setEnterSendsMessage(enabled) }
         }
 
         fun setMediaAutoSave(enabled: Boolean) {
             _mediaAutoSave.value = enabled
+            viewModelScope.launch { userPreferences.setMediaAutoSave(enabled) }
         }
 
         fun beginBackupEnable() {

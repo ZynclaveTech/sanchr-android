@@ -39,6 +39,7 @@ import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.designsystem.theme.LocalBubbleStyle
+import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
@@ -104,11 +105,15 @@ class MainActivity : FragmentActivity() {
             // flag but nothing passed it, so the switch changed nothing.
             val dynamicColor by userPreferences.dynamicColorEnabled.collectAsStateWithLifecycle(initialValue = false)
             val bubbleStyle = userPreferences.chatBubbleStyle.collectAsStateWithLifecycle(initialValue = "modern")
+            val enterSendsMessage = userPreferences.enterSendsMessage.collectAsStateWithLifecycle(initialValue = true)
             SanchrTheme(
                 darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme()),
                 dynamicColor = dynamicColor,
             ) {
-                CompositionLocalProvider(LocalBubbleStyle provides bubbleStyle) {
+                CompositionLocalProvider(
+                    LocalBubbleStyle provides bubbleStyle,
+                    LocalEnterSendsMessage provides enterSendsMessage,
+                ) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         val screenLockEnabled by userPreferences.screenLockEnabled.collectAsStateWithLifecycle(initialValue = false)
                         val biometricEnabled by userPreferences.biometricEnabled.collectAsStateWithLifecycle(initialValue = false)
