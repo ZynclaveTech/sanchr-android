@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 class DisappearingDurationMappingTest {
     @Test
     fun `every offered label round-trips through seconds`() {
-        listOf("off", "30s", "5m", "1h", "24h", "7d").forEach { label ->
+        listOf("off", "30s", "5m", "1h", "24h", "7d", "30d").forEach { label ->
             assertEquals(label, disappearingLabelOf(disappearingSecondsOf(label)), "round-trip for $label")
         }
     }
@@ -24,6 +24,9 @@ class DisappearingDurationMappingTest {
         assertEquals(3_600, disappearingSecondsOf("1h"))
         assertEquals(86_400, disappearingSecondsOf("24h"))
         assertEquals(604_800, disappearingSecondsOf("7d"))
+        // iOS has always offered 30 days; a default set there used to read as
+        // "off" on this side.
+        assertEquals(2_592_000, disappearingSecondsOf("30d"))
     }
 
     @Test

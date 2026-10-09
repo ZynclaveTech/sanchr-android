@@ -210,6 +210,7 @@ fun PrivacyScreen(
                     "1h" to "1 hour",
                     "24h" to "24 hours",
                     "7d" to "7 days",
+                    "30d" to "30 days",
                 )
 
             durations.forEach { (value, label) ->

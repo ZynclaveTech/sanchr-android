@@ -947,6 +947,9 @@ private val DISAPPEARING_DURATION_SECONDS =
         "1h" to 60 * 60,
         "24h" to 24 * 60 * 60,
         "7d" to 7 * 24 * 60 * 60,
+        // iOS offers 30 days and Android did not, so a 30-day default set
+        // there read as "off" here.
+        "30d" to 30 * 24 * 60 * 60,
     )
 
 internal fun disappearingSecondsOf(label: String): Int = DISAPPEARING_DURATION_SECONDS[label] ?: 0
