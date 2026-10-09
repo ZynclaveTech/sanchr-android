@@ -89,6 +89,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -374,23 +376,23 @@ class ConversationActions(
 )
 
 /** iOS `SanchrSpacing.chatRowVPadding`. */
-private val IosRowVPadding = 12.dp
+private val IosRowVPadding = IosSpacing.chatRowVPadding
 
 /** The gap between avatar and text, iOS `HStack(spacing: 12)`. */
-private val IosRowGap = 12.dp
+private val IosRowGap = IosSpacing.avatarContentGap
 
 /** iOS `SanchrSpacing.namePreviewGap` (xxs). */
-private val IosNamePreviewGap = 4.dp
+private val IosNamePreviewGap = IosSpacing.namePreviewGap
 
 /** iOS `SanchrSpacing.chatAvatarSize`. Android drew 48. */
-private val IosAvatarSize = 56.dp
+private val IosAvatarSize = IosSpacing.chatAvatarSize
 
 /** iOS `SanchrSpacing.statusIndicatorSize` / `statusIndicatorBorder`. */
-private val IosStatusDot = 16.dp
-private val IosStatusDotBorder = 2.dp
+private val IosStatusDot = IosSpacing.statusIndicatorSize
+private val IosStatusDotBorder = IosSpacing.statusIndicatorBorder
 
 /** iOS `SanchrSpacing.unreadBadgeSize`, as a minimum width rather than a fixed one. */
-private val IosBadgeMinWidth = 20.dp
+private val IosBadgeMinWidth = IosSpacing.unreadBadgeSize
 
 // iOS type scale: sm 16, xs 14, xxs 12.
 private val IosNameSize = 16.sp
@@ -435,8 +437,7 @@ private fun ConversationAvatar(conversation: Conversation) {
                 ) {
                     Text(
                         text = (conversation.title ?: "?").take(1).uppercase(),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        style = IosType.cardTitle,
                         color = SanchrIndigo500,
                     )
                 }
@@ -533,10 +534,7 @@ internal fun ConversationItem(
                 ) {
                     Text(
                         text = conversation.title ?: "Unknown",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontSize = IosNameSize,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.5).sp,
+                        style = IosType.conversationName,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -545,8 +543,7 @@ internal fun ConversationItem(
                     conversation.lastMessage?.let { last ->
                         Text(
                             text = formatChatTimestamp(last.timestamp.toEpochMilliseconds()),
-                            fontSize = IosTimestampSize,
-                            fontWeight = FontWeight.Medium,
+                            style = IosType.chatTimestamp,
                             // Plain secondary whether or not there is anything
                             // unread: iOS does not colour the time, and a blue
                             // timestamp competes with the badge that is already
@@ -563,8 +560,7 @@ internal fun ConversationItem(
                     if (isTyping) {
                         Text(
                             text = "typing…",
-                            fontSize = IosPreviewSize,
-                            fontWeight = FontWeight.Medium,
+                            style = IosType.conversationPreview,
                             color = SanchrIndigo500,
                             maxLines = 1,
                             modifier = Modifier.weight(1f, fill = false),
@@ -577,8 +573,12 @@ internal fun ConversationItem(
                         val prefix = conversation.senderPrefix(currentUserId)
                         Text(
                             text = if (prefix != null) prefix + conversation.previewText() else conversation.previewText(),
-                            fontSize = IosPreviewSize,
-                            fontWeight = if (conversation.unreadCount > 0) FontWeight.SemiBold else FontWeight.Medium,
+                            style =
+                                if (conversation.unreadCount > 0) {
+                                    IosType.conversationPreviewBold
+                                } else {
+                                    IosType.conversationPreview
+                                },
                             color =
                                 if (conversation.unreadCount > 0) {
                                     MaterialTheme.colorScheme.onSurface
@@ -617,8 +617,7 @@ internal fun ConversationItem(
                         ) {
                             Text(
                                 text = conversation.unreadCount.toString(),
-                                fontSize = IosBadgeSize,
-                                fontWeight = FontWeight.Bold,
+                                style = IosType.unreadBadge,
                                 color = Color.White,
                             )
                         }
@@ -700,31 +699,31 @@ private fun ConversationMenu(
 }
 
 /** iOS `SanchrExportMetrics.screenHorizontal`. Android's `default` is 16. */
-private val IosScreenHorizontal = 20.dp
+private val IosScreenHorizontal = IosSpacing.screenHorizontal
 
 /** iOS `SanchrExportMetrics.rootTop`. */
-private val IosRootTop = 16.dp
+private val IosRootTop = IosSpacing.rootTop
 
 /** iOS `SanchrExportMetrics.iconButtonSize`. */
-private val IosIconButtonSize = 40.dp
+private val IosIconButtonSize = IosSpacing.iconButtonSize
 
 /** iOS `SanchrSpacing.searchBarHeight` / `searchIconSize`. */
-private val IosSearchHeight = 44.dp
-private val IosSearchIconSize = 15.dp
+private val IosSearchHeight = IosSpacing.searchBarHeight
+private val IosSearchIconSize = IosSpacing.searchIconSize
 
 /** iOS `chatListTitle` is xl (24) bold; search text is xs (14) medium. */
 private val IosBrandTitleSize = 24.sp
 private val IosSearchTextSize = 14.sp
 
 /** iOS `SanchrSpacing.filterTabHeight`. */
-private val IosChipHeight = 32.dp
+private val IosChipHeight = IosSpacing.filterTabHeight
 
 /** iOS `SanchrSpacing.filterTabHPadding`. */
-private val IosChipHPadding = 16.dp
+private val IosChipHPadding = IosSpacing.filterTabHPadding
 
 /** The brand mark in iOS `SanchrBrandHeader`, and the gap beside it. */
-private val IosBrandMark = 40.dp
-private val IosBrandGap = 12.dp
+private val IosBrandMark = IosSpacing.iconButtonSize
+private val IosBrandGap = IosSpacing.sm
 
 /**
  * Where a photo taken from the chats list should go.
@@ -910,8 +909,7 @@ private fun ChatsSearchField(
             if (value.isEmpty()) {
                 Text(
                     text = "Search chats...",
-                    fontSize = IosSearchTextSize,
-                    fontWeight = FontWeight.Medium,
+                    style = IosType.searchPlaceholder,
                     color = SanchrGray400,
                 )
             }
@@ -1005,8 +1003,7 @@ private fun ChatFilterChips(
             ) {
                 Text(
                     text = filter.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    style = if (isSelected) IosType.filterTabActive else IosType.filterTab,
                     color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -1051,8 +1048,7 @@ private fun ChatsSectionHeading(
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.labelMedium,
-            letterSpacing = 1.2.sp,
+            style = IosType.sectionLabel,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

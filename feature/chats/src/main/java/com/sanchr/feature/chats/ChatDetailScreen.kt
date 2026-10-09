@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -131,6 +132,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.theme.ChatWallpapers
+import com.sanchr.core.designsystem.theme.IosRadius
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
@@ -923,20 +927,22 @@ private fun MessageBubble(
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
     var pickerOpen by remember(message.id) { mutableStateOf(false) }
 
+    // iOS bubbleMainRadius / bubbleTailRadius. Android drew 16 where iOS
+    // draws 20, which is enough to read as a different shape language.
     val bubbleShape =
         if (message.isFromMe) {
             RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 4.dp,
+                topStart = IosRadius.bubbleMain,
+                topEnd = IosRadius.bubbleMain,
+                bottomStart = IosRadius.bubbleMain,
+                bottomEnd = IosRadius.bubbleTail,
             )
         } else {
             RoundedCornerShape(
-                topStart = 4.dp,
-                topEnd = 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 16.dp,
+                topStart = IosRadius.bubbleTail,
+                topEnd = IosRadius.bubbleMain,
+                bottomStart = IosRadius.bubbleMain,
+                bottomEnd = IosRadius.bubbleMain,
             )
         }
 
@@ -962,7 +968,12 @@ private fun MessageBubble(
                     color = Color.Transparent,
                     modifier =
                         Modifier
-                            .widthIn(max = 280.dp)
+                            // A fraction of the width, as iOS, not a fixed
+                            // 280dp: that was near enough on a 360dp handset
+                            // and left bubbles stranded in a narrow column on
+                            // anything wider.
+                            .fillMaxWidth(IosSpacing.MESSAGE_MAX_WIDTH_FRACTION)
+                            .wrapContentWidth(if (message.isFromMe) Alignment.End else Alignment.Start)
                             .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { pickerOpen = true }),
                 ) {
                     Box(
@@ -984,12 +995,12 @@ private fun MessageBubble(
                             }
                             Text(
                                 text = message.text,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = IosType.messageBubbleText,
                                 color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.md,
-                                        vertical = SanchrTheme.spacing.sm,
+                                        horizontal = IosSpacing.bubbleHPadding,
+                                        vertical = IosSpacing.bubbleVPadding,
                                     ),
                             )
                             if (loadLinkPreview != null && message.contentType == "text") {

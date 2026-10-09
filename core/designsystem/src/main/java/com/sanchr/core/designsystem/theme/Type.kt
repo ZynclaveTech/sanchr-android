@@ -31,7 +31,7 @@ import com.sanchr.core.designsystem.R
  * `@OptIn(ExperimentalTextApi::class)` until those helpers are promoted.
  */
 @OptIn(ExperimentalTextApi::class)
-private val Afacad =
+internal val Afacad =
     FontFamily(
         Font(
             R.font.afacad_variable,
