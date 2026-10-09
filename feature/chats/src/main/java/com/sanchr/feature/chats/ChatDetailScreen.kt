@@ -849,14 +849,14 @@ private fun ChatDetailTopBar(
                 Surface(
                     modifier =
                         Modifier
-                            .size(36.dp)
+                            .size(IosSpacing.chatHeaderAvatarSize)
                             .clip(CircleShape),
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = title.take(1).uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
+                            style = IosType.bodyBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
@@ -867,7 +867,7 @@ private fun ChatDetailTopBar(
                 Column {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = IosType.bodyBold,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -875,7 +875,7 @@ private fun ChatDetailTopBar(
                     statusText?.let { subtitle ->
                         Text(
                             text = subtitle,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = IosType.captionSmall,
                             color = SanchrGray400,
                         )
                     }
@@ -1374,7 +1374,7 @@ private fun MessageInputBar(
             // "+" attach button
             IconButton(
                 onClick = onAttachFile,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(IosSpacing.composerButtonSize),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add,
@@ -1419,7 +1419,7 @@ private fun MessageInputBar(
             Box {
                 IconButton(
                     onClick = { attachMenuOpen = true },
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(IosSpacing.composerButtonSize),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.AttachFile,
@@ -1489,7 +1489,10 @@ private fun MessageInputBar(
             FilledIconButton(
                 onClick = onSend,
                 enabled = value.isNotBlank() && !isSending,
-                modifier = Modifier.size(40.dp),
+                // iOS composerSendSize, a notch larger than the 40 the other
+                // composer buttons take: send is the primary action and reads
+                // as one.
+                modifier = Modifier.size(IosSpacing.composerSendSize),
                 colors =
                     IconButtonDefaults.filledIconButtonColors(
                         containerColor = SanchrIndigo500,

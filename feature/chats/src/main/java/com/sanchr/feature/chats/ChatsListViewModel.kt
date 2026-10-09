@@ -93,11 +93,19 @@ sealed interface ChatsListUiState {
          *
          * Split here rather than in the composable so the ordering is a
          * property of the state and can be asserted without mounting Compose.
+         *
+         * Computed once per state, not on every read. These were `get()`
+         * accessors, and the screen reads them inside the LazyColumn's content
+         * lambda — so each one re-filtered the whole conversation list on
+         * every composition and every scroll frame.
          */
-        val pinned: List<Conversation> get() = conversations.filter { it.isPinned }
+        private val partitioned: Pair<List<Conversation>, List<Conversation>> =
+            conversations.partition { it.isPinned }
+
+        val pinned: List<Conversation> = partitioned.first
 
         /** Everything else, under "ALL CHATS". */
-        val unpinned: List<Conversation> get() = conversations.filterNot { it.isPinned }
+        val unpinned: List<Conversation> = partitioned.second
     }
 
     data object Empty : ChatsListUiState
