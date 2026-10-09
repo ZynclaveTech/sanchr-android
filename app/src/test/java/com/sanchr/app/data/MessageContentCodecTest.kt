@@ -56,4 +56,31 @@ class MessageContentCodecTest {
         val system = MessageContentCodec.fromStored("system", "viewOnceConsumed") as MessageContent.System
         assertEquals("Viewed", system.text)
     }
+
+    @Test
+    fun `an iOS album keeps every attachment, not just the first`() {
+        // An album of three arrived as one photo: the decoder took
+        // `attachments.first()` and dropped the rest, which were then
+        // unreachable even though their bytes were in the message.
+        val body =
+            """{"image":{"_0":[""" +
+                """{"url":"sanchr-media://a1","mimeType":"image/jpeg","sizeBytes":1,"caption":"beach"},""" +
+                """{"url":"sanchr-media://a2","mimeType":"image/jpeg","sizeBytes":2},""" +
+                """{"url":"sanchr-media://a3","mimeType":"image/jpeg","sizeBytes":3}""" +
+                """]}}"""
+
+        val content = MessageContentCodec.fromStored("image", body) as MessageContent.Album
+
+        assertEquals(3, content.attachments.size)
+        assertEquals(listOf("a1", "a2", "a3"), content.attachments.map { it.mediaId })
+        assertEquals("beach", content.caption)
+        assertEquals("a1", content.first.mediaId)
+    }
+
+    @Test
+    fun `a single attachment is still a plain image, not an album of one`() {
+        val body = """{"image":{"_0":[{"url":"sanchr-media://solo","mimeType":"image/jpeg","sizeBytes":1}]}}"""
+
+        assertTrue(MessageContentCodec.fromStored("image", body) is MessageContent.Image)
+    }
 }

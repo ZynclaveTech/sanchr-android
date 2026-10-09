@@ -22,14 +22,27 @@ object GallerySelection {
         messages: List<MessageUiModel>,
         tappedId: String,
     ): GalleryState? {
-        val items = messages.filter { it.isGalleryMedia }.sortedBy { it.timestamp }
+        val items =
+            messages
+                .sortedBy { it.timestamp }
+                // An album becomes one entry per tile, each carrying its own
+                // attachment and its own `<messageId>#<n>` id. Without this the
+                // gallery showed one photo for a message holding several, and
+                // the rest of the album could not be opened at all.
+                .flatMap { message ->
+                    if (message.isAlbum) {
+                        message.albumAttachments.indices.mapNotNull(message::albumTile)
+                    } else {
+                        listOf(message)
+                    }
+                }.filter { it.isGalleryMedia }
         val index = items.indexOfFirst { it.id == tappedId }
         if (index < 0) return null
         return GalleryState(items = items, initialIndex = index)
     }
 
     private val MessageUiModel.isGalleryMedia: Boolean
-        get() = attachment != null && !isViewOnce && (contentType == "image" || isVideoAttachment)
+        get() = attachment != null && !isViewOnce && (contentType == "image" || contentType == "album" || isVideoAttachment)
 }
 
 /** The media the gallery is showing, and which one is on screen first. */

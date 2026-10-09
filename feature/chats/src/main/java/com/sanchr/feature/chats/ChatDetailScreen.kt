@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -768,6 +769,16 @@ private fun MessageRow(
                 ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
             }
 
+        message.isAlbum ->
+            MessageActionHost(message, viewModel, actions) {
+                AlbumMessageBubble(
+                    message = message,
+                    openAttachment = viewModel::openAttachment,
+                    onOpenTile = { tile -> onOpenMedia(tile) },
+                    autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
+                )
+            }
+
         message.contentType == "image" ->
             MessageActionHost(message, viewModel, actions) {
                 ImageMessageBubble(
@@ -1350,6 +1361,96 @@ private fun MessageStatusIcon(message: MessageUiModel) {
             )
     }
 }
+
+/**
+ * Several photos or videos sent as one message, drawn as a collage.
+ *
+ * Each tile is its own row — `<messageId>#<n>` — so it decrypts and caches
+ * separately, exactly as iOS keys an album's tiles, and tapping one opens the
+ * gallery on that tile rather than on the first.
+ *
+ * Four tiles at most, with a count over the last when there are more, which is
+ * the shape iOS's `AlbumBubbleLayout` produces for a crowded album.
+ */
+@Composable
+private fun AlbumMessageBubble(
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+    onOpenTile: (MessageUiModel) -> Unit,
+    modifier: Modifier = Modifier,
+    autoDownload: Boolean = true,
+) {
+    val tiles = remember(message.id, message.albumAttachments.size) { message.albumAttachments.indices.mapNotNull(message::albumTile) }
+    if (tiles.isEmpty()) return
+    val shown = tiles.take(ALBUM_MAX_TILES)
+    val hidden = tiles.size - shown.size
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth(IosSpacing.MESSAGE_MAX_WIDTH_FRACTION)
+                    .clip(SanchrShapeTokens.CornerLarge),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            shown.chunked(ALBUM_COLUMNS).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    row.forEach { tile ->
+                        val isLastShown = tile === shown.last()
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .clickable { onOpenTile(tile) },
+                        ) {
+                            AttachmentImage(
+                                message = tile,
+                                openAttachment = openAttachment,
+                                autoDownload = autoDownload,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            if (hidden > 0 && isLastShown) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "+" + hidden,
+                                        style = IosType.cardTitle,
+                                        color = SanchrWhite,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // A trailing odd tile keeps its square rather than
+                    // stretching across the row.
+                    if (row.size < ALBUM_COLUMNS) Spacer(modifier = Modifier.weight((ALBUM_COLUMNS - row.size).toFloat()))
+                }
+            }
+            message.text.takeIf { it.isNotBlank() && !it.startsWith("[") }?.let { caption ->
+                Text(
+                    text = caption,
+                    style = IosType.messageBubbleText,
+                    color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                    modifier =
+                        Modifier
+                            .background(if (message.isFromMe) SanchrIndigo500 else SanchrGray100)
+                            .fillMaxWidth()
+                            .padding(horizontal = IosSpacing.bubbleHPadding, vertical = IosSpacing.bubbleVPadding),
+                )
+            }
+        }
+    }
+}
+
+private const val ALBUM_MAX_TILES = 4
+private const val ALBUM_COLUMNS = 2
 
 // --- Image message bubble ---
 @Composable

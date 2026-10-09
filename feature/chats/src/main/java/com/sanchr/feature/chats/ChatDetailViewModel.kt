@@ -729,6 +729,7 @@ class ChatDetailViewModel
                 failureKind = failureClass.toFailureKind(uiStatus),
                 failureReason = failureReason.takeIf { uiStatus == MessageStatus.FAILED },
                 attachment = content.attachmentOrNull(),
+                albumAttachments = (content as? MessageContent.Album)?.attachments.orEmpty(),
                 contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
                 reactions = reactions.toChips(currentUser),
                 replyToId = replyToId,
@@ -788,6 +789,7 @@ class ChatDetailViewModel
             when (this) {
                 is MessageContent.Text -> body
                 is MessageContent.Image -> caption ?: "[Image]"
+                is MessageContent.Album -> caption ?: ("[" + attachments.size + " photos]")
                 is MessageContent.Voice -> "[Voice message]"
                 is MessageContent.File -> fileName
                 is MessageContent.Location -> label ?: "[Location]"
@@ -798,6 +800,10 @@ class ChatDetailViewModel
         private fun MessageContent.attachmentOrNull(): MediaAttachment? =
             when (this) {
                 is MessageContent.Image -> attachment
+                // The first tile: everything that reads a single attachment
+                // (the gallery's lead, auto-download, auto-save) wants one, and
+                // the whole set travels on the UI model beside it.
+                is MessageContent.Album -> first
                 is MessageContent.Voice -> attachment
                 is MessageContent.File -> attachment
                 is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact, is MessageContent.System -> null
@@ -807,6 +813,7 @@ class ChatDetailViewModel
             when (this) {
                 is MessageContent.Text -> "text"
                 is MessageContent.Image -> "image"
+                is MessageContent.Album -> MessageContent.Album.CONTENT_TYPE
                 is MessageContent.Voice -> "voice"
                 is MessageContent.File -> "file"
                 is MessageContent.Location -> "location"

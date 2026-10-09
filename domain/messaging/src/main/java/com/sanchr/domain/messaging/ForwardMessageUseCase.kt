@@ -75,6 +75,11 @@ class ForwardMessageUseCase
                 }
                 is MessageContent.Location -> { target -> sendMessageUseCase(target, content.toWire(), "location") }
                 is MessageContent.Image -> media(message.id, content.attachment, content.caption)
+                // Forwarded as its first photo: the album arrives as one
+                // message and each attachment is a separate upload, so sending
+                // the set would be a fan-out per destination. The first tile is
+                // what the forward preview shows, so it is what goes.
+                is MessageContent.Album -> media(message.id, content.first, content.caption)
                 is MessageContent.Voice -> media(message.id, content.attachment, null)
                 is MessageContent.File -> media(message.id, content.attachment, null)
                 is MessageContent.System -> throw UnsupportedContentException("nothing to forward")

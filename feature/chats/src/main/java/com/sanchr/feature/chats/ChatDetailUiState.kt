@@ -68,6 +68,13 @@ data class MessageUiModel(
     val failureReason: String? = null,
     /** The encrypted media behind an image/voice/file row; null for text. */
     val attachment: MediaAttachment? = null,
+    /**
+     * Every attachment of an album, when this row is one. Empty otherwise.
+     *
+     * [attachment] stays set to the first tile, so everything that reads a
+     * single attachment keeps working; the bubble and the gallery read this.
+     */
+    val albumAttachments: List<MediaAttachment> = emptyList(),
     /** The shared card behind a contact row; null otherwise. */
     val contact: ContactCard? = null,
     /** Emoji chips under the bubble, grouped and counted, in first-seen order. */
@@ -89,6 +96,31 @@ data class MessageUiModel(
     /** Whether the attachment is a video, which the placeholder and the secure viewer both need to know. */
     val isVideoAttachment: Boolean
         get() = attachment?.mimeType?.startsWith("video/", ignoreCase = true) == true
+
+    /** Whether this row is several photos or videos sent as one message. */
+    val isAlbum: Boolean get() = albumAttachments.size > 1
+
+    /**
+     * One tile of an album as a row of its own.
+     *
+     * The id carries the index (`<messageId>#<n>`), which is how iOS keys an
+     * album's tiles too: the download cache is keyed by row id, so sharing the
+     * message's id would make every tile collide on one cached file and render
+     * the same photo.
+     */
+    fun albumTile(index: Int): MessageUiModel? {
+        val tile = albumAttachments.getOrNull(index) ?: return null
+        return copy(
+            id = id + "#" + index,
+            attachment = tile,
+            albumAttachments = emptyList(),
+            // One tile does not carry the album's reactions or quote; those
+            // belong to the message, which draws them around the collage.
+            reactions = emptyList(),
+            replyToId = null,
+            quote = null,
+        )
+    }
 }
 
 /** iOS `ReplyQuote`: who wrote the quoted message and one line of what they said. */
