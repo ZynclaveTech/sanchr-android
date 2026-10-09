@@ -13,7 +13,11 @@ const val CONTACTS_LIST_ROUTE = "contacts/list"
 const val CONTACT_SYNC_ROUTE = "contacts/sync"
 const val PHONE_LOOKUP_ROUTE = "contacts/lookup"
 
-fun NavGraphBuilder.contactsGraph(navController: NavController) {
+fun NavGraphBuilder.contactsGraph(
+    navController: NavController,
+    /** Starts a call with a contact; the row's Call action had an empty body before. */
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
+) {
     navigation(startDestination = CONTACTS_LIST_ROUTE, route = CONTACTS_TAB_ROUTE) {
         composable(CONTACTS_LIST_ROUTE) {
             ContactsScreen(
@@ -24,6 +28,7 @@ fun NavGraphBuilder.contactsGraph(navController: NavController) {
                     navController.navigate(CONTACT_SYNC_ROUTE)
                 },
                 onFindByNumber = { navController.navigate(PHONE_LOOKUP_ROUTE) },
+                onStartCall = onStartCall,
             )
         }
 

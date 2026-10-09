@@ -288,7 +288,10 @@ private fun ResolvedNavHost(
                     onStartCall = { peerId, peerName, isVideo -> navController.navigate(outgoingCallRoute(peerId, peerName, isVideo)) },
                 )
                 callsGraph(navController = navController)
-                contactsGraph(navController = navController)
+                contactsGraph(
+                    navController = navController,
+                    onStartCall = { peerId, peerName, isVideo -> navController.navigate(outgoingCallRoute(peerId, peerName, isVideo)) },
+                )
                 settingsGraph(navController = navController)
             }
 

@@ -1,5 +1,9 @@
 package com.sanchr.feature.contacts
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -40,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
@@ -60,6 +65,30 @@ fun ContactSyncScreen(
 ) {
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // Nothing on this screen asked for READ_CONTACTS. Without the grant the
+    // contacts query returns a null cursor, the read is skipped, and the sync
+    // reported success having matched nobody — so "Sync Contacts" appeared to
+    // work and found no one, for every user who had not granted the permission
+    // during onboarding.
+    val contactsPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                viewModel.syncContacts(context.contentResolver)
+            } else {
+                viewModel.reportSyncDenied()
+            }
+        }
+
+    fun startSync() {
+        val alreadyGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) {
+            viewModel.syncContacts(context.contentResolver)
+        } else {
+            contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+        }
+    }
 
     Scaffold(
         // The NavHost's Scaffold has already inset this for the system
@@ -139,7 +168,7 @@ fun ContactSyncScreen(
             PrivacyRationaleCard(
                 icon = Icons.Filled.Lock,
                 title = "Private",
-                description = "Your contacts never leave your device in plain text. Only secure hashes are sent.",
+                description = "Your contacts never leave this device. Only blinded values the server cannot read are sent.",
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
@@ -147,7 +176,15 @@ fun ContactSyncScreen(
             PrivacyRationaleCard(
                 icon = Icons.Filled.Tag,
                 title = "Hash Only",
-                description = "Phone numbers are converted to SHA-256 hashes before comparison. We never see the actual numbers.",
+                // The copy used to describe SHA-256 hashing, which is not
+                // what the client does: `discoverRegistered` runs an OPRF
+                // private set intersection, where the server evaluates blinded
+                // points and learns neither the numbers nor which matched. A
+                // specific, checkable cryptographic claim has to name the
+                // protocol actually in use.
+                description =
+                    "Numbers are blinded before they are sent, so the server " +
+                        "learns neither your contacts nor which of them matched.",
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
@@ -222,9 +259,7 @@ fun ContactSyncScreen(
                 // Gradient-style sync button
                 SanchrButton(
                     text = "Sync Contacts",
-                    onClick = {
-                        viewModel.syncContacts(context.contentResolver)
-                    },
+                    onClick = ::startSync,
                     modifier = Modifier.fillMaxWidth(),
                 )
 

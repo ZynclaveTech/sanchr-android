@@ -1,5 +1,6 @@
 package com.sanchr.feature.contacts
 
+import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,10 +74,27 @@ fun ContactsScreen(
     onSyncContacts: () -> Unit,
     /** Opens the by-number search, for reaching someone not in the address book. */
     onFindByNumber: () -> Unit,
+    /** Starts a voice call with a contact. The row's Call action used to be an empty lambda. */
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ContactsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // The view model emitted these for block, unblock and failure, and no
+    // screen collected them: a block that failed looked like one that worked.
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            val message =
+                when (event) {
+                    ContactsEvent.ContactBlocked -> "Contact blocked"
+                    ContactsEvent.ContactUnblocked -> "Contact unblocked"
+                    is ContactsEvent.Error -> event.message
+                }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -166,7 +186,7 @@ fun ContactsScreen(
 
                 is ContactsUiState.Success -> {
                     PullToRefreshBox(
-                        isRefreshing = false,
+                        isRefreshing = isRefreshing,
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
@@ -177,7 +197,7 @@ fun ContactsScreen(
                             onBlockContact = viewModel::blockContact,
                             onUnblockContact = viewModel::unblockContact,
                             onMessageContact = { userId -> onContactClick(userId) },
-                            onCallContact = { /* Navigate to call */ },
+                            onCallContact = { contact -> onStartCall(contact.userId, contact.displayName, false) },
                         )
                     }
                 }
@@ -224,7 +244,7 @@ private fun ContactsList(
     onBlockContact: (String) -> Unit,
     onUnblockContact: (String) -> Unit,
     onMessageContact: (String) -> Unit,
-    onCallContact: (String) -> Unit,
+    onCallContact: (Contact) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -238,7 +258,27 @@ private fun ContactsList(
                 items = contacts,
                 key = { it.userId },
             ) { contact ->
-                val dismissState = rememberSwipeToDismissBoxState()
+                // `SwipeToDismissBox` has no completion callback: the only
+                // hook is `confirmValueChange`, and without it the row slid
+                // away and neither action ran. Returning false keeps the row —
+                // Message and Block are actions on a contact, not a removal of
+                // one — while still performing the action the gesture names.
+                val dismissState =
+                    rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            when (value) {
+                                SwipeToDismissBoxValue.StartToEnd -> onMessageContact(contact.userId)
+                                SwipeToDismissBoxValue.EndToStart ->
+                                    if (contact.isBlocked) {
+                                        onUnblockContact(contact.userId)
+                                    } else {
+                                        onBlockContact(contact.userId)
+                                    }
+                                SwipeToDismissBoxValue.Settled -> Unit
+                            }
+                            false
+                        },
+                    )
 
                 SwipeToDismissBox(
                     state = dismissState,
@@ -262,7 +302,7 @@ private fun ContactsList(
                         val label =
                             when (direction) {
                                 SwipeToDismissBoxValue.StartToEnd -> "Message"
-                                SwipeToDismissBoxValue.EndToStart -> "Block"
+                                SwipeToDismissBoxValue.EndToStart -> if (contact.isBlocked) "Unblock" else "Block"
                                 else -> ""
                             }
                         val alignment =
@@ -303,7 +343,7 @@ private fun ContactsList(
                         onBlock = { onBlockContact(contact.userId) },
                         onUnblock = { onUnblockContact(contact.userId) },
                         onMessage = { onMessageContact(contact.userId) },
-                        onCall = { onCallContact(contact.userId) },
+                        onCall = { onCallContact(contact) },
                     )
                 }
             }
