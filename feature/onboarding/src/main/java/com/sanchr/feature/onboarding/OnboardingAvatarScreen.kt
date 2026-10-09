@@ -48,6 +48,7 @@ import coil.compose.SubcomposeAsyncImage
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.SanchrOnboardingProgress
 import com.sanchr.core.designsystem.component.SanchrStepEyebrow
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo600
@@ -147,7 +148,7 @@ fun OnboardingAvatarScreen(
         Spacer(Modifier.height(8.dp))
         Text(
             text = "Help your contacts recognize you instantly.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(30.dp))
@@ -221,7 +222,7 @@ fun OnboardingAvatarScreen(
                 } else {
                     "Tap to change photo"
                 },
-            style = MaterialTheme.typography.bodySmall,
+            style = IosType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 

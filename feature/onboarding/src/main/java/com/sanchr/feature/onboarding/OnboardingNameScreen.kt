@@ -48,6 +48,7 @@ import com.sanchr.core.designsystem.R
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.SanchrOnboardingProgress
 import com.sanchr.core.designsystem.component.SanchrStepEyebrow
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import kotlinx.coroutines.delay
 
@@ -166,7 +167,7 @@ private fun NameEntryBody(
         Spacer(Modifier.height(8.dp))
         Text(
             text = "This is how people will see you on Sanchr.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 40.dp),
@@ -188,7 +189,7 @@ private fun NameEntryBody(
                         } else {
                             "Enter your name"
                         },
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },

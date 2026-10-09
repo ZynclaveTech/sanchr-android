@@ -32,6 +32,7 @@ import com.sanchr.core.designsystem.component.SanchrCenteredHeader
 import com.sanchr.core.designsystem.component.SanchrOtpInput
 import com.sanchr.core.designsystem.component.SanchrTextButton
 import com.sanchr.core.designsystem.component.SecureScreen
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -155,21 +156,21 @@ fun OtpScreen(
 
             Text(
                 text = "Verify your number",
-                style = MaterialTheme.typography.headlineMedium,
+                style = IosType.screenTitle,
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
             Text(
                 text = "Enter the 6-digit code sent to",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
 
             Text(
                 text = otpEntry.phoneE164,
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = SanchrIndigo500,
                 textAlign = TextAlign.Center,
             )
@@ -199,7 +200,7 @@ fun OtpScreen(
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 Text(
                     text = errorMessage,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -209,13 +210,13 @@ fun OtpScreen(
             if (!canResend) {
                 Text(
                     text = "Resend in 0:${resendCountdown.toString().padStart(2, '0')}",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = IosType.sectionLabel,
                     color = SanchrGray400,
                 )
             } else {
                 Text(
                     text = "Didn't receive the code?",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 SanchrTextButton(
@@ -228,7 +229,7 @@ fun OtpScreen(
                 ) {
                     Text(
                         text = "Resend",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = IosType.button,
                         color = SanchrIndigo500,
                     )
                 }
@@ -263,7 +264,7 @@ private fun RegistrationLockPrompt(
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
     Text(
         text = "This number has Registration Lock. Enter your PIN to continue.",
-        style = MaterialTheme.typography.bodyMedium,
+        style = IosType.body,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )

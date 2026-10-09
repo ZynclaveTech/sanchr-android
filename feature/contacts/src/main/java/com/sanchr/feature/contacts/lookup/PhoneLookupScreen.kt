@@ -22,6 +22,7 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -81,13 +82,13 @@ fun PhoneLookupScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = result.user.displayName.ifBlank { result.user.phoneNumber },
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = IosType.bodyLarge,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = result.user.phoneNumber,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = IosType.caption,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -107,7 +108,7 @@ fun PhoneLookupScreen(
 private fun Notice(message: String) {
     Text(
         text = message,
-        style = MaterialTheme.typography.bodyMedium,
+        style = IosType.body,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

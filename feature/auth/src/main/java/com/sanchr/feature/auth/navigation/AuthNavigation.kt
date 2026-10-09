@@ -25,6 +25,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.feature.auth.AuthState
 import com.sanchr.feature.auth.AuthViewModel
 import com.sanchr.feature.auth.LoginPhoneScreen
@@ -192,7 +193,7 @@ private fun RegisteringOverlay(step: RegistrationStep) {
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyLarge,
+                style = IosType.bodyLarge,
                 color = Color.White,
             )
         }

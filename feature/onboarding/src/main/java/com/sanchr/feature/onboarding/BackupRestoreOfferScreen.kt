@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextField
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import java.text.DateFormat
 import java.util.Date
@@ -80,7 +81,7 @@ private fun ColumnScope.FoundBody(
 ) {
     Text(
         text = "Restore your chats",
-        style = MaterialTheme.typography.headlineSmall,
+        style = IosType.sectionHeader,
     )
     Text(
         text =
@@ -92,14 +93,14 @@ private fun ColumnScope.FoundBody(
                 }
                 append(".")
             },
-        style = MaterialTheme.typography.bodyMedium,
+        style = IosType.body,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Text(
         // Said plainly: the key is the only thing that can open it, and we
         // genuinely cannot help if it is gone.
         text = "Enter your recovery key to unlock it. Without the key the backup cannot be read, by you or by us.",
-        style = MaterialTheme.typography.bodySmall,
+        style = IosType.caption,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
@@ -113,7 +114,7 @@ private fun ColumnScope.FoundBody(
     state.error?.let { message ->
         Text(
             text = message,
-            style = MaterialTheme.typography.bodySmall,
+            style = IosType.caption,
             color = MaterialTheme.colorScheme.error,
         )
     }
@@ -149,13 +150,13 @@ private fun ColumnScope.RestoredBody(
         ) {
             Text(
                 text = "Your chats are back",
-                style = MaterialTheme.typography.headlineSmall,
+                style = IosType.sectionHeader,
                 textAlign = TextAlign.Center,
             )
             state.backupAtMillis?.let {
                 Text(
                     text = "Restored from the backup made ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it))}.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )

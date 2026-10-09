@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.feature.chats.media.AttachmentPreparer
 import kotlinx.coroutines.Dispatchers
@@ -160,7 +161,7 @@ private fun ColumnScope.ChatPicker(
                 Checkbox(checked = conversation.id in uiState.selectedIds, onCheckedChange = { onToggle(conversation.id) })
                 Text(
                     text = conversation.title ?: "Unknown",
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = IosType.bodyLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -190,7 +191,7 @@ private fun ShareComposer(
         Text(text = content.summary(), style = MaterialTheme.typography.bodyMedium)
         Text(
             text = "Sending to ${uiState.selectedIds.size} chat${if (uiState.selectedIds.size == 1) "" else "s"}",
-            style = MaterialTheme.typography.bodySmall,
+            style = IosType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (content is SharedContent.Attachments) {

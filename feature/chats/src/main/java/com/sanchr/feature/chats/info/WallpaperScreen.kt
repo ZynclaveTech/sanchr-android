@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.ChatWallpapers
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -62,7 +63,7 @@ fun WallpaperScreen(
         ) {
             Text(
                 text = "Applies to this chat only. Default follows your Appearance setting.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = SanchrTheme.spacing.default),
             )

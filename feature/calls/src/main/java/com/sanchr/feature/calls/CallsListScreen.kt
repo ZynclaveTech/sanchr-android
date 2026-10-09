@@ -268,7 +268,7 @@ private fun CallEntryRow(
                 if (!isMissed && entry.durationSecs > 0) {
                     Text(
                         text = " - ${formatDuration(entry.durationSecs)}",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

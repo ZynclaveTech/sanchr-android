@@ -267,13 +267,13 @@ fun ChatsListScreen(
                             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
                             Text(
                                 text = "No messages yet",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = IosType.cardTitle,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                             Text(
                                 text = "Start a conversation to begin messaging securely.",
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = IosType.body,
                                 color = SanchrGray500,
                             )
                         }
@@ -287,7 +287,7 @@ fun ChatsListScreen(
                     ) {
                         Text(
                             text = state.message,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = IosType.body,
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
@@ -748,13 +748,13 @@ private fun CaptureDestinationPicker(
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = SanchrTheme.spacing.default)) {
             Text(
                 text = "Send photo to",
-                style = MaterialTheme.typography.titleMedium,
+                style = IosType.cardTitle,
                 modifier = Modifier.padding(horizontal = IosScreenHorizontal, vertical = SanchrTheme.spacing.sm),
             )
             if (conversations.isEmpty()) {
                 Text(
                     text = "No conversations yet.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = IosScreenHorizontal),
                 )
@@ -1082,8 +1082,8 @@ private fun ShelfRow(
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = SanchrGray400)
         Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
-        Text(text = label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        Text(text = count.toString(), style = MaterialTheme.typography.labelMedium, color = SanchrGray400)
+        Text(text = label, style = IosType.bodyLarge, modifier = Modifier.weight(1f))
+        Text(text = count.toString(), style = IosType.sectionLabel, color = SanchrGray400)
     }
 }
 

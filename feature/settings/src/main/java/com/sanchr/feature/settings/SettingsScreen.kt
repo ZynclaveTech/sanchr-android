@@ -338,7 +338,7 @@ private fun DeleteAccountDialog(
             Column {
                 Text(
                     text = "This permanently deletes your account. It cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 listOf(
@@ -349,7 +349,7 @@ private fun DeleteAccountDialog(
                 ).forEach { consequence ->
                     Text(
                         text = "•  $consequence",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -358,7 +358,7 @@ private fun DeleteAccountDialog(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                     Text(
                         text = state.message,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -372,7 +372,7 @@ private fun DeleteAccountDialog(
                     )
                     Text(
                         text = "I understand this cannot be undone",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                     )
                 }
             }

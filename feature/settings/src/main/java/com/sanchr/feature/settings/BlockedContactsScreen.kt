@@ -100,7 +100,7 @@ fun BlockedContactsScreen(
                                 Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
                                 Text(
                                     text = contact.displayName,
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = IosType.bodyLarge,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(1f),
                                 )

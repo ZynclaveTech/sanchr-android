@@ -59,6 +59,7 @@ import com.sanchr.core.designsystem.component.CountryCodePickerInlineChip
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.findCountryByDialCode
 import com.sanchr.core.designsystem.component.resolveDefaultCountry
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -192,7 +193,7 @@ fun LoginPhoneScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
                     text = "Encrypted. Synced. Secure.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
@@ -203,7 +204,7 @@ fun LoginPhoneScreen(
             // Phone section — iOS LoginView.swift:97-179.
             Text(
                 text = "Phone Number",
-                style = MaterialTheme.typography.labelLarge,
+                style = IosType.button,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -254,7 +255,7 @@ fun LoginPhoneScreen(
                             if (loginPhone.phone.isEmpty()) {
                                 Text(
                                     text = "(555) 123-4567",
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = IosType.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -268,7 +269,7 @@ fun LoginPhoneScreen(
 
             Text(
                 text = "We'll send you a verification code",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -286,7 +287,7 @@ fun LoginPhoneScreen(
                     )
                     Text(
                         text = errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -355,7 +356,7 @@ private fun LegalConsentLine(modifier: Modifier = Modifier) {
         }
     Text(
         text = text,
-        style = MaterialTheme.typography.labelSmall,
+        style = IosType.captionSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
         modifier = modifier,

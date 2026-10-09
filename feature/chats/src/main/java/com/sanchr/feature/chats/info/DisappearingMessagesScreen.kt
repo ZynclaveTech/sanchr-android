@@ -19,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -50,7 +51,7 @@ fun DisappearingMessagesScreen(
                 text =
                     "New messages you send in this chat disappear after the chosen time. " +
                         "Off uses your account-wide default instead.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = SanchrTheme.spacing.default),
             )
@@ -73,7 +74,7 @@ fun DisappearingMessagesScreen(
                             )
                             Text(
                                 text = DisappearingDurations.displayName(label),
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = IosType.bodyLarge,
                                 modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
                             )
                         }

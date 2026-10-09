@@ -311,7 +311,7 @@ fun ChatDetailScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Voice",
-                                style = MaterialTheme.typography.labelSmall,
+                                style = IosType.captionSmall,
                                 color = SanchrGray400,
                             )
                         }
@@ -335,7 +335,7 @@ fun ChatDetailScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Vault",
-                                style = MaterialTheme.typography.labelSmall,
+                                style = IosType.captionSmall,
                                 color = SanchrGray400,
                             )
                         }
@@ -452,7 +452,7 @@ fun ChatDetailScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Messages are end-to-end encrypted",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = SanchrCyan500,
                     )
                 }
@@ -472,7 +472,7 @@ fun ChatDetailScreen(
                 ) {
                     Text(
                         text = "Today",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = SanchrGray400,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
@@ -483,7 +483,7 @@ fun ChatDetailScreen(
             if (uiState.peerTyping) {
                 Text(
                     text = "typing...",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                     modifier =
                         Modifier.padding(
@@ -620,12 +620,12 @@ private fun LocationMessageBubble(
                 Column {
                     Text(
                         text = "Location",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = IosType.bodyLarge,
                         color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                     )
                     Text(
                         text = "%.5f, %.5f".format(pin.latitude, pin.longitude),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = if (message.isFromMe) SanchrWhite.copy(alpha = 0.8f) else SanchrGray400,
                     )
                 }
@@ -704,7 +704,7 @@ private fun IdentityChangeBanner(
             Column {
                 Text(
                     text = "Security code changed",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
@@ -712,7 +712,7 @@ private fun IdentityChangeBanner(
                         "$contactName's security code changed. This happens when they reinstall or switch " +
                             "devices, but it can also mean someone is intercepting this chat. Messages won't " +
                             "send until you review.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -1022,7 +1022,7 @@ private fun MessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
 
@@ -1085,7 +1085,7 @@ private fun ReactionPicker(
             QUICK_REACTIONS.forEach { emoji ->
                 Text(
                     text = emoji,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = IosType.sectionHeader,
                     modifier =
                         Modifier
                             .clickable { onPick(emoji) }
@@ -1124,14 +1124,14 @@ private fun QuoteCard(
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
             Text(
                 text = quote?.authorName ?: "Reply",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = textColor,
                 maxLines = 1,
             )
             Text(
                 text = quote?.preview ?: "Replied to a message",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = textColor.copy(alpha = 0.85f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1163,14 +1163,14 @@ private fun ReplyBanner(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = authorName,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = SanchrIndigo500,
                     maxLines = 1,
                 )
                 Text(
                     text = preview,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1200,7 +1200,7 @@ private fun ReactionChips(
             ) {
                 Text(
                     text = if (chip.count > 1) "${chip.emoji} ${chip.count}" else chip.emoji,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = IosType.sectionLabel,
                     color = SanchrGray900,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
@@ -1310,7 +1310,7 @@ private fun ImageMessageBubble(
                 if (message.text.isNotEmpty() && message.text != "[Image]") {
                     Text(
                         text = message.text,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                         modifier = Modifier.padding(SanchrTheme.spacing.sm),
                     )
@@ -1324,7 +1324,7 @@ private fun ImageMessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
                 if (message.isFromMe) {
@@ -1391,7 +1391,7 @@ private fun MessageInputBar(
                 placeholder = {
                     Text(
                         text = "Type a message...",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                     )
                 },
                 trailingIcon = {
@@ -1563,10 +1563,10 @@ private fun AttachmentImage(
             deferred ->
                 Text(
                     text = "Tap to download",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = SanchrGray400,
                 )
-            failed -> Text(text = "Image unavailable", style = MaterialTheme.typography.bodySmall, color = SanchrGray400)
+            failed -> Text(text = "Image unavailable", style = IosType.caption, color = SanchrGray400)
             else -> {
                 // The BlurHash placeholder shows the picture's shape and colours
                 // while the blob downloads and decrypts, as on iOS.
@@ -1672,14 +1672,14 @@ private fun ContactMessageBubble(
                     Column {
                         Text(
                             text = card.name.ifBlank { card.phoneNumber },
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = IosType.body,
                             fontWeight = FontWeight.SemiBold,
                             color = foreground,
                         )
                         if (card.name.isNotBlank()) {
                             Text(
                                 text = card.phoneNumber,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = foreground.copy(alpha = 0.8f),
                             )
                         }
@@ -1692,7 +1692,7 @@ private fun ContactMessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
                 if (message.isFromMe) {
@@ -1783,7 +1783,7 @@ private fun VoiceMessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
                 if (message.isFromMe) {
@@ -1818,7 +1818,7 @@ private fun SystemNote(text: String) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = SanchrGray400,
             modifier = Modifier.padding(vertical = 4.dp),
         )
@@ -1853,17 +1853,17 @@ private fun ViewOnceBubble(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (message.isVideoAttachment) "Video" else "Photo",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = IosType.body,
                             color = SanchrGray900,
                         )
-                        Text(text = "View once", style = MaterialTheme.typography.labelSmall, color = SanchrGray400)
+                        Text(text = "View once", style = IosType.captionSmall, color = SanchrGray400)
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = SanchrGray400)
                 }
             }
             Text(
                 text = formatTimestamp(message.timestamp),
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = SanchrGray400,
                 modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
             )
@@ -2099,11 +2099,11 @@ private fun ChatSearchBar(
             if (state.resultIds.isNotEmpty()) {
                 Text(
                     text = "${state.currentIndex + 1}/${state.resultIds.size}",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = IosType.sectionLabel,
                     color = SanchrGray400,
                 )
             } else if (state.query.isNotBlank()) {
-                Text(text = "0/0", style = MaterialTheme.typography.labelMedium, color = SanchrGray400)
+                Text(text = "0/0", style = IosType.sectionLabel, color = SanchrGray400)
             }
             IconButton(onClick = onPrevious, enabled = state.resultIds.size > 1) {
                 Icon(imageVector = Icons.Filled.KeyboardArrowUp, contentDescription = "Previous result")
@@ -2161,7 +2161,7 @@ private fun LinkPreviewCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = LinkPreviewFetcher.domainOf(url),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = fg.copy(alpha = 0.7f),
                     )
                 }
@@ -2169,14 +2169,14 @@ private fun LinkPreviewCard(
                 card.title?.let { title ->
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = IosType.sectionLabel,
                         fontWeight = FontWeight.SemiBold,
                         color = fg,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(text = card.domain, style = MaterialTheme.typography.labelSmall, color = fg.copy(alpha = 0.7f), maxLines = 1)
+                Text(text = card.domain, style = IosType.captionSmall, color = fg.copy(alpha = 0.7f), maxLines = 1)
             }
         }
     }

@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrIndigo100
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -118,7 +119,7 @@ fun ContactSyncScreen(
 
             Text(
                 text = "Find Your Friends",
-                style = MaterialTheme.typography.headlineMedium,
+                style = IosType.screenTitle,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
@@ -127,7 +128,7 @@ fun ContactSyncScreen(
 
             Text(
                 text = "Discover which of your contacts are already on Sanchr. Your privacy is our priority.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
@@ -176,7 +177,7 @@ fun ContactSyncScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
                     Text(
                         text = "Syncing contacts...",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
@@ -193,7 +194,7 @@ fun ContactSyncScreen(
                 ) {
                     Text(
                         text = "${syncState.matchedCount} friends found!",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = IosType.sectionHeader,
                         fontWeight = FontWeight.Bold,
                         color = SanchrSuccess,
                     )
@@ -210,7 +211,7 @@ fun ContactSyncScreen(
             if (syncState.errorMessage != null) {
                 Text(
                     text = syncState.errorMessage!!,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )
@@ -233,7 +234,7 @@ fun ContactSyncScreen(
                 TextButton(onClick = onNavigateBack) {
                     Text(
                         text = "Skip",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = IosType.button,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -280,13 +281,13 @@ private fun PrivacyRationaleCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                 Text(
                     text = description,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

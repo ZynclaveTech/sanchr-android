@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -55,7 +56,7 @@ fun StickerPickerSheet(
                 StickerPack.entries.forEach { entry ->
                     Text(
                         text = entry.icon,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = IosType.sectionHeader,
                         color =
                             if (entry == pack) {
                                 SanchrIndigo500

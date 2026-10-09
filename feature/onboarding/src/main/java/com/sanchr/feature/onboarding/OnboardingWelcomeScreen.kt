@@ -51,6 +51,7 @@ import coil.compose.SubcomposeAsyncImage
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.SanchrOnboardingProgress
 import com.sanchr.core.designsystem.component.SanchrStepEyebrow
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -184,7 +185,7 @@ fun OnboardingWelcomeScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
         Text(
             text =
                 "Your messages are end-to-end encrypted. Only you and the people you chat with can read them.",
-            style = MaterialTheme.typography.bodySmall,
+            style = IosType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier =
@@ -218,7 +219,7 @@ fun OnboardingWelcomeScreen(viewModel: OnboardingViewModel = hiltViewModel()) {
             welcomeState.errorMessage?.let { error ->
                 Text(
                     text = error,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )
@@ -299,12 +300,12 @@ private fun NotificationCard(
         ) {
             Text(
                 text = "Enable Notifications",
-                style = MaterialTheme.typography.labelLarge,
+                style = IosType.button,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Text(
                 text = "Know when you receive messages",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -320,7 +321,7 @@ private fun NotificationCard(
         ) {
             Text(
                 text = "Enable",
-                style = MaterialTheme.typography.labelMedium,
+                style = IosType.sectionLabel,
             )
         }
     }

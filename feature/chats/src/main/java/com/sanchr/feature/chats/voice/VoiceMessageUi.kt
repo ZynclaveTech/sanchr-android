@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.sanchr.core.designsystem.theme.IosType
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.delay
@@ -202,7 +203,7 @@ fun VoicePlayback(
                     .height(28.dp),
         )
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text = formatClock(if (playing) positionMs else totalMs), style = MaterialTheme.typography.labelSmall, color = tint)
+        Text(text = formatClock(if (playing) positionMs else totalMs), style = IosType.captionSmall, color = tint)
     }
 }
 

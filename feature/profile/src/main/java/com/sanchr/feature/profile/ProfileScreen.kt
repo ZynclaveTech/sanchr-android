@@ -269,7 +269,7 @@ fun ProfileScreen(
                 // Display mode
                 Text(
                     text = uiState.displayName.ifEmpty { "Unknown" },
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = IosType.screenTitle,
                     fontWeight = FontWeight.Bold,
                 )
 

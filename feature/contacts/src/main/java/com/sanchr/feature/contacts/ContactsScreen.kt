@@ -157,7 +157,7 @@ fun ContactsScreen(
                             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                             Text(
                                 text = state.message,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -381,7 +381,7 @@ private fun ContactRow(
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = contact.displayName.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = IosType.cardTitle,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
@@ -409,14 +409,14 @@ private fun ContactRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.displayName,
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = if (isOnline) "Online" else contact.bio.ifEmpty { contact.phoneNumber },
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = if (isOnline) SanchrSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

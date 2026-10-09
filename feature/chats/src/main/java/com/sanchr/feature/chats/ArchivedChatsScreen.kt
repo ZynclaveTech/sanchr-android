@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.model.Conversation
 
@@ -53,7 +53,7 @@ fun ArchivedChatsScreen(
     ) { innerPadding ->
         if (archived.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                Text(text = "No archived chats", style = MaterialTheme.typography.bodyMedium, color = SanchrGray500)
+                Text(text = "No archived chats", style = IosType.body, color = SanchrGray500)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {

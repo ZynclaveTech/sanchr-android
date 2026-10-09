@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -111,7 +112,7 @@ private fun EmptyHiddenState(hasQuery: Boolean) {
     ) {
         Text(
             text = if (hasQuery) "No hidden chat matches that." else "Nothing is hidden.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )

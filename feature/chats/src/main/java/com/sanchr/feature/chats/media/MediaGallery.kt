@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +51,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import coil.compose.AsyncImage
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.feature.chats.MessageUiModel
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -130,7 +130,7 @@ fun MediaGallery(
                 Text(
                     text = message,
                     color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     modifier =
                         Modifier
                             .align(Alignment.BottomCenter)
@@ -166,7 +166,7 @@ private fun GalleryPage(
                 Text(
                     text = if (message.isVideoAttachment) "Video unavailable" else "Photo unavailable",
                     color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                 )
             else -> CircularProgressIndicator(color = Color.White)
         }

@@ -44,6 +44,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.component.SecureScreen
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -89,7 +90,7 @@ fun ChatSettingsScreen(
             // Bubble Style selector
             Text(
                 text = "Bubble Style",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -133,7 +134,7 @@ fun ChatSettingsScreen(
                         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.labelMedium,
+                            style = IosType.sectionLabel,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         )
                         if (isSelected) {
@@ -194,7 +195,7 @@ fun ChatSettingsScreen(
                                     .format(java.util.Date(it))
                             } ?: "Never"
                         ),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
@@ -292,7 +293,7 @@ fun ChatSettingsScreen(
                     Text("Save this recovery key somewhere secure before continuing.")
                     Text(
                         text = recoveryKey,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         fontWeight = FontWeight.Bold,
                     )
                 }

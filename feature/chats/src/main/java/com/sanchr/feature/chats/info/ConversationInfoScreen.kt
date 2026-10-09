@@ -34,6 +34,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -79,7 +80,7 @@ fun ConversationInfoScreen(
             verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.default),
         ) {
             uiState.error?.let { message ->
-                Text(text = message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(text = message, style = IosType.caption, color = MaterialTheme.colorScheme.error)
             }
 
             SectionTitle("Security and privacy")
@@ -149,7 +150,7 @@ fun ConversationInfoScreen(
 private fun SectionTitle(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
+        style = IosType.bodyBold,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -179,8 +180,8 @@ private fun InfoRow(
             tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = title, style = IosType.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = subtitle, style = IosType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -201,7 +202,7 @@ private fun ToggleRow(
         Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = subtitle, style = IosType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
