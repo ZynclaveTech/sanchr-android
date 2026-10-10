@@ -115,6 +115,8 @@ class ReceiveMessageUseCase
         private val sessionRecoveryScope: CoroutineScope =
             CoroutineScope(SupervisorJob() + dispatchers.io)
 
+        private val sessionRebuilds = SessionRebuildThrottle()
+
         /**
          * Scope for profile resolution after a new Profile Key arrives: an
          * RPC plus decryption that must not hold up, or be able to fail, the
@@ -527,24 +529,35 @@ class ReceiveMessageUseCase
 
         private fun scheduleSessionRebuild(sender: ServerProvidedSender?) {
             val target = sender ?: return
-            sessionRecoveryScope.launch {
-                try {
-                    signalSessionManager.establishSession(target.senderUserId, target.senderDeviceId)
-                } catch (e: Exception) {
-                    Log.w(TAG, "session rebuild for ${target.senderUserId}:${target.senderDeviceId} failed", e)
-                }
-            }
+            rebuildSession(target.senderUserId, target.senderDeviceId)
         }
 
         private fun scheduleSessionRebuildFromProtocol(e: ProtocolNoSessionException) {
             val senderUuid =
                 runCatching { e.sender }.getOrNull()?.takeIf { it.isNotBlank() } ?: return
             val deviceId = runCatching { e.senderDevice }.getOrNull() ?: return
+            rebuildSession(senderUuid, deviceId)
+        }
+
+        /**
+         * Starts a new session with a sender whose message could not be
+         * decrypted — once. See [SessionRebuildThrottle] for why not once per
+         * message.
+         */
+        private fun rebuildSession(
+            userId: String,
+            deviceId: Int,
+        ) {
+            if (!sessionRebuilds.tryStart(userId, deviceId)) return
             sessionRecoveryScope.launch {
                 try {
-                    signalSessionManager.establishSession(senderUuid, deviceId)
-                } catch (t: Exception) {
-                    Log.w(TAG, "session rebuild (sealed) for $senderUuid:$deviceId failed", t)
+                    signalSessionManager.establishSession(userId, deviceId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "session rebuild for $userId:$deviceId failed", e)
+                } finally {
+                    sessionRebuilds.finished(userId, deviceId)
                 }
             }
         }
