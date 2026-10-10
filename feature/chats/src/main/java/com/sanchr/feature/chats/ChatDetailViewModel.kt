@@ -53,11 +53,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChatDetailViewModel
     @Inject
@@ -82,10 +84,16 @@ class ChatDetailViewModel
         private val connectivityMonitor: ConnectivityMonitor,
         @ApplicationContext private val appContext: Context,
     ) : ViewModel() {
-        private companion object {
+        internal companion object {
             const val TAG = "ChatDetailViewModel"
             const val PRESENCE_REFRESH_MS = 15_000L
             const val SEARCH_DEBOUNCE_MS = 300L
+
+            /** Messages held when a chat opens — several screens' worth. */
+            const val INITIAL_WINDOW = 200
+
+            /** Added each time the user reaches the top of the window. */
+            const val WINDOW_STEP = 200
             const val DRAFT_SAVE_DEBOUNCE_MS = 400L
         }
 
@@ -193,10 +201,21 @@ class ChatDetailViewModel
             }
         }
 
+        /**
+         * How many of the newest messages the transcript holds.
+         *
+         * A window, not the whole conversation. The observer used to be
+         * unbounded, so opening a long chat streamed every message it had ever
+         * held into memory and into composition on every change — and the
+         * `loadMoreMessages` scaffolding beside it was never called by
+         * anything, so the window it implied did not exist either.
+         */
+        private val windowSize = MutableStateFlow(INITIAL_WINDOW)
+
         private fun observeMessages() {
             viewModelScope.launch {
-                messageRepository
-                    .observeMessages(conversationId)
+                windowSize
+                    .flatMapLatest { limit -> messageRepository.observeRecentMessages(conversationId, limit) }
                     .catch { /* DB closed during logout — nav teardown cancels this scope */ }
                     .collect { messages ->
                         domainMessages = messages.associateBy { it.id }
@@ -204,6 +223,11 @@ class ChatDetailViewModel
                             state.copy(
                                 messages = messages.toUiModels(state.conversation),
                                 isLoading = false,
+                                isLoadingMore = false,
+                                // A full window means there may be more behind
+                                // it; a short one means we have reached the
+                                // start of the conversation.
+                                hasMoreMessages = messages.size >= windowSize.value,
                             )
                         }
                         markReadIfNewInbound(messages)
@@ -280,7 +304,7 @@ class ChatDetailViewModel
          * peer most wants confirmation of, mirroring iOS's explicit
          * `upToMessageId`.
          *
-         * Reads directly from [MessageRepository.observeMessages] rather
+         * Reads directly from the repository's windowed observer rather
          * than [uiState]'s already-mapped list: that list is populated by
          * [observeMessages]'s own collector, launched separately in `init`,
          * and may still be empty by the time this runs. A conversation with
@@ -301,7 +325,11 @@ class ChatDetailViewModel
                 val currentUserId = sessionManager.getUserId() ?: return
                 val newestInboundMessage =
                     messageRepository
-                        .observeMessages(conversationId)
+                        // The window, not the whole transcript: the newest
+                        // inbound message is in the newest window by
+                        // definition, and the unbounded observer would stream
+                        // the entire conversation to find it.
+                        .observeRecentMessages(conversationId, INITIAL_WINDOW)
                         .first()
                         .filter { it.senderId != currentUserId }
                         .maxByOrNull { it.timestamp }
@@ -591,26 +619,18 @@ class ChatDetailViewModel
             if (!saved) Log.w(TAG, "auto-save to gallery failed for ${message.id}")
         }
 
+        /**
+         * Grows the window as the user scrolls back.
+         *
+         * This used to call `MessageRepository.loadMoreMessages`, which
+         * ignores the `beforeTimestamp` it is given and always re-queries
+         * offset 0 — the same newest page, merged into nothing. Nothing called
+         * it, which is the only reason that never showed.
+         */
         fun loadMoreMessages() {
-            val messages = _uiState.value.messages
-            if (messages.isEmpty() || _uiState.value.isLoadingMore) return
-
-            viewModelScope.launch {
-                _uiState.update { it.copy(isLoadingMore = true) }
-                val oldestTimestamp = messages.minOfOrNull { it.timestamp } ?: 0L
-                val olderMessages =
-                    messageRepository.loadMoreMessages(
-                        conversationId = conversationId,
-                        beforeTimestamp = oldestTimestamp,
-                        limit = 50,
-                    )
-                _uiState.update {
-                    it.copy(
-                        isLoadingMore = false,
-                        hasMoreMessages = olderMessages.size == 50,
-                    )
-                }
-            }
+            if (_uiState.value.isLoadingMore || !_uiState.value.hasMoreMessages) return
+            _uiState.update { it.copy(isLoadingMore = true) }
+            windowSize.update { it + WINDOW_STEP }
         }
 
         fun dismissError() {

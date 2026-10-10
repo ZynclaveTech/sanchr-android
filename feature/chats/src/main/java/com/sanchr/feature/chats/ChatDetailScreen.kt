@@ -111,6 +111,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -184,6 +185,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -480,6 +482,26 @@ private fun TranscriptList(
     // recomposition of the busiest screen in the app. Day separators come from
     // the same pass.
     val rows = remember(uiState.messages) { transcriptRows(uiState.messages) }
+
+    // Older messages, as the user reaches the end of what is loaded.
+    //
+    // `loadMoreMessages` existed on the view model and nothing ever called it,
+    // so a conversation stopped at its first page: scrolling back far enough
+    // simply ran out of transcript, with the rest sitting in the database. The
+    // list is reverseLayout, so the *last* index is the oldest row.
+    LaunchedEffect(listState, rows.size, uiState.hasMoreMessages) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo
+                .lastOrNull()
+                ?.index ?: 0
+        }.distinctUntilChanged()
+            .collect { lastVisible ->
+                if (uiState.hasMoreMessages && rows.isNotEmpty() && lastVisible >= rows.size - LOAD_MORE_THRESHOLD) {
+                    viewModel.loadMoreMessages()
+                }
+            }
+    }
+
     LazyColumn(
         modifier =
             modifier
@@ -493,6 +515,17 @@ private fun TranscriptList(
         reverseLayout = true,
         verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
     ) {
+        if (uiState.isLoadingMore) {
+            // After the items, which is above them in a reverseLayout list.
+            item(key = "loading-older") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.md),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+            }
+        }
         items(
             items = rows,
             key = { it.key },
@@ -2491,3 +2524,6 @@ private fun ViewOnceVideo(file: File) {
 }
 
 private const val BANNER_TINT = 0.12f
+
+/** How close to the oldest loaded row triggers the next page. */
+private const val LOAD_MORE_THRESHOLD = 5

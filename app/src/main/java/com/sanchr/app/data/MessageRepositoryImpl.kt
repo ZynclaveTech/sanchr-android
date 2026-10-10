@@ -136,9 +136,12 @@ class MessageRepositoryImpl
                 entity?.toDomain()
             }
 
-        override fun observeMessages(conversationId: String): Flow<List<Message>> =
+        override fun observeRecentMessages(
+            conversationId: String,
+            limit: Int,
+        ): Flow<List<Message>> =
             combine(
-                messageDao.observeMessages(conversationId),
+                messageDao.observeRecentMessages(conversationId, limit),
                 reactionDao.observeForConversation(conversationId),
             ) { entities, reactions ->
                 val byMessage = reactions.groupBy { it.messageId }
@@ -324,21 +327,6 @@ class MessageRepositoryImpl
             return messageDao.searchTextMessageIds(conversationId, escaped)
         }
 
-        override suspend fun loadMoreMessages(
-            conversationId: String,
-            beforeTimestamp: Long,
-            limit: Int,
-        ): List<Message> {
-            // DAO uses limit+offset pagination; offset 0 for simplicity — caller manages externally
-            val entities =
-                messageDao.getMessagesPaginated(
-                    conversationId = conversationId,
-                    limit = limit,
-                    offset = 0,
-                )
-            return entities.map { it.toDomain() }
-        }
-
         override suspend fun createConversation(participantId: String): Conversation {
             val protoConv =
                 messagingClient.startDirectConversation(
@@ -522,7 +510,7 @@ class MessageRepositoryImpl
                 participants = participants,
                 title = derivedTitle,
                 avatarUrl = avatarUrl,
-                lastMessage = null, // Loaded separately via observeMessages
+                lastMessage = null, // Loaded separately by the chat screen's own observer
                 unreadCount = unreadCount,
                 isPinned = isPinned,
                 isMuted = isMuted,

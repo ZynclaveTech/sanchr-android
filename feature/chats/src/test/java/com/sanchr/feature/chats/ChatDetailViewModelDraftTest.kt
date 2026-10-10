@@ -53,7 +53,7 @@ class ChatDetailViewModelDraftTest {
     fun setUp() {
         Dispatchers.setMain(dispatcher)
         every { messageRepository.observeConversation(any()) } returns emptyFlow()
-        every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+        every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
         every { realtimeManager.typingCache } returns MutableStateFlow(emptyMap())
         coEvery { messageRepository.oneToOneRecipient(any(), any()) } returns "peer"
         coEvery { messageRepository.draftText(conversationId) } returns null

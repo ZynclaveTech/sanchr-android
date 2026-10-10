@@ -42,7 +42,7 @@ class ChatDetailViewModelIdentityChangeTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { messageRepository.observeConversation(any()) } returns emptyFlow()
-        every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+        every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
         every { realtimeManager.typingCache } returns MutableStateFlow(emptyMap())
         coEvery { messageRepository.oneToOneRecipient("conv-1", "self") } returns "peer"
     }

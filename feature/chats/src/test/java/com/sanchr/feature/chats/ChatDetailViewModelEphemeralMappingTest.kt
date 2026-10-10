@@ -98,7 +98,7 @@ class ChatDetailViewModelEphemeralMappingTest {
     @Test
     fun `a message with an expiry is marked ephemeral`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns
                 flowOf(listOf(message(expiresAt = Instant.fromEpochMilliseconds(9_000L))))
 
             val viewModel = newViewModel()
@@ -114,7 +114,7 @@ class ChatDetailViewModelEphemeralMappingTest {
     @Test
     fun `a message without an expiry is not marked ephemeral`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns
                 flowOf(listOf(message(expiresAt = null)))
 
             val viewModel = newViewModel()

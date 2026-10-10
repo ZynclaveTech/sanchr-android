@@ -93,7 +93,7 @@ class ChatDetailViewModelContactTest {
     @Test
     fun `sendContact sends the wire body with the contact content type`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+            every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
             coEvery { sendMessageUseCase(any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
             val vm = newViewModel()
 
@@ -107,7 +107,7 @@ class ChatDetailViewModelContactTest {
     @Test
     fun `a contact row exposes the card to the bubble`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(any()) } returns
+            every { messageRepository.observeRecentMessages(any(), any()) } returns
                 flowOf(
                     listOf(
                         Message(
@@ -134,7 +134,7 @@ class ChatDetailViewModelContactTest {
     @Test
     fun `reactions are grouped into chips with the viewer's own marked`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(any()) } returns
+            every { messageRepository.observeRecentMessages(any(), any()) } returns
                 flowOf(
                     listOf(
                         Message(
@@ -181,7 +181,7 @@ class ChatDetailViewModelContactTest {
                 timestamp = Instant.fromEpochMilliseconds(1_000),
                 replyToId = replyTo,
             )
-            every { messageRepository.observeMessages(any()) } returns
+            every { messageRepository.observeRecentMessages(any(), any()) } returns
                 flowOf(
                     listOf(
                         msg("m1", "self", "see you at six"),
@@ -212,7 +212,7 @@ class ChatDetailViewModelContactTest {
     fun `view-once media is flagged for the secure viewer and a tombstone reads Viewed`() =
         runTest(testDispatcher) {
             val once = MediaAttachment(url = "sanchr-media://m", mimeType = "image/jpeg", isViewOnce = true)
-            every { messageRepository.observeMessages(any()) } returns
+            every { messageRepository.observeRecentMessages(any(), any()) } returns
                 flowOf(
                     listOf(
                         Message(
@@ -255,7 +255,7 @@ class ChatDetailViewModelContactTest {
                     status = MessageStatus.DELIVERED,
                     timestamp = Instant.fromEpochMilliseconds(1_000),
                 )
-            every { messageRepository.observeMessages(any()) } returns flowOf(listOf(row))
+            every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(listOf(row))
             coEvery { forwardMessageUseCase(row, listOf("c2", "c3")) } returns ForwardMessageUseCase.Outcome(sent = 2, failed = 0)
             val vm = newViewModel()
             advanceUntilIdle()
@@ -280,7 +280,7 @@ class ChatDetailViewModelContactTest {
     @Test
     fun `search debounces, keeps only the latest query's results, and steps with wrap-around`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+            every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
             coEvery { messageRepository.searchMessages("conv-1", "hel") } returns listOf("m3", "m1")
             coEvery { messageRepository.searchMessages("conv-1", "hello") } returns listOf("m3")
             val vm = newViewModel()
@@ -339,7 +339,7 @@ class ChatDetailViewModelContactTest {
                     status = MessageStatus.DELIVERED,
                     timestamp = Instant.fromEpochMilliseconds(1_000),
                 )
-            every { messageRepository.observeMessages(any()) } returns flowOf(listOf(quoted))
+            every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(listOf(quoted))
             coEvery { sendAttachmentUseCase(any(), any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
             coEvery { sendMessageUseCase(any(), any(), any(), any()) } returns Result.Success(mockk(relaxed = true))
             val vm = newViewModel()
@@ -364,7 +364,7 @@ class ChatDetailViewModelContactTest {
     fun `a view-once video is flagged as video so the placeholder and viewer play it`() =
         runTest(testDispatcher) {
             val clip = MediaAttachment(url = "sanchr-media://v", mimeType = "video/mp4", isViewOnce = true)
-            every { messageRepository.observeMessages(any()) } returns
+            every { messageRepository.observeRecentMessages(any(), any()) } returns
                 flowOf(
                     listOf(
                         Message(

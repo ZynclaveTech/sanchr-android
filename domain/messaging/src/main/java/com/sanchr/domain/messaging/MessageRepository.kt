@@ -18,8 +18,17 @@ interface MessageRepository {
     /** Observes a single conversation and its lightweight participant metadata. */
     fun observeConversation(conversationId: String): Flow<Conversation?>
 
-    /** Observes messages in a specific conversation. */
-    fun observeMessages(conversationId: String): Flow<List<Message>>
+    /**
+     * The newest [limit] messages of a conversation, oldest first.
+     *
+     * A window rather than the whole transcript: the unbounded observer
+     * streams every message a conversation has ever had into memory and into
+     * composition on each change.
+     */
+    fun observeRecentMessages(
+        conversationId: String,
+        limit: Int,
+    ): Flow<List<Message>>
 
     /**
      * Persists a new outbound message in the QUEUED state and returns the
@@ -209,13 +218,6 @@ interface MessageRepository {
         conversationId: String,
         query: String,
     ): List<String>
-
-    /** Fetches older messages for pagination. */
-    suspend fun loadMoreMessages(
-        conversationId: String,
-        beforeTimestamp: Long,
-        limit: Int,
-    ): List<Message>
 
     /** Creates a new direct conversation with a user. */
     suspend fun createConversation(participantId: String): Conversation
