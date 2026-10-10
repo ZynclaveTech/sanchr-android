@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,9 +47,13 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 
 /**
- * The mic control for the composer. Tap to start (asking for the
- * microphone permission the first time), tap again to stop and send;
- * the close button discards. Shows elapsed time while recording.
+ * The mic control for the composer. Tap to start (asking for the microphone
+ * permission the first time), tap again to stop — which now hands the clip to
+ * a preview rather than sending it.
+ *
+ * Stopping used to send immediately, so a voice note could not be listened to,
+ * re-recorded or thought better of: the only way out was to notice the mistake
+ * before releasing the button. iOS previews every clip before it goes.
  */
 @Composable
 fun VoiceRecordButton(
@@ -59,6 +65,7 @@ fun VoiceRecordButton(
     val recorder = remember { VoiceRecorder(context) }
     var recording by remember { mutableStateOf(false) }
     var elapsedMs by remember { mutableIntStateOf(0) }
+    var pending by remember { mutableStateOf<VoiceClip?>(null) }
     val askPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted && recorder.start()) recording = true
@@ -70,7 +77,31 @@ fun VoiceRecordButton(
             delay(SAMPLE_INTERVAL_MS)
         }
     }
-    DisposableEffect(Unit) { onDispose { recorder.cancel() } }
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder.cancel()
+            // A clip still waiting in the preview when the screen goes is
+            // deleted: it was never sent, and it is audio of the user in the
+            // clear.
+            pending?.file?.delete()
+        }
+    }
+
+    pending?.let { clip ->
+        VoiceClipPreview(
+            clip = clip,
+            onDiscard = {
+                clip.file.delete()
+                pending = null
+            },
+            onSend = {
+                pending = null
+                onClip(clip)
+            },
+            modifier = modifier,
+        )
+        return
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         if (recording) {
@@ -92,7 +123,7 @@ fun VoiceRecordButton(
                 if (recording) {
                     recording = false
                     elapsedMs = 0
-                    recorder.stop()?.let(onClip)
+                    pending = recorder.stop()
                 } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                     PackageManager.PERMISSION_GRANTED
                 ) {
@@ -106,7 +137,42 @@ fun VoiceRecordButton(
         ) {
             Icon(
                 imageVector = if (recording) Icons.Filled.Stop else Icons.Filled.Mic,
-                contentDescription = if (recording) "Stop and send" else "Record voice message",
+                contentDescription = if (recording) "Stop recording" else "Record voice message",
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * A recorded clip before it is sent: play it back, then send or discard.
+ *
+ * Replaces sending the moment the stop button is pressed, which left no way to
+ * hear a voice note before the other person did.
+ */
+@Composable
+private fun VoiceClipPreview(
+    clip: VoiceClip,
+    onDiscard: () -> Unit,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        IconButton(onClick = onDiscard, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Filled.Delete, contentDescription = "Discard recording", tint = MaterialTheme.colorScheme.error)
+        }
+        VoicePlayback(
+            durationMs = clip.durationMs,
+            waveform = clip.waveform,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Already on disk: this is our own recording, not a download.
+            openFile = { clip.file },
+            modifier = Modifier.weight(1f),
+        )
+        FilledIconButton(onClick = onSend, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Send,
+                contentDescription = "Send voice message",
                 modifier = Modifier.size(20.dp),
             )
         }

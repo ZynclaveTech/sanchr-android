@@ -58,6 +58,10 @@ class VoiceRecorder(
             Log.w(TAG, "Could not start recording: ${e.message}")
             r.release()
             out.delete()
+            // Cleared on the failure path too. `samples` was only cleared on a
+            // successful start, so a start that failed left the previous
+            // clip's levels behind and the next recording drew its waveform.
+            samples.clear()
             false
         }
     }
@@ -103,6 +107,7 @@ class VoiceRecorder(
         r.release()
         file?.delete()
         file = null
+        samples.clear()
     }
 
     private companion object {
