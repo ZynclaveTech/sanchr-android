@@ -5,6 +5,7 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import com.sanchr.core.crypto.MediaEncryptor
 import com.sanchr.core.model.MediaAttachment
+import com.sanchr.core.network.link.GuardedLinkDownloader
 import com.sanchr.core.network.link.LinkDetector
 import com.sanchr.core.network.media.BlobStore
 import com.sanchr.core.network.media.BlobStoreException
@@ -38,6 +39,7 @@ class AttachmentDownloader
         @ApplicationContext private val context: Context,
         private val mediaClient: MediaServiceClient,
         private val blobStore: BlobStore,
+        private val linkDownloader: GuardedLinkDownloader,
     ) {
         private val inFlight = Mutex()
 
@@ -111,30 +113,31 @@ class AttachmentDownloader
             return File(File(context.cacheDir, CACHE_DIR), AttachmentCacheNames.fileName(messageId) + ext)
         }
 
-        private suspend fun fetch(attachment: MediaAttachment): ByteArray {
-            val url = downloadUrl(attachment)
-            return try {
-                blobStore.get(url)
+        private suspend fun fetch(attachment: MediaAttachment): ByteArray =
+            try {
+                val mediaId = attachment.mediaId
+                if (mediaId != null) blobStore.get(signedUrl(mediaId)) else fetchLink(attachment.url)
             } catch (e: BlobStoreException) {
                 Log.w(TAG, "attachment download failed: HTTP ${e.statusCode}")
                 throw AttachmentException(if (e.statusCode in GONE_STATUSES) "media is no longer available" else "download failed", e)
             }
-        }
 
-        /** Where the bytes are: a signed URL for uploaded media, or the link the message carries. */
-        private suspend fun downloadUrl(attachment: MediaAttachment): String {
-            val mediaId = attachment.mediaId
-            if (mediaId != null) {
-                return try {
-                    mediaClient.getDownloadUrl(GetDownloadUrlRequest(mediaId)).url
-                } catch (e: Exception) {
-                    throw AttachmentException("no download URL for media $mediaId", e)
-                }
+        private suspend fun signedUrl(mediaId: String): String =
+            try {
+                mediaClient.getDownloadUrl(GetDownloadUrlRequest(mediaId)).url
+            } catch (e: Exception) {
+                throw AttachmentException("no download URL for media $mediaId", e)
             }
-            // Not uploaded media but a URL the sender wrote, and this can run
-            // on auto-download with nobody tapping anything.
-            if (!isFetchableLink(attachment.url)) throw AttachmentException("attachment link is not one this device will fetch")
-            return attachment.url
+
+        /**
+         * Not uploaded media but a URL the sender wrote, and this can run on
+         * auto-download with nobody tapping anything. The link has to read as
+         * a public `https` address, and it is fetched by a client that checks
+         * the same thing of every address it actually connects to.
+         */
+        private suspend fun fetchLink(url: String): ByteArray {
+            if (!isFetchableLink(url)) throw AttachmentException("attachment link is not one this device will fetch")
+            return linkDownloader.get(url, MAX_LINK_BYTES)
         }
 
         companion object {
@@ -152,6 +155,9 @@ class AttachmentDownloader
 
             private const val TAG = "AttachmentDownloader"
             private const val CACHE_DIR = "attachments"
+
+            /** The most a sender's link may deliver: the same ceiling as an attachment that is sent. */
+            private const val MAX_LINK_BYTES = 100L * 1024 * 1024
             private val GONE_STATUSES = setOf(403, 404, 410)
         }
     }

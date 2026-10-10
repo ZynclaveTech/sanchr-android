@@ -71,9 +71,24 @@ object LinkPreviewGuard {
                 if (!response.isRedirect) return response
                 val next = response.header("Location")?.let(request.url::resolve)
                 response.close()
-                request = request.newBuilder().url(next ?: throw IOException("link preview refused: unusable redirect")).build()
+                request = request.newBuilder().url(redirectTarget(from = request.url, to = next)).build()
             }
             throw IOException("link preview refused: too many redirects")
+        }
+
+        /**
+         * Where a redirect may lead: somewhere, and not from an encrypted
+         * connection down to a plain one — a link that was `https` when it
+         * was judged must not end as a request anyone on the path can read
+         * or answer.
+         */
+        private fun redirectTarget(
+            from: HttpUrl,
+            to: HttpUrl?,
+        ): HttpUrl {
+            val downgrade = to != null && from.isHttps && !to.isHttps
+            if (to == null || downgrade) throw IOException("link preview refused: unusable redirect")
+            return to
         }
 
         private fun check(url: HttpUrl) {

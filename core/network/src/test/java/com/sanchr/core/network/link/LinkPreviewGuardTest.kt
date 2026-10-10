@@ -152,6 +152,17 @@ class LinkPreviewGuardTest {
     }
 
     @Test
+    fun `a redirect may not downgrade from https to http`() {
+        val chain = chainAnswering("https://example.com/a" to "http://example.com/a")
+        assertFailsWith<IOException> { CheckedRedirectsInterceptor { null }.intercept(chain) }
+        verify(exactly = 1) { chain.proceed(any()) }
+
+        // The other direction is an upgrade, and fine.
+        val upgrade = chainAnswering("http://example.com/a" to "https://example.com/a", "https://example.com/a" to null)
+        assertEquals(200, CheckedRedirectsInterceptor { null }.intercept(upgrade).code)
+    }
+
+    @Test
     fun `a redirect loop ends`() {
         val chain = mockk<Interceptor.Chain>()
         every { chain.request() } returns Request.Builder().url("https://example.com/a").build()
