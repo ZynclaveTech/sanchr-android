@@ -258,11 +258,9 @@ fun ChatDetailScreen(
     val context = LocalContext.current
     val shareLocation = rememberLocationSharer(onShare = viewModel::sendLocation)
     val scope = rememberCoroutineScope()
-    val capture =
-        rememberChatCameraCapture(
-            prepare = viewModel::prepareAttachment,
-            onCaptured = viewModel::sendAttachment,
-        )
+    // Straight into the review screen, so the shot can be looked at and
+    // captioned before it goes, as iOS allows.
+    val capture = rememberChatCameraCapture(onCaptured = { uri -> batch = listOf(uri) })
     val listState = rememberLazyListState()
     val focusedResultId = uiState.search?.currentId
     LaunchedEffect(focusedResultId, uiState.messages.size) {
@@ -329,7 +327,11 @@ fun ChatDetailScreen(
                 BatchReviewIfPicked(
                     prepare = viewModel::prepareAttachment,
                     uris = batch,
-                    onCancel = { batch = emptyList() },
+                    // A camera capture is the full-resolution original in the
+                    // clear and only ever lived to be reviewed, so it goes
+                    // whether the review sent it or the user backed out.
+                    discard = { uri -> CapturedPhotos.discard(context, uri) },
+                    onDismiss = { batch = emptyList() },
                     onPrepared = viewModel::sendAttachments,
                 )
                 uiState.uploadProgress?.let { fraction ->
@@ -649,16 +651,24 @@ private fun BatchReviewIfPicked(
      * through this screen.
      */
     prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
-    onCancel: () -> Unit,
+    /**
+     * Called once a URI has served its purpose. Deletes a camera capture; a
+     * no-op for a gallery URI, which is not ours to delete.
+     */
+    discard: (Uri) -> Unit,
+    onDismiss: () -> Unit,
     onPrepared: (List<AttachmentUploader.Prepared>) -> Unit,
 ) {
     if (uris.isEmpty()) return
     val scope = rememberCoroutineScope()
     MediaBatchReview(
         uris = uris,
-        onCancel = onCancel,
+        onCancel = {
+            uris.forEach(discard)
+            onDismiss()
+        },
         onSend = { chosen, caption ->
-            onCancel()
+            onDismiss()
             scope.launch {
                 val prepared =
                     chosen.mapIndexedNotNull { index, uri ->
@@ -667,6 +677,9 @@ private fun BatchReviewIfPicked(
                             // of photos does not repeat it.
                             ?.let { if (index == 0 && caption != null) it.withCaption(caption) else it }
                     }
+                // After the bytes are in hand, never before: dismissing the
+                // sheet does not mean the files have been read yet.
+                uris.forEach(discard)
                 onPrepared(prepared)
             }
         },
@@ -2092,36 +2105,29 @@ private fun addToContacts(
  * from the chat list.
  *
  * `TakePicture` reports success alone, so the destination has to be named up
- * front and held across the launch. Whatever happens, the capture is deleted
- * once preparation is over: it is the full-resolution original in the clear,
- * EXIF and all, while what gets sent is a re-encoded copy.
+ * front and held across the launch. The shot then goes to the review screen
+ * rather than straight out: iOS lets a camera photo be captioned before it is
+ * sent, and sending the instant the shutter closes gives no chance to look at
+ * what was taken.
  */
 private class ChatCameraCapture(
     val launch: () -> Unit,
 )
 
 @Composable
-private fun rememberChatCameraCapture(
-    prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
-    onCaptured: (AttachmentUploader.Prepared) -> Unit,
-): ChatCameraCapture {
+private fun rememberChatCameraCapture(onCaptured: (Uri) -> Unit): ChatCameraCapture {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<Uri?>(null) }
     val takePicture =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
             val captured = pending
             pending = null
-            if (captured == null) return@rememberLauncherForActivityResult
-            scope.launch {
-                val prepared =
-                    if (saved) prepare(captured) else null
-                withContext(Dispatchers.IO) { CapturedPhotos.discard(context, captured) }
-                when {
-                    prepared != null -> onCaptured(prepared)
-                    saved -> Toast.makeText(context, "That photo couldn't be read.", Toast.LENGTH_SHORT).show()
-                    else -> Unit
-                }
+            when {
+                captured == null -> Unit
+                saved -> onCaptured(captured)
+                // Cancelled at the shutter: the file was created up front, so
+                // it has to go whether or not a photo landed in it.
+                else -> CapturedPhotos.discard(context, captured)
             }
         }
     return remember(takePicture) {
