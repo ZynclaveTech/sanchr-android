@@ -140,4 +140,25 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_14_to_15_adds_the_vault_policy_with_everything_off() {
+        helper.createDatabase("migration-test-15", 14).use { db ->
+            db.execSQL(
+                "INSERT INTO conversations (id, type, participant_ids, unread_count, is_pinned, is_muted, " +
+                    "is_archived, is_hidden, updated_at, created_at) VALUES ('c1', 'DIRECT', '[]', 0, 0, 0, 0, 0, 1, 1)",
+            )
+        }
+        helper.runMigrationsAndValidate("migration-test-15", 15, true, DatabaseModule.migration14To15).use { db ->
+            // An upgrade must not start vaulting, hiding or expiring media in
+            // a chat whose owner never asked for it.
+            db
+                .query(
+                    "SELECT vault_auto_incoming, vault_view_once, vault_capture_protection FROM conversations WHERE id = 'c1'",
+                ).use { c ->
+                    check(c.moveToFirst()) { "the existing conversation did not survive the migration" }
+                    check(c.getInt(0) == 0 && c.getInt(1) == 0 && c.getInt(2) == 0) { "migration turned a policy flag on" }
+                }
+        }
+    }
 }

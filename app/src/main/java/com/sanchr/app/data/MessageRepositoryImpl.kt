@@ -12,6 +12,7 @@ import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.Message
@@ -85,6 +86,18 @@ class MessageRepositoryImpl
             wallpaper: String?,
         ) {
             conversationDao.setWallpaper(conversationId, wallpaper)
+        }
+
+        override suspend fun setVaultPolicy(
+            conversationId: String,
+            policy: ChatVaultPolicy,
+        ) {
+            conversationDao.setVaultPolicy(
+                conversationId = conversationId,
+                autoIncoming = policy.autoVaultIncoming,
+                viewOnce = policy.viewOnceOutgoing,
+                captureProtection = policy.captureProtection,
+            )
         }
 
         override suspend fun setDisappearingDuration(
@@ -517,6 +530,12 @@ class MessageRepositoryImpl
                 isArchived = isArchived,
                 disappearingMessageDuration = disappearingDurationMs,
                 wallpaper = wallpaper,
+                vaultPolicy =
+                    ChatVaultPolicy(
+                        autoVaultIncoming = vaultAutoIncoming,
+                        viewOnceOutgoing = vaultViewOnce,
+                        captureProtection = vaultCaptureProtection,
+                    ),
                 updatedAt = Instant.fromEpochMilliseconds(updatedAt),
                 createdAt = Instant.fromEpochMilliseconds(createdAt),
             )

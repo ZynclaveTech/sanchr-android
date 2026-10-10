@@ -65,6 +65,18 @@ data class ConversationEntity(
      */
     @ColumnInfo(name = "draft_text")
     val draftText: String? = null,
+    /**
+     * The per-chat vault policy (iOS `chatVaultPolicy`), three flags that all
+     * start off. Device-only, like [wallpaper]: nothing on the wire carries
+     * them, so they must survive a sync — a sync that reset them would
+     * silently stop protecting media the user had asked to have protected.
+     */
+    @ColumnInfo(name = "vault_auto_incoming")
+    val vaultAutoIncoming: Boolean = false,
+    @ColumnInfo(name = "vault_view_once")
+    val vaultViewOnce: Boolean = false,
+    @ColumnInfo(name = "vault_capture_protection")
+    val vaultCaptureProtection: Boolean = false,
     @ColumnInfo(name = "disappearing_duration_ms")
     val disappearingDurationMs: Long? = null,
     @ColumnInfo(name = "updated_at")

@@ -18,6 +18,8 @@ data class Conversation(
     val disappearingMessageDuration: Long? = null,
     /** This chat's wallpaper, or null to follow the account-wide choice. */
     val wallpaper: String? = null,
+    /** How this chat treats media; all off until the user changes it here. */
+    val vaultPolicy: ChatVaultPolicy = ChatVaultPolicy.DEFAULT,
     val updatedAt: Instant,
     val createdAt: Instant,
 )

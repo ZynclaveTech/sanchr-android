@@ -62,7 +62,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -378,6 +378,19 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * Adds the per-chat vault policy. All three default to 0, so an upgrade
+     * changes how no existing chat treats its media.
+     */
+    internal val migration14To15 =
+        object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `vault_auto_incoming` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `vault_view_once` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `vault_capture_protection` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -415,6 +428,7 @@ object DatabaseModule {
                     migration11To12,
                     migration12To13,
                     migration13To14,
+                    migration14To15,
                 ).build()
         }
     }

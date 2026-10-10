@@ -1,6 +1,7 @@
 package com.sanchr.domain.messaging
 
 import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageReaction
@@ -293,6 +294,12 @@ interface MessageRepository {
     suspend fun setWallpaper(
         conversationId: String,
         wallpaper: String?,
+    )
+
+    /** Replaces this chat's vault policy. Device-only; nothing is sent. */
+    suspend fun setVaultPolicy(
+        conversationId: String,
+        policy: ChatVaultPolicy,
     )
 
     /** Mutes or unmutes notifications for a conversation: tells the server, then the local row. */
