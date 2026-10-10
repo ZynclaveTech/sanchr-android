@@ -551,7 +551,9 @@ private fun TranscriptList(
                     .padding(horizontal = IosSpacing.screenHorizontal),
             state = listState,
             reverseLayout = true,
-            verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
+            // Spacing is per row, not uniform: a grouped message sits 2dp
+            // under its predecessor and an ungrouped one 6dp, as iOS does.
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (uiState.isLoadingMore) {
                 // After the items, which is above them in a reverseLayout list.
@@ -585,6 +587,11 @@ private fun TranscriptList(
                                 message = row.message,
                                 viewModel = viewModel,
                                 actions = actions,
+                                // One timestamp per run, as iOS shows it:
+                                // repeating it under every bubble of a burst is
+                                // most of why a busy chat read differently from
+                                // the same chat on an iPhone.
+                                showTimestamp = !row.groupedWithNext,
                                 onOpenViewOnce = onOpenViewOnce,
                                 onOpenMedia = onOpenMedia,
                                 onPreviewDocument = onPreviewDocument,
@@ -872,6 +879,7 @@ private fun MessageRow(
     message: MessageUiModel,
     viewModel: ChatDetailViewModel,
     actions: MessageActions,
+    showTimestamp: Boolean,
     onOpenViewOnce: (MessageUiModel) -> Unit,
     onOpenMedia: (MessageUiModel) -> Unit,
     onPreviewDocument: (File, MediaAttachment) -> Unit,
@@ -959,6 +967,7 @@ private fun MessageRow(
                 message = message,
                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
                 actions = actions,
+                showTimestamp = showTimestamp,
                 loadLinkPreview = loadLinkPreview,
             )
     }
@@ -1111,6 +1120,8 @@ private fun MessageBubble(
     message: MessageUiModel,
     onToggleReaction: (String) -> Unit,
     actions: MessageActions,
+    /** False for all but the last bubble of a run, as iOS hides the rest. */
+    showTimestamp: Boolean = true,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     /** Null when the privacy setting is off: no link is ever fetched. */
@@ -1216,19 +1227,21 @@ private fun MessageBubble(
             ReactionChips(message.reactions, onToggleReaction)
 
             // --- Timestamp + read receipts ---
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
-            ) {
-                Text(
-                    text = formatTimestamp(message.timestamp),
-                    style = IosType.captionSmall,
-                    color = SanchrGray400,
-                )
+            if (showTimestamp) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+                ) {
+                    Text(
+                        text = formatTimestamp(message.timestamp),
+                        style = IosType.captionSmall,
+                        color = SanchrGray400,
+                    )
 
-                if (message.isFromMe) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    MessageStatusIcon(message)
+                    if (message.isFromMe) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        MessageStatusIcon(message)
+                    }
                 }
             }
         }
@@ -2613,3 +2626,7 @@ private const val LOAD_MORE_THRESHOLD = 5
 
 /** Rows scrolled past before the jump-to-latest control appears. */
 private const val JUMP_VISIBLE_AFTER_ROWS = 3
+
+/** iOS's margins between bubbles: 2pt inside a run, 6pt between runs. */
+private val GROUPED_GAP = 2.dp
+private val UNGROUPED_GAP = 6.dp

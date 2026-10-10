@@ -36,6 +36,18 @@ sealed interface TranscriptRow {
 
     data class Msg(
         val message: MessageUiModel,
+        /**
+         * Whether the message above this one is from the same sender, close
+         * enough in time to read as one run.
+         *
+         * iOS groups on sender, direction and a 180-second gap, drawing 2pt
+         * between grouped bubbles against 6pt otherwise and showing one
+         * timestamp per run. Android spaced every bubble equally and repeated
+         * the timestamp and tick on all of them, which is most of why a busy
+         * conversation looked different from the same chat on an iPhone.
+         */
+        val groupedWithPrevious: Boolean = false,
+        val groupedWithNext: Boolean = false,
     ) : TranscriptRow {
         override val key: String get() = message.id
     }
@@ -90,7 +102,42 @@ fun transcriptRows(
         if (message.id == firstUnreadId) rows += TranscriptRow.Unread
         rows += TranscriptRow.Msg(message)
     }
-    return rows.asReversed()
+    return rows.withGrouping(firstUnreadId).asReversed()
+}
+
+/**
+ * Marks runs of messages from the same sender, oldest-first input.
+ *
+ * iOS's rule exactly: same sender, same direction, less than
+ * [GROUPING_WINDOW_MS] apart, and never grouped across the unread divider,
+ * which separates them visually anyway.
+ */
+private fun List<TranscriptRow>.withGrouping(firstUnreadId: String?): List<TranscriptRow> {
+    fun joins(
+        earlier: MessageUiModel?,
+        later: MessageUiModel,
+    ): Boolean {
+        if (earlier == null) return false
+        if (later.id == firstUnreadId) return false
+        return earlier.isFromMe == later.isFromMe &&
+            later.timestamp - earlier.timestamp < GROUPING_WINDOW_MS
+    }
+
+    val messages = mapIndexedNotNull { index, row -> (row as? TranscriptRow.Msg)?.let { index to it.message } }
+    val grouping = HashMap<String, Pair<Boolean, Boolean>>(messages.size)
+    messages.forEachIndexed { position, (_, message) ->
+        val previous = messages.getOrNull(position - 1)?.second
+        val next = messages.getOrNull(position + 1)?.second
+        grouping[message.id] = joins(previous, message) to (next != null && joins(message, next))
+    }
+    return map { row ->
+        if (row is TranscriptRow.Msg) {
+            val (withPrevious, withNext) = grouping[row.message.id] ?: (false to false)
+            row.copy(groupedWithPrevious = withPrevious, groupedWithNext = withNext)
+        } else {
+            row
+        }
+    }
 }
 
 /**
@@ -149,6 +196,9 @@ private fun sameYear(
     fun year(value: Long) = Calendar.getInstance(locale).apply { timeInMillis = value }.get(Calendar.YEAR)
     return year(then) == year(now)
 }
+
+/** iOS's `groupingThreshold`: 180 seconds. */
+private const val GROUPING_WINDOW_MS = 180_000L
 
 private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
 private const val WEEK_DAYS = 6
