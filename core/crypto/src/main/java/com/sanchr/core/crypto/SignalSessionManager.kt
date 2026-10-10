@@ -82,10 +82,10 @@ class SignalSessionManager
          * when it publishes none.
          *
          * Used to check a sender's claim about who they are when nothing else
-         * vouches for it. There is no lighter question to ask the server than
-         * for a whole pre-key bundle, so this spends one of the peer's
-         * one-time pre-keys; it is asked only for a sender whose key is not
-         * already on record.
+         * vouches for it. Against a server that predates `GetIdentityKey` this
+         * falls back to a whole pre-key bundle, which spends one of the peer's
+         * one-time pre-keys, so it is asked only for a sender whose key is not
+         * already on record and the answer is remembered briefly.
          */
         suspend fun publishedIdentityKey(
             userId: String,
@@ -96,7 +96,7 @@ class SignalSessionManager
             publishedIdentityLock.withLock {
                 publishedIdentities[key]?.takeIf { now - it.askedAt < PUBLISHED_IDENTITY_TTL_MS }?.let { return it.identity }
             }
-            val identity = keyManager.fetchPreKeyBundle(userId, deviceId).identityKey
+            val identity = keyManager.fetchPublishedIdentityKey(userId, deviceId)
             publishedIdentityLock.withLock {
                 publishedIdentities[key] = PublishedIdentity(identity, now)
             }
@@ -120,7 +120,7 @@ class SignalSessionManager
         private val publishedIdentityLock = Mutex()
 
         private class PublishedIdentity(
-            val identity: IdentityKey,
+            val identity: IdentityKey?,
             val askedAt: Long,
         )
 

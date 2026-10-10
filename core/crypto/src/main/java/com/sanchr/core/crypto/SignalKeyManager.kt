@@ -9,6 +9,7 @@ import com.sanchr.core.crypto.store.SanchrSignedPreKeyStore
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.proto.keys.GetPreKeyBundleRequest
 import com.sanchr.proto.keys.GetPreKeyCountRequest
+import com.sanchr.proto.keys.IdentityKeyLookupUnsupported
 import com.sanchr.proto.keys.KeyBundle
 import com.sanchr.proto.keys.KeyServiceClient
 import com.sanchr.proto.keys.KyberPreKey
@@ -280,6 +281,25 @@ class SignalKeyManager
         // ------------------------------------------------------------------
         // Pre-Key Bundle Retrieval
         // ------------------------------------------------------------------
+
+        /**
+         * The identity key the server publishes for a user's device, or null
+         * when it publishes none.
+         *
+         * Asked with the call made for it, which costs the peer nothing. A
+         * server that predates that call is asked for a whole bundle instead,
+         * which spends one of the peer's one-time pre-keys — the only way
+         * there was before.
+         */
+        suspend fun fetchPublishedIdentityKey(
+            userId: String,
+            deviceId: Int,
+        ): IdentityKey? =
+            try {
+                keyServiceClient.getIdentityKey(userId, deviceId)?.let { IdentityKey(it) }
+            } catch (e: IdentityKeyLookupUnsupported) {
+                fetchPreKeyBundle(userId, deviceId).identityKey
+            }
 
         /**
          * Fetches a recipient's pre-key bundle from the server for PQXDH session
