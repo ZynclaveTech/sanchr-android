@@ -31,7 +31,6 @@ import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import com.sanchr.feature.chats.media.AttachmentPreparer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,7 +78,7 @@ fun ShareTargetScreen(
                 is SharedContent.Attachments -> {
                     val prepared =
                         withContext(Dispatchers.IO) {
-                            content.uris.mapNotNull { AttachmentPreparer.prepare(context, Uri.parse(it)) }
+                            content.uris.mapNotNull { viewModel.prepareAttachment(Uri.parse(it)) }
                         }
                     viewModel.sendAttachments(prepared)
                 }

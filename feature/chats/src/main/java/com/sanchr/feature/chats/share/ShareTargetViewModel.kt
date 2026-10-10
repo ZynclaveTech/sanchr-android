@@ -1,21 +1,30 @@
 package com.sanchr.feature.chats.share
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.common.Result
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.Conversation
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.domain.messaging.media.VideoCompressor
+import com.sanchr.feature.chats.media.AttachmentPreparer
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Where the share flow is: pick the chats, then review, then it is gone. */
 enum class ShareStep {
@@ -66,9 +75,37 @@ class ShareTargetViewModel
         private val messageRepository: MessageRepository,
         private val sendMessageUseCase: SendMessageUseCase,
         private val sendAttachmentUseCase: SendAttachmentUseCase,
+        private val videoCompressor: VideoCompressor,
+        private val userPreferences: UserPreferences,
+        @ApplicationContext private val appContext: Context,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(ShareTargetUiState())
         val uiState: StateFlow<ShareTargetUiState> = _uiState.asStateFlow()
+
+        /**
+         * Reads a shared file into the shape the uploader wants, re-encoding a
+         * video first.
+         *
+         * The screen used to call `AttachmentPreparer` itself, which skipped
+         * the re-encode and the Low Data Mode setting for anything arriving
+         * from another app — the one path where a 4K clip is most likely to
+         * turn up, since it comes straight from the gallery.
+         */
+        suspend fun prepareAttachment(uri: Uri): AttachmentUploader.Prepared? =
+            withContext(Dispatchers.IO) {
+                val mimeType = runCatching { appContext.contentResolver.getType(uri) }.getOrNull().orEmpty()
+                if (!mimeType.startsWith("video/")) {
+                    return@withContext AttachmentPreparer.prepare(appContext, uri)
+                }
+                val sourceBytes = AttachmentPreparer.reportedSize(appContext, uri) ?: 0L
+                val lowData = runCatching { userPreferences.lowDataMode.first() }.getOrDefault(false)
+                val compressed = runCatching { videoCompressor.compressedForSending(uri, sourceBytes, lowData) }.getOrNull()
+                try {
+                    AttachmentPreparer.prepare(appContext, uri, readFrom = compressed?.let(Uri::fromFile) ?: uri)
+                } finally {
+                    compressed?.delete()
+                }
+            }
 
         init {
             viewModelScope.launch {

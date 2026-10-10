@@ -327,6 +327,7 @@ fun ChatDetailScreen(
                     onDocumentPreviewClosed = { documentPreview = null },
                 )
                 BatchReviewIfPicked(
+                    prepare = viewModel::prepareAttachment,
                     uris = batch,
                     onCancel = { batch = emptyList() },
                     onPrepared = viewModel::sendAttachments,
@@ -641,11 +642,17 @@ private fun TranscriptList(
 @Composable
 private fun BatchReviewIfPicked(
     uris: List<Uri>,
+    /**
+     * The view model's prepare step, not `AttachmentPreparer` directly: it is
+     * what re-encodes a video and reads the Low Data Mode setting, and reading
+     * the files here would have skipped both for every photo and clip picked
+     * through this screen.
+     */
+    prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
     onCancel: () -> Unit,
     onPrepared: (List<AttachmentUploader.Prepared>) -> Unit,
 ) {
     if (uris.isEmpty()) return
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     MediaBatchReview(
         uris = uris,
@@ -654,14 +661,11 @@ private fun BatchReviewIfPicked(
             onCancel()
             scope.launch {
                 val prepared =
-                    withContext(Dispatchers.IO) {
-                        chosen.mapIndexedNotNull { index, uri ->
-                            AttachmentPreparer
-                                .prepare(context, uri)
-                                // The caption rides the first file only, so a
-                                // set of photos does not repeat it.
-                                ?.let { if (index == 0 && caption != null) it.withCaption(caption) else it }
-                        }
+                    chosen.mapIndexedNotNull { index, uri ->
+                        prepare(uri)
+                            // The caption rides the first file only, so a set
+                            // of photos does not repeat it.
+                            ?.let { if (index == 0 && caption != null) it.withCaption(caption) else it }
                     }
                 onPrepared(prepared)
             }
