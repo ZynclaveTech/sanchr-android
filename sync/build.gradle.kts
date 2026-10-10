@@ -38,6 +38,7 @@ dependencies {
     implementation(projects.core.crypto)
     implementation(projects.core.notifications)
     implementation(projects.domain.messaging)
+    implementation(projects.domain.vault)
     implementation(projects.proto)
 
     // Hilt

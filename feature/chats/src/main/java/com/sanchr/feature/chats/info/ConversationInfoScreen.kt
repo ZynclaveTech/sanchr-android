@@ -135,7 +135,7 @@ fun ConversationInfoScreen(
                     InfoRow(
                         icon = Icons.Filled.Security,
                         title = "Vault media",
-                        subtitle = "View once and capture protection for this chat",
+                        subtitle = "Auto-vault, view once and capture protection",
                         onClick = onOpenVaultMedia,
                     )
                     InfoRow(

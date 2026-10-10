@@ -13,6 +13,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoveToInbox
 import androidx.compose.material.icons.filled.NoPhotography
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
@@ -76,6 +77,15 @@ fun VaultMediaScreen(
             PolicyBanner()
             SanchrCard {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    PolicyToggle(
+                        icon = Icons.Filled.MoveToInbox,
+                        title = "Auto-Vault Incoming",
+                        subtitle = "Move media you receive here into the Vault. View-once and disappearing media are left alone",
+                        checked = policy.autoVaultIncoming,
+                        enabled = loaded,
+                        onCheckedChange = { on -> viewModel.updateVaultPolicy { it.copy(autoVaultIncoming = on) } },
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = DIVIDER_INSET))
                     PolicyToggle(
                         icon = Icons.Filled.Visibility,
                         title = "View Once",

@@ -36,6 +36,7 @@ class MessageRepositoryImplConversationsTest {
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             reactionDao = mockk(relaxed = true),
             notificationClient = mockk(relaxed = true),
+            autoVaultScheduler = mockk(relaxed = true),
         )
 
     private fun conversation(

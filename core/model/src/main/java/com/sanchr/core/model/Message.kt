@@ -123,11 +123,19 @@ sealed interface MessageContent {
         val kind: String,
     ) : MessageContent {
         val text: String
-            get() = if (kind == VIEW_ONCE_CONSUMED) "Viewed" else kind
+            get() =
+                when (kind) {
+                    VIEW_ONCE_CONSUMED -> "Viewed"
+                    AUTO_VAULTED -> "Media moved to Vault"
+                    else -> kind
+                }
 
         companion object {
             const val CONTENT_TYPE = "system"
             const val VIEW_ONCE_CONSUMED = "viewOnceConsumed"
+
+            /** Left where received media was after Auto-Vault Incoming moved it (iOS `.autoVaulted`). */
+            const val AUTO_VAULTED = "autoVaulted"
         }
     }
 }

@@ -91,6 +91,7 @@ import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.mediaviewer.DocumentPreviewScreen
 import com.sanchr.core.model.VaultItem
 import com.sanchr.core.model.VaultItemType
+import com.sanchr.domain.vault.VaultThumbnails
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

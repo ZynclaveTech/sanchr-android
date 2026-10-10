@@ -15,6 +15,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
+import com.sanchr.core.model.MediaKind
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
@@ -23,6 +24,7 @@ import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.vault.AutoVaultScheduler
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteConversationRequest
 import com.sanchr.proto.messaging.DeleteMessageRequest
@@ -54,6 +56,7 @@ class MessageRepositoryImpl
         private val sessionManager: SessionManager,
         private val reactionDao: MessageReactionDao,
         private val notificationClient: NotificationServiceClient,
+        private val autoVaultScheduler: AutoVaultScheduler,
     ) : MessageRepository {
         private companion object {
             const val TAG = "MessageRepositoryImpl"
@@ -98,6 +101,15 @@ class MessageRepositoryImpl
                 viewOnce = policy.viewOnceOutgoing,
                 captureProtection = policy.captureProtection,
             )
+        }
+
+        override suspend fun vaultPolicy(conversationId: String): ChatVaultPolicy =
+            conversationDao.getConversationById(conversationId)?.vaultPolicy() ?: ChatVaultPolicy.DEFAULT
+
+        override suspend fun message(messageId: String): Message? = messageDao.getMessageById(messageId)?.toDomain()
+
+        override suspend fun tombstoneAutoVaulted(messageId: String) {
+            messageDao.replaceContent(messageId, MessageContent.System.CONTENT_TYPE, MessageContent.System.AUTO_VAULTED)
         }
 
         override suspend fun setDisappearingDuration(
@@ -404,6 +416,13 @@ class MessageRepositoryImpl
             messageDao.insertMessage(entity)
             if (isNewRow && senderId != sessionManager.getUserId()) {
                 conversationDao.incrementUnread(conversationId, timestamp)
+                // Only a cheap check here, on the receive path: is this media,
+                // in a chat that vaults what it receives? Whether this
+                // particular message may be vaulted is decided by the work
+                // itself, from what is stored when it runs.
+                if (MediaKind.fromWire(contentType) != null && vaultPolicy(conversationId).autoVaultIncoming) {
+                    autoVaultScheduler.schedule(messageId)
+                }
             }
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
         }
@@ -472,6 +491,13 @@ class MessageRepositoryImpl
                 failureReason = failureReason,
             )
 
+        private fun ConversationEntity.vaultPolicy(): ChatVaultPolicy =
+            ChatVaultPolicy(
+                autoVaultIncoming = vaultAutoIncoming,
+                viewOnceOutgoing = vaultViewOnce,
+                captureProtection = vaultCaptureProtection,
+            )
+
         private fun String.toMessageContent(body: String): MessageContent = MessageContentCodec.fromStored(this, body)
 
         private fun parseParticipantIds(raw: String): List<String> {
@@ -530,12 +556,7 @@ class MessageRepositoryImpl
                 isArchived = isArchived,
                 disappearingMessageDuration = disappearingDurationMs,
                 wallpaper = wallpaper,
-                vaultPolicy =
-                    ChatVaultPolicy(
-                        autoVaultIncoming = vaultAutoIncoming,
-                        viewOnceOutgoing = vaultViewOnce,
-                        captureProtection = vaultCaptureProtection,
-                    ),
+                vaultPolicy = vaultPolicy(),
                 updatedAt = Instant.fromEpochMilliseconds(updatedAt),
                 createdAt = Instant.fromEpochMilliseconds(createdAt),
             )

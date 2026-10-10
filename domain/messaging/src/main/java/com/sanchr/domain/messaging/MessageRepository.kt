@@ -302,6 +302,18 @@ interface MessageRepository {
         policy: ChatVaultPolicy,
     )
 
+    /** This chat's vault policy as stored now; all off for a chat that has none or is unknown. */
+    suspend fun vaultPolicy(conversationId: String): ChatVaultPolicy
+
+    /** One stored message, decoded, or null when it is not on this device. */
+    suspend fun message(messageId: String): Message?
+
+    /**
+     * Replaces a received message with the marker Auto-Vault Incoming leaves
+     * behind. Local only: the sender's copy and the server's are untouched.
+     */
+    suspend fun tombstoneAutoVaulted(messageId: String)
+
     /** Mutes or unmutes notifications for a conversation: tells the server, then the local row. */
     suspend fun setMuted(
         conversationId: String,
