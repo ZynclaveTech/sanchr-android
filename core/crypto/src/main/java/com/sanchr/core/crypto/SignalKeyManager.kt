@@ -69,6 +69,7 @@ class SignalKeyManager
 
             /** Signed pre-keys are rotated every 7 days (per spec §4 M2). */
             private val SIGNED_PRE_KEY_ROTATION_MILLIS = TimeUnit.DAYS.toMillis(7)
+            private const val KYBER_ID_MASK = 0x00FF_FFFFL
         }
 
         // ------------------------------------------------------------------
@@ -164,7 +165,13 @@ class SignalKeyManager
             }
 
         private fun generateKyberPreKeyBlocking(identityKeyPair: IdentityKeyPair): KyberPreKeyRecord {
-            val kyberPreKeyId = (System.currentTimeMillis() and 0x00FF_FFFFL).toInt()
+            // The low bits of the clock come round again every few hours, and
+            // storing under an id already in use would overwrite the key held
+            // there — one a peer may be about to send a first message to.
+            var kyberPreKeyId = (System.currentTimeMillis() and KYBER_ID_MASK).toInt()
+            while (kyberPreKeyId == 0 || kyberPreKeyStore.containsKyberPreKey(kyberPreKeyId)) {
+                kyberPreKeyId = ((kyberPreKeyId + 1).toLong() and KYBER_ID_MASK).toInt()
+            }
             val keyPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
             val signature =
                 identityKeyPair.privateKey.calculateSignature(
@@ -355,10 +362,25 @@ class SignalKeyManager
         // ------------------------------------------------------------------
 
         /**
-         * Rotates the signed pre-key if the current one is older than 7 days.
-         * The new signed pre-key is uploaded to the server as part of a fresh
-         * key bundle. Old signed pre-keys are retained for a grace period to
-         * allow in-flight messages to be decrypted.
+         * Replaces the signed pre-key and the Kyber pre-key once the pair the
+         * server is handing out is older than 7 days.
+         *
+         * The order of operations is what makes this safe to interrupt:
+         *
+         *  - The new pair is stored before it is uploaded. From the moment
+         *    the server has it a peer may send a first message to it.
+         *  - The pair is remembered as pending until the upload is known to
+         *    have succeeded, and a retry sends that same pair. An upload whose
+         *    reply was lost may have reached the server; making another pair
+         *    would leave the server handing out keys this device then lets
+         *    go.
+         *  - The clock runs from the newest pair that is *not* pending. It
+         *    used to run from the newest stored, so a pair whose upload
+         *    failed counted as a rotation and nothing was tried again for a
+         *    week, with the server still handing out the old one.
+         *  - Replaced keys are held for a grace period, for peers who fetched
+         *    a bundle before the rotation, and then removed. Kyber pre-keys
+         *    never were, so every one ever published was kept.
          */
         suspend fun rotateSignedPreKeyIfNeeded() {
             val prepared =
@@ -366,14 +388,17 @@ class SignalKeyManager
                     val signedPreKeys = signedPreKeyStore.loadSignedPreKeys()
                     if (signedPreKeys.isEmpty()) return@withContext null
 
-                    val latest = signedPreKeys.maxByOrNull { it.timestamp } ?: return@withContext null
+                    val pending = pendingRotationPair()
+                    val published = signedPreKeys.filter { it.id != pending?.first?.id }
+                    val latest = published.maxByOrNull { it.timestamp } ?: return@withContext null
                     val age = System.currentTimeMillis() - latest.timestamp
 
                     if (age < SIGNED_PRE_KEY_ROTATION_MILLIS) return@withContext null
 
                     val identityKeyPair = identityKeyStore.getIdentityKeyPair()
-                    val newSignedPreKey = generateSignedPreKeyBlocking(identityKeyPair)
-                    val newKyberPreKey = generateKyberPreKeyBlocking(identityKeyPair)
+                    val (newSignedPreKey, newKyberPreKey) =
+                        pending ?: (generateSignedPreKeyBlocking(identityKeyPair) to generateKyberPreKeyBlocking(identityKeyPair))
+                            .also { kyberPreKeyStore.pendingRotation = it.first.id to it.second.id }
 
                     val signedPreKeyProto =
                         com.sanchr.proto.keys.SignedPreKey(
@@ -398,24 +423,37 @@ class SignalKeyManager
                                 ),
                         )
 
-                    RotationPrep(bundle, newSignedPreKey.id, signedPreKeys)
+                    RotationPrep(bundle, newSignedPreKey.id, newKyberPreKey.id, signedPreKeys)
                 } ?: return
 
             keyServiceClient.uploadKeyBundle(prepared.bundle)
 
             withContext(dispatchers.signalDispatcher) {
-                // Clean up signed pre-keys older than 2 rotation periods (grace period)
-                val gracePeriod = SIGNED_PRE_KEY_ROTATION_MILLIS * 2
+                kyberPreKeyStore.pendingRotation = null
+                // Clean up keys older than 2 rotation periods (grace period)
+                val cutoff = System.currentTimeMillis() - SIGNED_PRE_KEY_ROTATION_MILLIS * 2
                 prepared.existingSignedPreKeys
-                    .filter { System.currentTimeMillis() - it.timestamp > gracePeriod }
+                    .filter { it.timestamp < cutoff }
                     .filter { it.id != prepared.newSignedPreKeyId }
                     .forEach { signedPreKeyStore.removeSignedPreKey(it.id) }
+                kyberPreKeyStore
+                    .loadKyberPreKeys()
+                    .filter { it.timestamp < cutoff }
+                    .filter { it.id != prepared.newKyberPreKeyId }
+                    .forEach { kyberPreKeyStore.removeKyberPreKey(it.id) }
             }
+        }
+
+        /** The pair an earlier attempt stored, if both halves are still here. */
+        private fun pendingRotationPair(): Pair<SignedPreKeyRecord, KyberPreKeyRecord>? {
+            val (signedId, kyberId) = kyberPreKeyStore.pendingRotation ?: return null
+            return runCatching { signedPreKeyStore.loadSignedPreKey(signedId) to kyberPreKeyStore.loadKyberPreKey(kyberId) }.getOrNull()
         }
 
         private data class RotationPrep(
             val bundle: KeyBundle,
             val newSignedPreKeyId: Int,
+            val newKyberPreKeyId: Int,
             val existingSignedPreKeys: List<SignedPreKeyRecord>,
         )
 

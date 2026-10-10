@@ -73,6 +73,44 @@ class SanchrKyberPreKeyStore
             cache.containsKey(kyberPreKeyId) || kyberPreKeyFile(kyberPreKeyId).exists()
 
         /**
+         * Forgets a key that has been replaced and is past its grace period.
+         * The base keys recorded against it go with it the next time that
+         * record is written; see [SeenBaseKeys].
+         */
+        fun removeKyberPreKey(kyberPreKeyId: Int) {
+            cache.remove(kyberPreKeyId)
+            kyberPreKeyFile(kyberPreKeyId).delete()
+        }
+
+        /**
+         * The pair of keys a rotation has stored and not yet confirmed
+         * published — signed pre-key id, then Kyber pre-key id — so a retry
+         * sends the same pair instead of making another.
+         */
+        var pendingRotation: Pair<Int, Int>?
+            get() =
+                runCatching {
+                    pendingRotationFile
+                        .readText()
+                        .trim()
+                        .split(':')
+                        .map(String::toInt)
+                }.getOrNull()
+                    ?.takeIf { it.size == 2 }
+                    ?.let { it[0] to it[1] }
+            set(value) {
+                if (value == null) {
+                    pendingRotationFile.delete()
+                } else {
+                    pendingRotationFile.parentFile?.mkdirs()
+                    pendingRotationFile.writeText("${value.first}:${value.second}")
+                }
+            }
+
+        /** Beside the key directory, not in it: every file in there is read as a key. */
+        private val pendingRotationFile: File by lazy { File(context.filesDir, "signal/prekey_rotation_pending") }
+
+        /**
          * Refuses a base key this key has already been used with.
          *
          * The Kyber pre-key itself stays until rotation replaces it; what is
@@ -99,6 +137,7 @@ class SanchrKyberPreKeyStore
             cache.clear()
             kyberPreKeyDir.listFiles()?.forEach { it.delete() }
             seenBaseKeys.clear()
+            pendingRotation = null
         }
 
         private fun kyberPreKeyFile(kyberPreKeyId: Int): File = File(kyberPreKeyDir, "$kyberPreKeyId.bin")

@@ -37,6 +37,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.signal.libsignal.protocol.ecc.ECKeyPair
+import org.signal.libsignal.protocol.kem.KEMKeyPair
+import org.signal.libsignal.protocol.kem.KEMKeyType
+import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord
 
 /**
@@ -286,6 +289,112 @@ class SignalKeyManagerTest {
             assertEquals(1, signedPreKeyStore.loadSignedPreKeys().size)
         }
 
+    /** Seeds the pair registration publishes, [daysOld] days ago. */
+    private suspend fun seedPair(
+        daysOld: Long,
+        id: Int = 1,
+    ) {
+        if (!keyManager.hasIdentity()) {
+            keyManager.generateIdentity()
+            identityStore.initializeAccount("u-1", "1", "+10000000000")
+        }
+        val identity = identityStore.getIdentityKeyPair()
+        val timestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(daysOld)
+        val signed = ECKeyPair.generate()
+        signedPreKeyStore.storeSignedPreKey(
+            id,
+            SignedPreKeyRecord(id, timestamp, signed, identity.privateKey.calculateSignature(signed.publicKey.serialize())),
+        )
+        val kyber = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
+        kyberStore.storeKyberPreKey(
+            id,
+            KyberPreKeyRecord(id, timestamp, kyber, identity.privateKey.calculateSignature(kyber.publicKey.serialize())),
+        )
+    }
+
+    @Test
+    fun `a failed upload does not count as a rotation, and the retry sends the same pair`() =
+        runTest {
+            // The clock used to run from the newest stored pair, so a pair
+            // whose upload failed postponed rotation by a week while the
+            // server went on handing out the old one.
+            seedPair(daysOld = 8)
+            fakeClient.failUploads = true
+            assertTrue(runCatching { keyManager.rotateSignedPreKeyIfNeeded() }.isFailure)
+            val pending = assertNotNull(kyberStore.pendingRotation)
+            // Held in the meantime: the upload may have reached the server.
+            assertNotNull(signedPreKeyStore.loadSignedPreKey(pending.first))
+            assertNotNull(kyberStore.loadKyberPreKey(pending.second))
+
+            fakeClient.failUploads = false
+            keyManager.rotateSignedPreKeyIfNeeded()
+
+            val bundle = fakeClient.uploadKeyBundleCalls.single()
+            assertEquals(pending.first, bundle.signedPreKey?.keyId)
+            assertEquals(pending.second, bundle.kyberPreKey?.keyId)
+            assertEquals(null, kyberStore.pendingRotation)
+            // The old pair, the retried pair, and nothing else.
+            assertEquals(2, signedPreKeyStore.loadSignedPreKeys().size)
+            assertEquals(2, kyberStore.loadKyberPreKeys().size)
+        }
+
+    @Test
+    fun `once published, the new pair restarts the clock`() =
+        runTest {
+            seedPair(daysOld = 8)
+            keyManager.rotateSignedPreKeyIfNeeded()
+
+            keyManager.rotateSignedPreKeyIfNeeded()
+
+            assertEquals(1, fakeClient.uploadKeyBundleCalls.size)
+        }
+
+    @Test
+    fun `a replaced pair is held through its grace period and removed after it`() =
+        runTest {
+            // Kyber pre-keys were never removed at all.
+            seedPair(daysOld = 15, id = 1)
+            seedPair(daysOld = 8, id = 2)
+
+            keyManager.rotateSignedPreKeyIfNeeded()
+
+            val published = fakeClient.uploadKeyBundleCalls.single()
+            val signedIds = signedPreKeyStore.loadSignedPreKeys().map { it.id }.toSet()
+            val kyberIds = kyberStore.loadKyberPreKeys().map { it.id }.toSet()
+            // Fifteen days is past two weeks' grace; eight is not.
+            assertEquals(setOf(2, published.signedPreKey?.keyId), signedIds)
+            assertEquals(setOf(2, published.kyberPreKey?.keyId), kyberIds)
+        }
+
+    @Test
+    fun `a new Kyber pre-key never takes an id already in use`() =
+        runTest {
+            seedPair(daysOld = 8)
+            // Every id the clock could produce in the next few seconds is taken.
+            val identity = identityStore.getIdentityKeyPair()
+            val taken = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
+            val record = { id: Int ->
+                KyberPreKeyRecord(
+                    id,
+                    System.currentTimeMillis(),
+                    taken,
+                    identity.privateKey.calculateSignature(taken.publicKey.serialize()),
+                )
+            }
+            val soon = (System.currentTimeMillis() and 0x00FF_FFFFL).toInt()
+            val occupied = (soon..soon + 20_000).map { it and 0x00FF_FFFF }.filter { it != 0 }
+            occupied.forEach { kyberStore.storeKyberPreKey(it, record(it)) }
+
+            keyManager.rotateSignedPreKeyIfNeeded()
+
+            val newId =
+                fakeClient.uploadKeyBundleCalls
+                    .single()
+                    .kyberPreKey
+                    ?.keyId
+            assertTrue(newId != null && newId !in occupied, "took an id already in use: $newId")
+        }
+
     // ------------------------------------------------------------------
     // Test doubles
     // ------------------------------------------------------------------
@@ -306,7 +415,11 @@ class SignalKeyManagerTest {
         val getPreKeyCountCalls = mutableListOf<GetPreKeyCountRequest>()
         val getUserDevicesCalls = mutableListOf<GetUserDevicesRequest>()
 
+        /** When set, bundle uploads fail as a dropped connection would. */
+        var failUploads: Boolean = false
+
         override suspend fun uploadKeyBundle(request: KeyBundle): UploadKeyBundleResponse {
+            if (failUploads) throw java.io.IOException("connection lost")
             uploadKeyBundleCalls.add(request)
             return UploadKeyBundleResponse()
         }
