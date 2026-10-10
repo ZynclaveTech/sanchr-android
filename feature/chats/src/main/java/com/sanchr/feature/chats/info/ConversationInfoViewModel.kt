@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.domain.messaging.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -99,6 +100,24 @@ class ConversationInfoViewModel
             action {
                 messageRepository.setWallpaper(conversationId, name.takeIf { it != "default" })
             }
+
+        /**
+         * Changes this chat's vault policy.
+         *
+         * Takes a change rather than a whole policy so that two switches
+         * flipped in quick succession both land: each is applied to what is
+         * stored at that moment, not to what the screen last drew. Does
+         * nothing before the conversation has loaded, when there is no stored
+         * policy to change yet.
+         */
+        fun updateVaultPolicy(change: (ChatVaultPolicy) -> ChatVaultPolicy) {
+            val current = _uiState.value.conversation?.vaultPolicy ?: return
+            val next = change(current)
+            if (next == current) return
+            // Shown at once; the stored row follows and the observer confirms it.
+            _uiState.update { state -> state.copy(conversation = state.conversation?.copy(vaultPolicy = next)) }
+            action { messageRepository.setVaultPolicy(conversationId, next) }
+        }
 
         fun dismissError() = _uiState.update { it.copy(error = null) }
 

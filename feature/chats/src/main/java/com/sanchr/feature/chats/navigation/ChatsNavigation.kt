@@ -12,6 +12,7 @@ import com.sanchr.feature.chats.ChatsListScreen
 import com.sanchr.feature.chats.HiddenChatsScreen
 import com.sanchr.feature.chats.info.ConversationInfoScreen
 import com.sanchr.feature.chats.info.DisappearingMessagesScreen
+import com.sanchr.feature.chats.info.VaultMediaScreen
 import com.sanchr.feature.chats.info.WallpaperScreen
 import com.sanchr.feature.chats.shared.SharedContentScreen
 import java.net.URLEncoder
@@ -26,6 +27,7 @@ const val CONVERSATION_INFO_ROUTE = "chats/{conversationId}/info"
 const val CONVERSATION_DISAPPEARING_ROUTE = "chats/{conversationId}/disappearing"
 const val CONVERSATION_WALLPAPER_ROUTE = "chats/{conversationId}/wallpaper"
 const val CONVERSATION_SHARED_CONTENT_ROUTE = "chats/{conversationId}/shared"
+const val CONVERSATION_VAULT_MEDIA_ROUTE = "chats/{conversationId}/vault-media"
 
 /**
  * Builds the chats navigation graph.
@@ -66,6 +68,7 @@ fun NavGraphBuilder.chatsGraph(
                 onOpenDisappearing = { navController.navigate("chats/$conversationId/disappearing") },
                 onOpenWallpaper = { navController.navigate("chats/$conversationId/wallpaper") },
                 onOpenSharedContent = { navController.navigate("chats/$conversationId/shared") },
+                onOpenVaultMedia = { navController.navigate("chats/$conversationId/vault-media") },
                 // The chat it describes is gone from this device, so the info
                 // page and the transcript behind it both have to go.
                 onLeft = { navController.popBackStack(CHATS_LIST_ROUTE, inclusive = false) },
@@ -91,6 +94,13 @@ fun NavGraphBuilder.chatsGraph(
             arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
         ) {
             SharedContentScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable(
+            route = CONVERSATION_VAULT_MEDIA_ROUTE,
+            arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
+        ) {
+            VaultMediaScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         composable(HIDDEN_CHATS_ROUTE) {

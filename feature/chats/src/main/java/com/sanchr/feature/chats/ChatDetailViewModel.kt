@@ -10,6 +10,7 @@ import com.sanchr.core.common.Result
 import com.sanchr.core.crypto.verify.SafetyNumberManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.MediaAttachment
@@ -36,6 +37,7 @@ import com.sanchr.domain.messaging.media.GallerySaver
 import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
 import com.sanchr.domain.messaging.media.MediaAutoSavePolicy
 import com.sanchr.domain.messaging.media.VideoCompressor
+import com.sanchr.feature.chats.info.VaultPolicyRules
 import com.sanchr.feature.chats.location.LocationPayload
 import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.stickers.StickerRenderer
@@ -427,7 +429,10 @@ class ChatDetailViewModel
         fun sendSticker(emoji: String) {
             viewModelScope.launch {
                 val prepared = withContext(Dispatchers.IO) { StickerRenderer.prepare(emoji) }
-                sendAttachment(prepared)
+                // Not through the vault policy: a sticker is an image on the
+                // wire, and one that had to be tapped open and then vanished
+                // would not be a sticker.
+                sendPrepared(prepared)
             }
         }
 
@@ -441,18 +446,11 @@ class ChatDetailViewModel
             val replyToId = takePendingReply()
             _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
             viewModelScope.launch {
-                // One message for the set, as iOS sends an album. This used to
-                // send one message per file, so picking ten photos produced ten
-                // bubbles on both sides and ten notifications for the recipient.
+                // One message for the set, as iOS sends an album — unless this
+                // chat's media goes view-once; see [SendMediaSet].
                 val result =
-                    if (prepared.size > 1) {
-                        sendAlbumUseCase(conversationId, prepared, replyToId) { fraction ->
-                            _uiState.update { it.copy(uploadProgress = fraction) }
-                        }
-                    } else {
-                        sendAttachmentUseCase(conversationId, prepared.first(), replyToId) { fraction ->
-                            _uiState.update { it.copy(uploadProgress = fraction) }
-                        }
+                    SendMediaSet(sendAttachmentUseCase, sendAlbumUseCase)(conversationId, prepared, vaultPolicy(), replyToId) { fraction ->
+                        _uiState.update { it.copy(uploadProgress = fraction) }
                     }
                 val failure =
                     (result as? Result.Error)?.exception?.message ?: (result as? Result.Error)?.let { "Failed to send attachment" }
@@ -481,8 +479,15 @@ class ChatDetailViewModel
             }
         }
 
-        /** Encrypts and sends a picked file as an attachment message. */
-        fun sendAttachment(prepared: AttachmentUploader.Prepared) {
+        /**
+         * Encrypts and sends a picked file as an attachment message, view-once
+         * if this chat's vault policy says its media goes that way.
+         */
+        fun sendAttachment(prepared: AttachmentUploader.Prepared) = sendPrepared(VaultPolicyRules.outgoing(prepared, vaultPolicy()))
+
+        private fun vaultPolicy(): ChatVaultPolicy? = _uiState.value.conversation?.vaultPolicy
+
+        private fun sendPrepared(prepared: AttachmentUploader.Prepared) {
             if (_uiState.value.isSending) return
             val replyToId = takePendingReply()
             _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
@@ -776,10 +781,16 @@ class ChatDetailViewModel
             viewModelScope.launch {
                 // The full-screen viewer honours the same toggle as the rest of
                 // the app; otherwise opening a photo would be the one window a
-                // screenshot could still catch.
-                userPreferences.screenshotProtectionEnabled.collect { on ->
-                    _uiState.update { it.copy(screenshotProtectionEnabled = on) }
-                }
+                // screenshot could still catch. This chat's own Capture
+                // Protection switch turns it on here even when the
+                // account-wide one is off.
+                combine(
+                    userPreferences.screenshotProtectionEnabled,
+                    messageRepository.observeConversation(conversationId),
+                ) { accountWide, conversation ->
+                    VaultPolicyRules.captureProtected(accountWide, conversation?.vaultPolicy)
+                }.catch { /* DB closed during logout */ }
+                    .collect { on -> _uiState.update { it.copy(screenshotProtectionEnabled = on) } }
             }
             viewModelScope.launch {
                 userPreferences.mediaAutoDownload.collect { setting ->

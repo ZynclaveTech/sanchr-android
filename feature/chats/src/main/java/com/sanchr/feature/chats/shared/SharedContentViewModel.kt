@@ -8,6 +8,7 @@ import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.feature.chats.MessageUiModel
+import com.sanchr.feature.chats.info.VaultPolicyRules
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -51,9 +53,15 @@ class SharedContentViewModel
 
         init {
             viewModelScope.launch {
-                userPreferences.screenshotProtectionEnabled.collect { on ->
-                    _uiState.update { it.copy(screenshotProtectionEnabled = on) }
-                }
+                // The same rule as the chat itself: this browser opens the
+                // same media, so it must not be the unprotected way in.
+                combine(
+                    userPreferences.screenshotProtectionEnabled,
+                    messageRepository.observeConversation(conversationId),
+                ) { accountWide, conversation ->
+                    VaultPolicyRules.captureProtected(accountWide, conversation?.vaultPolicy)
+                }.catch { /* DB closed during logout */ }
+                    .collect { on -> _uiState.update { it.copy(screenshotProtectionEnabled = on) } }
             }
             viewModelScope.launch {
                 messageRepository

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -56,6 +57,7 @@ fun ConversationInfoScreen(
     onOpenWallpaper: () -> Unit,
     /** The chat's Media / Links / Docs browser, which Android had no entry to. */
     onOpenSharedContent: () -> Unit,
+    onOpenVaultMedia: () -> Unit,
     onLeft: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ConversationInfoViewModel = hiltViewModel(),
@@ -129,6 +131,12 @@ fun ConversationInfoScreen(
                         subtitle = "Allow media from this chat in gallery auto-save",
                         checked = uiState.mediaVisibleInGallery,
                         onCheckedChange = viewModel::setMediaVisibleInGallery,
+                    )
+                    InfoRow(
+                        icon = Icons.Filled.Security,
+                        title = "Vault media",
+                        subtitle = "View once and capture protection for this chat",
+                        onClick = onOpenVaultMedia,
                     )
                     InfoRow(
                         icon = Icons.Filled.Palette,
