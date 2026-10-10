@@ -214,6 +214,10 @@ private fun WaveformBars(
     tint: Color,
     modifier: Modifier = Modifier,
 ) {
+    // A flat run when there is no waveform — a clip from an older build, or
+    // one whose sender sent none. iOS draws the same placeholder rather than a
+    // blank gap, which reads as a broken bubble rather than a quiet one. It is
+    // deliberately uniform: it is not claiming to be the clip's shape.
     val bars = waveform.ifEmpty { List(VoiceWaveform.DEFAULT_BINS) { FLAT_BAR } }
     Canvas(modifier = modifier) {
         val stride = size.width / bars.size
