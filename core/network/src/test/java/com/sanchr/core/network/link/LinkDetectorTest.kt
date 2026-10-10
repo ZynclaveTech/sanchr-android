@@ -62,4 +62,45 @@ class LinkDetectorTest {
         assertEquals("xn--bcher-kva.example", LinkDetector.hostOf("https://bücher.example/x"))
         assertNull(LinkDetector.hostOf("not a url"))
     }
+
+    @Test
+    fun `an address written in a non-standard form is not a link`() {
+        // Every one of these is loopback to some resolvers and a meaningless
+        // string to others. The fetcher must not be the component that finds
+        // out which.
+        assertNull(LinkDetector.firstUrl("http://2130706433/x"))
+        assertNull(LinkDetector.firstUrl("http://0x7f.1/x"))
+        assertNull(LinkDetector.firstUrl("http://127.1/x"))
+        assertNull(LinkDetector.firstUrl("http://0177.0.0.1/x"))
+        assertNull(LinkDetector.firstUrl("http://0x7f000001/x"))
+    }
+
+    @Test
+    fun `a trailing dot does not evade the private-address check`() {
+        assertNull(LinkDetector.firstUrl("http://127.0.0.1./x"))
+        assertNull(LinkDetector.firstUrl("http://db.internal./x"))
+        assertEquals("example.com", LinkDetector.hostOf("https://example.com./a"))
+    }
+
+    @Test
+    fun `unique-local and carrier-grade-NAT addresses are not links`() {
+        // fc00::/7 is the live unique-local range; isSiteLocalAddress only
+        // knows the deprecated fec0::/10 it replaced.
+        assertNull(LinkDetector.firstUrl("http://[fd00::1]/x"))
+        assertNull(LinkDetector.firstUrl("http://[fc00::1]/x"))
+        // 100.64.0.0/10 is another machine on the same carrier's network.
+        assertNull(LinkDetector.firstUrl("http://100.64.0.1/x"))
+        assertNull(LinkDetector.firstUrl("http://100.127.255.254/x"))
+        // The octets either side of the range are ordinary public addresses.
+        assertEquals("http://100.63.0.1/x", LinkDetector.firstUrl("http://100.63.0.1/x"))
+        assertEquals("http://100.128.0.1/x", LinkDetector.firstUrl("http://100.128.0.1/x"))
+    }
+
+    @Test
+    fun `a host with hex-looking labels is still a name`() {
+        // "cafe" and "face" are hex digits; they are also words. Only hosts
+        // whose every label is numeric are treated as addresses.
+        assertEquals("https://face.cafe/x", LinkDetector.firstUrl("https://face.cafe/x"))
+        assertEquals("https://9gag.com/x", LinkDetector.firstUrl("https://9gag.com/x"))
+    }
 }

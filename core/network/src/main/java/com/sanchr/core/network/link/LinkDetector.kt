@@ -1,13 +1,16 @@
 package com.sanchr.core.network.link
 
-import java.net.IDN
 import java.net.InetAddress
-import java.net.URI
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 object LinkDetector {
     private val URL = Regex("""(?i)\b((?:https?://|www\.)[^\s<>"']+)""")
     private const val TRAILING = ".,;:!?)]}\"'"
     private const val MIN_HOST_LENGTH = 4
+
+    /** Every label is decimal or `0x`-hex: an address written in a non-standard form. */
+    private val NUMERIC_HOST = Regex("""^(0[xX][0-9a-fA-F]+|[0-9]+)(\.(0[xX][0-9a-fA-F]+|[0-9]+))*$""")
+    private val DOTTED_QUAD = Regex("""^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$""")
 
     /**
      * The first `http(s)://` or `www.` link in [text] as an absolute URL, or
@@ -39,73 +42,79 @@ object LinkDetector {
     }
 
     /**
-     * The parsed host, lowercased and punycoded, or null when there is none.
+     * The parsed host, lowercased and punycoded, or null when [url] is not a
+     * URL this app would fetch.
      *
-     * `URI.host` is tried first and returns null for a non-ASCII host —
-     * `https://bücher.example` among them — so there is a fallback that takes
-     * the authority apart by hand. It removes the userinfo at the last `@`,
-     * which is the separator (a `@` inside userinfo has to be
-     * percent-encoded), rather than keeping everything before the first slash
-     * as the old check did.
+     * Deliberately OkHttp's own parser — the one `LinkPreviewFetcher` hands
+     * the URL to when it connects. A second, hand-written parser is a second
+     * opinion about what a URL means, and a request only has to be judged safe
+     * by one of them and routed by the other to reach somewhere it should not.
+     * Here there is one answer. A trailing dot is dropped so that
+     * `127.0.0.1.` cannot evade the checks below while still resolving.
      */
-    fun hostOf(url: String): String? {
-        val parsed = runCatching { URI(url) }.getOrNull()
-        val host =
-            parsed?.host?.takeIf { it.isNotBlank() }
-                ?: authorityOf(parsed, url)?.substringAfterLast('@')?.let(::withoutPort)?.takeIf { it.isNotBlank() }
-                ?: return null
-        return runCatching { IDN.toASCII(host) }.getOrDefault(host).lowercase()
-    }
-
-    private fun authorityOf(
-        parsed: URI?,
-        url: String,
-    ): String? =
-        parsed?.rawAuthority?.takeIf { it.isNotBlank() }
-            ?: url
-                .substringAfter("://", "")
-                .takeIf { it.isNotEmpty() }
-                ?.substringBefore('/')
-                ?.substringBefore('?')
-                ?.substringBefore('#')
-
-    /** Strips `:port`, leaving a bracketed IPv6 literal intact. */
-    private fun withoutPort(host: String): String =
-        when {
-            host.startsWith("[") -> host.substringBefore(']').removePrefix("[")
-            host.count { it == ':' } == 1 -> host.substringBefore(':')
-            else -> host
-        }
+    fun hostOf(url: String): String? =
+        url
+            .toHttpUrlOrNull()
+            ?.host
+            ?.removeSuffix(".")
+            ?.takeIf { it.isNotBlank() }
+            ?.lowercase()
 
     /**
-     * Whether [host] names the device itself or something on its network.
+     * Whether [host] names the device itself, something on its network, or an
+     * address written in a form that invites disagreement about which it is.
      *
-     * Literal addresses only: resolving a name here would mean a DNS lookup
-     * for every link in every message, and a name that resolves to a private
-     * address can still get through — stopping that needs a check at the
-     * socket, not at the text. What this does close is the direct case, where
-     * a message simply names the address it wants fetched.
+     * Names are matched by suffix only: resolving one here would mean a DNS
+     * lookup for every link in every message, and a name that resolves to a
+     * private address still gets through — stopping that needs a check at the
+     * socket, on the address actually connected to, not at the text. What this
+     * closes is the direct case, where a message simply names the address it
+     * wants fetched.
      */
     fun isPrivateHost(host: String): Boolean {
         if (host == "localhost" || host.endsWith(".localhost")) return true
         // `.local` is mDNS; `.internal` and `.home.arpa` are reserved for
         // private networks.
         if (host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".home.arpa")) return true
-        if (!looksLikeIpLiteral(host)) return false
-        val address = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return true
-        return address.isLoopbackAddress ||
+        if (NUMERIC_HOST.matches(host)) {
+            // `0x7f.1`, `2130706433` and `127.1` are all loopback to some
+            // resolvers and an unremarkable string to others. Rather than pick
+            // a reading, only the plain four-part form is allowed to continue.
+            return !DOTTED_QUAD.matches(host) || isPrivateAddress(host)
+        }
+        if (host.startsWith("[") || host.contains(':')) return isPrivateAddress(host.trim('[', ']'))
+        return false
+    }
+
+    /** Private when the literal cannot be read, so an unparseable address is never fetched. */
+    private fun isPrivateAddress(literal: String): Boolean {
+        val address = runCatching { InetAddress.getByName(literal) }.getOrNull() ?: return true
+        if (isReservedByJava(address)) return true
+        val bytes = address.address
+        // fc00::/7, IPv6 unique-local — not covered by isSiteLocalAddress,
+        // which only knows the deprecated fec0::/10.
+        if (bytes.size == IPV6_BYTES && bytes[0].toInt() and UNIQUE_LOCAL_MASK == UNIQUE_LOCAL_PREFIX) return true
+        // 100.64.0.0/10, carrier-grade NAT: another machine on the same
+        // provider's network rather than a site on the internet.
+        if (bytes.size == IPV4_BYTES && bytes[0].toInt() and 0xFF == CGNAT_FIRST_OCTET) {
+            val second = bytes[1].toInt() and 0xFF
+            if (second in CGNAT_SECOND_OCTETS) return true
+        }
+        return false
+    }
+
+    /** The ranges [InetAddress] already names: loopback, 0.0.0.0, link-local, site-local, multicast. */
+    private fun isReservedByJava(address: InetAddress): Boolean =
+        address.isLoopbackAddress ||
             address.isAnyLocalAddress ||
             address.isLinkLocalAddress ||
             address.isSiteLocalAddress ||
             address.isMulticastAddress
-    }
 
-    /**
-     * Whether [host] is an address rather than a name.
-     *
-     * Checked before [InetAddress.getByName], which would otherwise resolve a
-     * name over the network — the thing this is trying not to do.
-     */
-    private fun looksLikeIpLiteral(host: String): Boolean =
-        host.all { it.isDigit() || it == '.' } || host.contains(':') || host.startsWith("[")
+    private const val IPV4_BYTES = 4
+    private const val IPV6_BYTES = 16
+    private const val UNIQUE_LOCAL_MASK = 0xFE
+    private const val UNIQUE_LOCAL_PREFIX = 0xFC
+    private const val CGNAT_FIRST_OCTET = 100
+    private val CGNAT_SECOND_OCTETS = 64..127
 }
