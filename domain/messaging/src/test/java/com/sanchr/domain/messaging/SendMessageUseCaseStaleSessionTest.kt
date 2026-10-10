@@ -145,6 +145,21 @@ class SendMessageUseCaseStaleSessionTest {
         }
 
     @Test
+    fun `a device the send was not addressed to is not reset on the server's word`() =
+        runTest {
+            val elsewhere =
+                SendSealedMessageResponse(
+                    staleDevices = listOf(StaleDevice("someone-else", 1), StaleDevice("peer-uuid", 2), StaleDevice("peer-uuid", 1)),
+                )
+            prime(1, elsewhere, accepted)
+
+            assertTrue(useCase.attemptSend(entity) is Result.Success)
+
+            coVerify(exactly = 1) { signalSessionManager.resetSession(any(), any()) }
+            coVerify(exactly = 1) { signalSessionManager.resetSession("peer-uuid", 1) }
+        }
+
+    @Test
     fun `a refusal is not reported as sent`() =
         runTest {
             prime(1, stale, stale)

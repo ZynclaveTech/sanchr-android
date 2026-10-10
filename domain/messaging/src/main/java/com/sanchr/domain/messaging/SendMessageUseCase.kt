@@ -161,7 +161,7 @@ class SendMessageUseCase
                 // encryptFanOut records its own failures (a changed safety
                 // number is terminal), and that must not be overwritten with
                 // a requeue.
-                dropStaleSessions(response.staleDevices)
+                dropStaleSessions(response.staleDevices, sentTo = deviceMessages)
                 val reencrypted = encryptFanOut(entity, recipients, selfUserId)
                 guardZeroRecipients(entity, recipients, reencrypted)
                 guardFanOutSize(entity, reencrypted)
@@ -241,9 +241,21 @@ class SendMessageUseCase
          * again. If the device came back with a different identity key, the
          * new session is not made silently — that is the safety-number
          * change, and it is surfaced as one.
+         *
+         * A device this send was not addressed to is ignored. The answer is
+         * about the request, and a server that names anything else is not
+         * given the means to reset sessions it was never asked about.
          */
-        private suspend fun dropStaleSessions(staleDevices: List<StaleDevice>) {
+        private suspend fun dropStaleSessions(
+            staleDevices: List<StaleDevice>,
+            sentTo: List<SealedDeviceMessage>,
+        ) {
+            val addressed = sentTo.mapTo(HashSet()) { it.recipientId to it.deviceId }
             for (device in staleDevices) {
+                if ((device.recipientId to device.deviceId) !in addressed) {
+                    Log.w(TAG, "server named ${device.recipientId}:${device.deviceId} as out of date, but nothing was sent to it")
+                    continue
+                }
                 Log.i(TAG, "session with ${device.recipientId}:${device.deviceId} is out of date (registered=${device.registered})")
                 signalSessionManager.resetSession(device.recipientId, device.deviceId)
             }
@@ -265,7 +277,7 @@ class SendMessageUseCase
         ) {
             val staleDevices = submit(deviceMessages).staleDevices
             if (staleDevices.isEmpty()) return
-            dropStaleSessions(staleDevices)
+            dropStaleSessions(staleDevices, sentTo = deviceMessages)
             val reencrypted = encrypt()
             if (reencrypted.isEmpty()) return
             if (submit(reencrypted).staleDevices.isNotEmpty()) {
