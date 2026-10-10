@@ -96,7 +96,7 @@ class TypedEnvelopeCipherTest {
         val address get() = SignalProtocolAddress(userId, deviceId)
 
         /** Starts a session with me from a fresh bundle of my keys, as fetching one from the server would. */
-        fun startSession() = SessionBuilder(signal, myAddress).process(myBundle())
+        fun startSession(withOneTimePreKey: Boolean = true) = SessionBuilder(signal, myAddress).process(myBundle(withOneTimePreKey))
 
         /** A message framed as iOS frames it. [claiming] is the sender the payload names. */
         fun send(
@@ -153,7 +153,7 @@ class TypedEnvelopeCipherTest {
         null
     }
 
-    private fun myBundle(): PreKeyBundle {
+    private fun myBundle(withOneTimePreKey: Boolean = true): PreKeyBundle {
         val now = System.currentTimeMillis()
         val oneTimeId = nextKeyId++
         val signedId = nextKeyId++
@@ -169,8 +169,9 @@ class TypedEnvelopeCipherTest {
         return PreKeyBundle(
             4242,
             1,
-            oneTimeId,
-            oneTime.publicKey,
+            // What the server hands out once the one-time keys have run out.
+            if (withOneTimePreKey) oneTimeId else PreKeyBundle.NULL_PRE_KEY_ID,
+            if (withOneTimePreKey) oneTime.publicKey else null,
             signedId,
             signed.publicKey,
             signedSignature,
@@ -189,9 +190,10 @@ class TypedEnvelopeCipherTest {
         publishedLookups = 0
     }
 
+    /** The rehearsal a first message is given must leave nothing behind. */
     private fun scratchLeftBehind(): Boolean =
-        sessionStore.allAddresses().any { it.name.startsWith("sealedscratch:") } ||
-            db.signalIdentityDao().getForUserBlocking("sealedscratch:%").isNotEmpty()
+        sessionStore.allAddresses().any { it.name == "rehearsal" } ||
+            db.signalIdentityDao().getForUserBlocking("rehearsal.%").isNotEmpty()
 
     @Before
     fun setUp() {
@@ -504,6 +506,82 @@ class TypedEnvelopeCipherTest {
                 cipher.decryptSealed(byteArrayOf(TypedEnvelope.SIGNAL) + embedded.serialize(), declaredSender, nobody)
             }
             assertContentEquals(carolBefore, store.loadSession(carol.address).serialize())
+        }
+
+    // ------------------------------------------------------------------
+    // Replays, and what a new session does to an old one
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a replayed first message is not read twice`() =
+        runTest {
+            val alice = Peer("alice")
+            alice.startSession()
+            val envelope = alice.send("once")
+            cipher.decryptSealed(envelope, declaredSender, publishing(alice))
+            val before = store.loadSession(alice.address).serialize()
+
+            // The one-time pre-key it was sent to is spent.
+            assertTrue(runCatching { cipher.decryptSealed(envelope, declaredSender, publishing(alice)) }.isFailure)
+            assertContentEquals(before, store.loadSession(alice.address).serialize())
+        }
+
+    @Test
+    fun `a replayed first message cannot roll an advanced session back`() =
+        runTest {
+            // With no one-time pre-key in play there is nothing spent to stop
+            // a replay from starting the session over. Opened for real under
+            // the sender's own address it is recognised against the session
+            // it already started; moved into place from somewhere else, it
+            // rolled that session back to its first message.
+            val alice = Peer("alice")
+            alice.startSession(withOneTimePreKey = false)
+            val first = alice.send("one")
+            cipher.decryptSealed(first, declaredSender, publishing(alice))
+            alice.receive(SessionCipher(store, alice.address).encrypt("reply".toByteArray()))
+            cipher.decryptSealed(alice.send("two"), declaredSender, nobody)
+            val advanced = store.loadSession(alice.address).serialize()
+
+            assertFailsWith<DuplicateMessageException> { cipher.decryptSealed(first, declaredSender, publishing(alice)) }
+
+            assertContentEquals(advanced, store.loadSession(alice.address).serialize())
+            val next = cipher.decryptSealed(alice.send("three"), declaredSender, nobody)
+            assertContentEquals(payload("three", "alice" to 1), next.plaintext)
+        }
+
+    @Test
+    fun `a message still in flight on the old session is read after a new one starts`() =
+        runTest {
+            // A contact starting a new session does not strand what they had
+            // already sent on the old one.
+            val carol = Peer("carol")
+            befriend(carol)
+            val inFlight = carol.send("sent before the restart")
+            assertEquals(TypedEnvelope.SIGNAL, inFlight[0])
+            carol.startSession()
+
+            val fresh = cipher.decryptSealed(carol.send("after the restart"), declaredSender, publishing(carol))
+            val late = cipher.decryptSealed(inFlight, declaredSender, nobody)
+
+            assertContentEquals(payload("after the restart", "carol" to 1), fresh.plaintext)
+            assertContentEquals(payload("sent before the restart", "carol" to 1), late.plaintext)
+            assertEquals("carol", late.senderUserId)
+        }
+
+    @Test
+    fun `the server is not asked without limit`() =
+        runTest {
+            var asked = 0
+            // Each names a different person, so no answer is remembered.
+            repeat(70) { index ->
+                val stranger = Peer("stranger-$index")
+                stranger.startSession()
+                publishedLookups = 0
+                assertFailsWith<UntrustedIdentityException> { cipher.decryptSealed(stranger.send("hi"), declaredSender, nobody) }
+                asked += publishedLookups
+            }
+
+            assertEquals(60, asked)
         }
 
     // ------------------------------------------------------------------
