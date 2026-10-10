@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import com.sanchr.core.designsystem.theme.IosType
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The mic control for the composer. Tap to start (asking for the microphone
@@ -207,6 +209,7 @@ fun VoicePlayback(
     // the flat placeholder, as iOS does.
     var decoded by remember(waveform) { mutableStateOf<List<Float>>(emptyList()) }
     val bars = waveform.ifEmpty { decoded }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(wantPlay) {
         if (!wantPlay) return@LaunchedEffect
@@ -229,12 +232,14 @@ fun VoicePlayback(
                         positionMs = 0
                     }
                 }
-            // On first play, when the file is on disk anyway. Decoding at
-            // composition time instead would have called `openFile` for every
-            // bubble that scrolled past — which downloads the attachment, and
-            // is exactly what the auto-download policy exists to prevent.
+            // Alongside playback, not before it: the decode is bounded but it
+            // is still work, and the clip should start playing the moment the
+            // user asks. On first play rather than at composition time because
+            // `openFile` downloads the attachment, so decoding when a bubble
+            // scrolled past would have fetched every voice note in the
+            // conversation — exactly what the auto-download policy prevents.
             if (waveform.isEmpty() && decoded.isEmpty()) {
-                decoded = VoiceWaveformDecoder.decode(file)
+                scope.launch { decoded = VoiceWaveformDecoder.decode(file) }
             }
         }
         player?.start()

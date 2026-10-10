@@ -3,36 +3,54 @@ package com.sanchr.feature.chats.voice
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.SystemClock
 import android.util.Log
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.abs
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
  * Reads a voice note's loudness out of the file itself.
  *
  * A clip carries its waveform on the wire, but not every clip has one: an
- * older build sent none, and a sender who failed to sample sends none either.
+ * older build sent none, and a sender whose metering failed sends none either.
  * Android drew forty identical bars for those — a flat line presented as the
  * shape of the audio. iOS decodes the file instead, which is what this does.
  *
- * Decoded once per clip and cached, because decoding is not free and the
- * answer never changes for a given file.
+ * The file comes from whoever sent the message, so every loop here is bounded:
+ * a clip that never signals end-of-stream, or claims to be ten minutes of
+ * 48 kHz stereo, must cost a fixed amount of time and a fixed amount of memory
+ * and then give up. Levels accumulate into [VoiceWaveform.DEFAULT_BINS]
+ * running totals rather than a list of samples — the first version of this
+ * collected every PCM frame into an `ArrayList<Int>`, which for a long clip is
+ * tens of millions of boxed integers.
  */
 object VoiceWaveformDecoder {
     private const val TAG = "VoiceWaveformDecoder"
     private const val DEQUEUE_TIMEOUT_US = 10_000L
+
+    /** Longest a decode may run. A voice note is seconds long; this is slack. */
+    private const val BUDGET_MS = 3_000L
+
+    /** Consecutive empty dequeues before the decoder is declared stuck. */
+    private const val MAX_IDLE_ROUNDS = 64
+
+    /** Plausible voice-note audio. Anything else is not worth decoding blind. */
+    private const val MAX_CHANNELS = 2
+    private const val MIN_SAMPLE_RATE = 8_000
+    private const val MAX_SAMPLE_RATE = 48_000
 
     /** Keyed by path and length: a cache path is reused after an evict. */
     private val cache = HashMap<String, List<Float>>()
 
     /**
      * Loudness buckets for [file] on the shared scale, or an empty list when
-     * the audio cannot be decoded — in which case the caller keeps its
-     * placeholder, which is what iOS does too.
+     * the audio cannot be decoded within budget — in which case the caller
+     * keeps its placeholder, as iOS does.
      */
     suspend fun decode(
         file: File,
@@ -40,19 +58,12 @@ object VoiceWaveformDecoder {
     ): List<Float> {
         val key = file.path + ":" + file.length()
         synchronized(cache) { cache[key] }?.let { return it }
-        val levels = withContext(Dispatchers.Default) { runCatching { decodeBlocking(file, bins) }.getOrDefault(emptyList()) }
+        val levels = withContext(Dispatchers.Default) { runCatching { decodeBounded(file, bins) }.getOrDefault(emptyList()) }
         if (levels.isNotEmpty()) synchronized(cache) { cache[key] = levels }
         return levels
     }
 
-    /**
-     * Decodes the audio track to PCM and buckets the absolute amplitudes.
-     *
-     * The samples are fed to [VoiceWaveform.bucket], so a decoded waveform and
-     * a recorded one are drawn on exactly the same scale rather than two that
-     * merely look similar.
-     */
-    private fun decodeBlocking(
+    private suspend fun decodeBounded(
         file: File,
         bins: Int,
     ): List<Float> {
@@ -61,15 +72,21 @@ object VoiceWaveformDecoder {
         return try {
             extractor.setDataSource(file.path)
             val track = audioTrack(extractor) ?: return emptyList()
-            extractor.selectTrack(track)
             val format = extractor.getTrackFormat(track)
+            if (!isPlausibleVoice(format)) return emptyList()
+            // Bins are assigned by position in the clip, so the length has to
+            // be known up front; without it there is no streaming way to say
+            // which bin a frame belongs to.
+            val durationUs = format.takeIf { it.containsKey(MediaFormat.KEY_DURATION) }?.getLong(MediaFormat.KEY_DURATION) ?: 0L
+            if (durationUs <= 0) return emptyList()
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return emptyList()
+            extractor.selectTrack(track)
             codec =
                 MediaCodec.createDecoderByType(mime).apply {
                     configure(format, null, null, 0)
                     start()
                 }
-            VoiceWaveform.bucket(amplitudes(extractor, codec), bins)
+            accumulate(extractor, codec, bins, durationUs)
         } catch (e: Exception) {
             Log.w(TAG, "could not decode a waveform for ${file.name}: ${e.message}")
             emptyList()
@@ -85,25 +102,56 @@ object VoiceWaveformDecoder {
             extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
         }
 
+    private fun isPlausibleVoice(format: MediaFormat): Boolean {
+        val channels = format.takeIf { it.containsKey(MediaFormat.KEY_CHANNEL_COUNT) }?.getInteger(MediaFormat.KEY_CHANNEL_COUNT) ?: 1
+        val rate = format.takeIf { it.containsKey(MediaFormat.KEY_SAMPLE_RATE) }?.getInteger(MediaFormat.KEY_SAMPLE_RATE) ?: MIN_SAMPLE_RATE
+        return channels in 1..MAX_CHANNELS && rate in MIN_SAMPLE_RATE..MAX_SAMPLE_RATE
+    }
+
     /**
-     * Absolute 16-bit amplitudes, one per frame.
+     * Decodes the track, adding each frame's level to the bin its timestamp
+     * falls in.
      *
-     * Reads every decoded buffer rather than sampling: a voice note is seconds
-     * long, and the bucketing afterwards is what reduces it.
+     * Fixed memory — two arrays of [bins] — and a wall-clock budget, because
+     * both the file and its headers are someone else's input. A decode that
+     * runs out of budget returns what it has rather than nothing, since a
+     * partial waveform is still the shape of the start of the clip.
      */
-    private fun amplitudes(
+    private suspend fun accumulate(
         extractor: MediaExtractor,
         codec: MediaCodec,
-    ): List<Int> {
-        val amplitudes = ArrayList<Int>()
+        bins: Int,
+        durationUs: Long,
+    ): List<Float> {
+        val sums = DoubleArray(bins)
+        val counts = IntArray(bins)
         val info = MediaCodec.BufferInfo()
+        val deadline = SystemClock.elapsedRealtime() + BUDGET_MS
         var inputDone = false
-        var outputDone = false
-        while (!outputDone) {
+        var idleRounds = 0
+        var finished = false
+
+        // One exit condition rather than several breaks: the budget, the
+        // stream ending, and a decoder that has stopped producing anything —
+        // the last because a file that never reports end-of-stream would
+        // otherwise spin here for the whole budget every time it was opened.
+        while (!finished && idleRounds <= MAX_IDLE_ROUNDS && SystemClock.elapsedRealtime() < deadline) {
+            coroutineContext.ensureActive()
             if (!inputDone) inputDone = feed(extractor, codec)
-            outputDone = drain(codec, info, amplitudes)
+            val index = codec.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_US)
+            if (index < 0) {
+                idleRounds++
+            } else {
+                idleRounds = 0
+                val bin = ((info.presentationTimeUs.toDouble() / durationUs) * bins).toInt().coerceIn(0, bins - 1)
+                codec.getOutputBuffer(index)?.let { buffer -> addLevels(buffer, bin, sums, counts) }
+                codec.releaseOutputBuffer(index, false)
+                finished = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+            }
         }
-        return amplitudes
+
+        if (counts.all { it == 0 }) return emptyList()
+        return List(bins) { i -> if (counts[i] == 0) 0f else (sums[i] / counts[i]).toFloat().coerceIn(0f, 1f) }
     }
 
     /** Queues one buffer. Returns whether the input is exhausted. */
@@ -124,28 +172,23 @@ object VoiceWaveformDecoder {
         return false
     }
 
-    /** Reads one decoded buffer into [into]. Returns whether the stream ended. */
-    private fun drain(
-        codec: MediaCodec,
-        info: MediaCodec.BufferInfo,
-        into: MutableList<Int>,
-    ): Boolean {
-        val index = codec.dequeueOutputBuffer(info, DEQUEUE_TIMEOUT_US)
-        if (index < 0) return false
-        codec.getOutputBuffer(index)?.let { buffer -> readAmplitudes(buffer, into) }
-        codec.releaseOutputBuffer(index, false)
-        return info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-    }
-
-    private fun readAmplitudes(
+    /**
+     * Adds one decoded buffer's frames to [bin].
+     *
+     * Each frame goes through [VoiceWaveform.level] here, the same curve the
+     * recorder's samples take, so a decoded waveform and a recorded one are on
+     * one scale rather than two that merely look alike.
+     */
+    private fun addLevels(
         buffer: ByteBuffer,
-        into: MutableList<Int>,
+        bin: Int,
+        sums: DoubleArray,
+        counts: IntArray,
     ) {
         val shorts = buffer.order(ByteOrder.nativeOrder()).asShortBuffer()
         while (shorts.hasRemaining()) {
-            val value = shorts.get().toInt()
-            // `abs(Short.MIN_VALUE)` is still negative in two's complement.
-            into += if (value == Short.MIN_VALUE.toInt()) -Short.MIN_VALUE.toInt() else abs(value)
+            sums[bin] += VoiceWaveform.level(shorts.get().toInt()).toDouble()
+            counts[bin]++
         }
     }
 }
