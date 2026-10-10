@@ -37,6 +37,10 @@ import kotlinx.coroutines.withContext
  * first account's leftover tokens, some of which may already be expired,
  * failing that account's first sends with `UNAUTHENTICATED` until the
  * stale pool drains.
+ *
+ * The record of recent session rebuilds ([SessionRebuildThrottle]) is kept
+ * in its own preferences file rather than the database, so it is cleared
+ * here by name.
  */
 @Singleton
 class LogoutUseCase
@@ -49,6 +53,7 @@ class LogoutUseCase
         private val stagedIdentityStore: StagedIdentityStore,
         private val databasePassphraseProvider: DatabasePassphraseProvider,
         private val deliveryTokenStore: DeliveryTokenStore,
+        private val sessionRebuilds: SessionRebuildThrottle,
         private val dispatchers: DispatcherProvider,
     ) {
         suspend operator fun invoke() =
@@ -76,6 +81,10 @@ class LogoutUseCase
                 //    account signing in in this process cannot spend the
                 //    first account's leftover (possibly expired) tokens.
                 runCatching { deliveryTokenStore.clear() }
+                // 8. Forget which senders' sessions were recently rebuilt. It
+                //    lives outside the database, and says something about who
+                //    this account was talking to.
+                runCatching { sessionRebuilds.clear() }
             }
 
         private companion object {

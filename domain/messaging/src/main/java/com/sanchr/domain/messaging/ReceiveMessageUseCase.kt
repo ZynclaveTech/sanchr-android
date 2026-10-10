@@ -105,6 +105,7 @@ class ReceiveMessageUseCase
         private val profileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
         private val presenceStore: PresenceStore,
+        private val sessionRebuilds: SessionRebuildThrottle,
     ) {
         /**
          * Scope for fire-and-forget session rebuilds. A SupervisorJob is used
@@ -114,8 +115,6 @@ class ReceiveMessageUseCase
          */
         private val sessionRecoveryScope: CoroutineScope =
             CoroutineScope(SupervisorJob() + dispatchers.io)
-
-        private val sessionRebuilds = SessionRebuildThrottle()
 
         /**
          * Scope for profile resolution after a new Profile Key arrives: an
