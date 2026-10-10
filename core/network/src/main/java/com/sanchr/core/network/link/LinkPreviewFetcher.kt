@@ -52,8 +52,6 @@ class LinkPreviewFetcher internal constructor(
             .Builder()
             .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
             // The URL is chosen by whoever sent the message.
             .refusePrivateAddresses()
             .build(),

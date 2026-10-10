@@ -1,6 +1,6 @@
 package com.sanchr.core.network.link
 
-import com.sanchr.core.network.link.LinkPreviewGuard.NoProxyBypassInterceptor
+import com.sanchr.core.network.link.LinkPreviewGuard.CheckedRedirectsInterceptor
 import com.sanchr.core.network.link.LinkPreviewGuard.PublicOnlyDns
 import com.sanchr.core.network.link.LinkPreviewGuard.PublicPeerInterceptor
 import io.mockk.every
@@ -22,8 +22,10 @@ import kotlin.test.assertTrue
 import okhttp3.Dns
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 /**
  * The checks on where a preview actually connects — the part the text of a
@@ -101,35 +103,101 @@ class LinkPreviewGuardTest {
     @Test
     fun `a preview is refused rather than fetched around a configured proxy`() {
         val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.corp.example", 3128))
-        val chain = chainRequesting("https://example.com/a")
-        assertFailsWith<IOException> { NoProxyBypassInterceptor { selecting(proxy) }.intercept(chain) }
+        val chain = chainAnswering()
+        assertFailsWith<IOException> { CheckedRedirectsInterceptor { selecting { listOf(proxy) } }.intercept(chain) }
+        verify(exactly = 0) { chain.proceed(any()) }
+    }
+
+    @Test
+    fun `a proxy configuration that cannot be read counts as a proxy`() {
+        val chain = chainAnswering()
+        val broken = selecting { throw IllegalArgumentException("bad PAC") }
+        assertFailsWith<IOException> { CheckedRedirectsInterceptor { broken }.intercept(chain) }
         verify(exactly = 0) { chain.proceed(any()) }
     }
 
     @Test
     fun `with no proxy configured the fetch goes ahead`() {
-        val chain = chainRequesting("https://example.com/a")
-        val response = mockk<Response>()
-        every { chain.proceed(any()) } returns response
-        assertEquals(response, NoProxyBypassInterceptor { selecting(Proxy.NO_PROXY) }.intercept(chain))
-        assertEquals(response, NoProxyBypassInterceptor { null }.intercept(chain))
+        val direct = CheckedRedirectsInterceptor { selecting { listOf(Proxy.NO_PROXY) } }
+        assertEquals(200, direct.intercept(chainAnswering("https://example.com/a" to null)).code)
+        assertEquals(200, CheckedRedirectsInterceptor { null }.intercept(chainAnswering("https://example.com/a" to null)).code)
+    }
+
+    @Test
+    fun `a redirect to a public page is followed`() {
+        val chain = chainAnswering("https://example.com/a" to "/b", "https://example.com/b" to null)
+        val response = CheckedRedirectsInterceptor { null }.intercept(chain)
+        assertEquals("https://example.com/b", response.request.url.toString())
+    }
+
+    @Test
+    fun `a redirect to a private address is refused before anything connects to it`() {
+        val privateTargets =
+            listOf("http://127.0.0.1/admin", "http://[::1]/", "http://192.168.1.1/", "http://router.local/", "http://2130706433/")
+        privateTargets.forEach { target ->
+            val chain = chainAnswering("https://example.com/a" to target)
+            assertFailsWith<IOException>(target) { CheckedRedirectsInterceptor { null }.intercept(chain) }
+            // Once, for the public page that answered with the redirect.
+            verify(exactly = 1) { chain.proceed(any()) }
+        }
+    }
+
+    @Test
+    fun `a redirect that only a proxy would carry is refused`() {
+        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.corp.example", 3128))
+        val onlyForOther = selecting { uri -> if (uri?.host == "other.example") listOf(proxy) else listOf(Proxy.NO_PROXY) }
+        val chain = chainAnswering("https://example.com/a" to "https://other.example/x")
+        assertFailsWith<IOException> { CheckedRedirectsInterceptor { onlyForOther }.intercept(chain) }
+        verify(exactly = 1) { chain.proceed(any()) }
+    }
+
+    @Test
+    fun `a redirect loop ends`() {
+        val chain = mockk<Interceptor.Chain>()
+        every { chain.request() } returns Request.Builder().url("https://example.com/a").build()
+        every { chain.proceed(any()) } answers { response(firstArg(), location = "/a") }
+        assertFailsWith<IOException> { CheckedRedirectsInterceptor { null }.intercept(chain) }
+        verify(exactly = 5) { chain.proceed(any()) }
     }
 
     @Test
     fun `the guarded client connects directly`() {
         val client = with(LinkPreviewGuard) { OkHttpClient.Builder().refusePrivateAddresses() }.build()
         assertEquals(Proxy.NO_PROXY, client.proxy)
+        // Redirects belong to the checked interceptor, not to OkHttp.
+        assertFalse(client.followRedirects)
+        assertFalse(client.followSslRedirects)
     }
 
-    private fun chainRequesting(url: String): Interceptor.Chain {
-        val chain = mockk<Interceptor.Chain>(relaxed = true)
-        every { chain.request() } returns Request.Builder().url(url).build()
+    /** A chain starting at the first URL, answering each URL with a redirect to its pair or, for null, a 200. */
+    private fun chainAnswering(vararg hops: Pair<String, String?> = arrayOf("https://example.com/a" to null)): Interceptor.Chain {
+        val chain = mockk<Interceptor.Chain>()
+        val answers = hops.toMap()
+        every { chain.request() } returns Request.Builder().url(hops.first().first).build()
+        every { chain.proceed(any()) } answers {
+            val request = firstArg<Request>()
+            response(request, location = answers[request.url.toString()])
+        }
         return chain
     }
 
-    private fun selecting(proxy: Proxy): ProxySelector =
+    private fun response(
+        request: Request,
+        location: String?,
+    ): Response =
+        Response
+            .Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(if (location == null) 200 else 302)
+            .message("")
+            .apply { location?.let { header("Location", it) } }
+            .body("".toResponseBody())
+            .build()
+
+    private fun selecting(choose: (URI?) -> List<Proxy>): ProxySelector =
         object : ProxySelector() {
-            override fun select(uri: URI?): List<Proxy> = listOf(proxy)
+            override fun select(uri: URI?): List<Proxy> = choose(uri)
 
             override fun connectFailed(
                 uri: URI?,

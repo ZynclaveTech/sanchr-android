@@ -6,6 +6,7 @@ import java.net.Proxy
 import java.net.ProxySelector
 import java.net.UnknownHostException
 import okhttp3.Dns
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -19,9 +20,9 @@ import okhttp3.Response
  * answers with a redirect to `http://127.0.0.1/`. Both are decided here, on
  * every hop:
  *
- *  - The client never uses a proxy, and [NoProxyBypassInterceptor] refuses the
- *    fetch outright when one is configured, so the two checks below always
- *    see the real destination and a user's proxy is never bypassed.
+ *  - The client never uses a proxy, and [CheckedRedirectsInterceptor] follows
+ *    redirects itself, refusing any hop that names a private host or that
+ *    the device would send through a proxy.
  *  - [PublicOnlyDns] refuses a name any of whose addresses is private, before
  *    anything is connected.
  *  - [PublicPeerInterceptor] looks at the address the socket actually reached
@@ -36,28 +37,58 @@ object LinkPreviewGuard {
         // the socket's peer is the proxy, so neither check below would be
         // looking at the destination.
         proxy(Proxy.NO_PROXY)
-            .addInterceptor(NoProxyBypassInterceptor { ProxySelector.getDefault() })
+            // Redirects are followed by [CheckedRedirectsInterceptor], one
+            // checked hop at a time, not by OkHttp behind its back.
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .addInterceptor(CheckedRedirectsInterceptor { ProxySelector.getDefault() })
             .dns(PublicOnlyDns(Dns.SYSTEM))
             .addNetworkInterceptor(PublicPeerInterceptor())
 
     /**
-     * Refuses the fetch when the device is configured to use a proxy.
+     * Follows redirects itself so that every URL in the chain is judged
+     * before anything connects to it, the first included.
      *
-     * The client connects directly so that the checks are sound, and that
-     * must not become a way around a proxy the user set up: someone who
-     * routes traffic through one would have their own address shown to
-     * whatever site a message linked to. No preview is the honest outcome.
+     * Two things are refused at each hop:
+     *
+     *  - A host that names the device or its network. The first URL has
+     *    been through [LinkDetector] already; a `Location` header has not.
+     *  - Any URL the device would send through a proxy. The client connects
+     *    directly so that the address checks are sound, and that must not
+     *    become a way around a proxy the user set up: their own address
+     *    would be shown to whatever site a message linked to, or to wherever
+     *    that site redirected. If the proxy configuration cannot be read the
+     *    answer is the same — unknown is not "none".
      */
-    internal class NoProxyBypassInterceptor(
+    internal class CheckedRedirectsInterceptor(
         private val selector: () -> ProxySelector?,
     ) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
-            val request = chain.request()
-            val configured = runCatching { selector()?.select(request.url.toUri()) }.getOrNull().orEmpty()
-            if (configured.any { it.type() != Proxy.Type.DIRECT }) {
-                throw IOException("link preview refused: a proxy is configured")
+            var request = chain.request()
+            repeat(MAX_HOPS) {
+                check(request.url)
+                val response = chain.proceed(request)
+                if (!response.isRedirect) return response
+                val next = response.header("Location")?.let(request.url::resolve)
+                response.close()
+                request = request.newBuilder().url(next ?: throw IOException("link preview refused: unusable redirect")).build()
             }
-            return chain.proceed(request)
+            throw IOException("link preview refused: too many redirects")
+        }
+
+        private fun check(url: HttpUrl) {
+            if (LinkDetector.isPrivateHost(url.host.removeSuffix(".").lowercase())) {
+                throw IOException("link preview refused: private host")
+            }
+            val direct =
+                try {
+                    selector()?.select(url.toUri()).orEmpty().all { it.type() == Proxy.Type.DIRECT }
+                } catch (e: IllegalArgumentException) {
+                    false
+                } catch (e: SecurityException) {
+                    false
+                }
+            if (!direct) throw IOException("link preview refused: a proxy is configured")
         }
     }
 
@@ -86,4 +117,6 @@ object LinkPreviewGuard {
             return chain.proceed(chain.request())
         }
     }
+
+    private const val MAX_HOPS = 5
 }
