@@ -199,6 +199,14 @@ fun VoicePlayback(
     var positionMs by remember { mutableIntStateOf(0) }
     var totalMs by remember { mutableIntStateOf(durationMs) }
     var wantPlay by remember { mutableStateOf(false) }
+    // Read out of the file when the sender attached none — an older build, or
+    // one that failed to sample. Without this the bubble drew forty identical
+    // bars, a flat line presented as the shape of the audio.
+    // Read out of the file on first play, when the sender attached none — an
+    // older build, or one that failed to sample. Until then the bubble draws
+    // the flat placeholder, as iOS does.
+    var decoded by remember(waveform) { mutableStateOf<List<Float>>(emptyList()) }
+    val bars = waveform.ifEmpty { decoded }
 
     LaunchedEffect(wantPlay) {
         if (!wantPlay) return@LaunchedEffect
@@ -221,6 +229,13 @@ fun VoicePlayback(
                         positionMs = 0
                     }
                 }
+            // On first play, when the file is on disk anyway. Decoding at
+            // composition time instead would have called `openFile` for every
+            // bubble that scrolled past — which downloads the attachment, and
+            // is exactly what the auto-download policy exists to prevent.
+            if (waveform.isEmpty() && decoded.isEmpty()) {
+                decoded = VoiceWaveformDecoder.decode(file)
+            }
         }
         player?.start()
         playing = true
@@ -260,7 +275,7 @@ fun VoicePlayback(
             }
         }
         WaveformBars(
-            waveform = waveform,
+            waveform = bars,
             progress = if (totalMs > 0) positionMs.toFloat() / totalMs else 0f,
             tint = tint,
             modifier =
