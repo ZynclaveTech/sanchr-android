@@ -65,6 +65,10 @@ class SanchrSessionStore
             sessionDao.deleteByPrefixBlocking("$name.%")
         }
 
+        /** Every address a session is held for. */
+        fun allAddresses(): List<SignalProtocolAddress> =
+            sessionDao.listAddressesBlocking("%").mapNotNull { runCatching { it.parseSignalAddress() }.getOrNull() }
+
         /** Wipes all session data. Called on account deletion. */
         fun wipeAll() {
             sessionDao.deleteAllBlocking()

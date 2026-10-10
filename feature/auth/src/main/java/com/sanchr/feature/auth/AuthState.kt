@@ -27,6 +27,12 @@ sealed interface AuthState {
     /** Phone-only entry. Mirrors iOS `LoginView` phone screen. Single entry for new + returning users. */
     data class LoginPhone(
         val countryCode: String = "+1",
+        /**
+         * ISO region of the chosen country, so `+1` is not ambiguous between
+         * the United States and Canada. Empty until the user picks or the SIM
+         * resolves one.
+         */
+        val countryIso: String = "",
         val phone: String = "",
         val isSubmitting: Boolean = false,
     ) : AuthState

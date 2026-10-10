@@ -46,6 +46,13 @@ class ProfilePhotoVisibilityTest {
             every { it.screenshotProtectionEnabled } returns flowOf(false)
             every { it.disappearingDefaultSeconds } returns flowOf(0)
             every { it.profilePhotoVisibility } returns flowOf("contacts")
+            every { it.notificationPreview } returns flowOf("always")
+            every { it.messageNotificationsEnabled } returns flowOf(true)
+            every { it.groupNotificationsEnabled } returns flowOf(true)
+            every { it.callNotificationsEnabled } returns flowOf(true)
+            every { it.notificationSoundEnabled } returns flowOf(true)
+            every { it.notificationVibrateEnabled } returns flowOf(true)
+            every { it.mediaAutoDownload } returns flowOf("wifi")
         }
     private val deleteAccountUseCase = mockk<DeleteAccountUseCase>()
 
@@ -65,6 +72,10 @@ class ProfilePhotoVisibilityTest {
             chatBackupManager = mockk<ChatBackupManager>(relaxed = true),
             deleteAccountUseCase = deleteAccountUseCase,
             profileUpdater = mockk(relaxed = true),
+            // The display name falls back to the session when the server sends
+            // none; these tests do not exercise the profile card.
+            sessionManager = mockk(relaxed = true),
+            mediaCacheCleaner = mockk(relaxed = true),
         )
 
     @Test

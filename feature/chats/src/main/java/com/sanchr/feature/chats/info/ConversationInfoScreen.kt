@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,9 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -33,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -50,6 +55,9 @@ fun ConversationInfoScreen(
     onVerifySafetyNumber: (peerId: String, peerName: String) -> Unit,
     onOpenDisappearing: () -> Unit,
     onOpenWallpaper: () -> Unit,
+    /** The chat's Media / Links / Docs browser, which Android had no entry to. */
+    onOpenSharedContent: () -> Unit,
+    onOpenVaultMedia: () -> Unit,
     onLeft: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ConversationInfoViewModel = hiltViewModel(),
@@ -62,6 +70,9 @@ fun ConversationInfoScreen(
             ?.id
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = uiState.title, onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->
@@ -75,7 +86,7 @@ fun ConversationInfoScreen(
             verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.default),
         ) {
             uiState.error?.let { message ->
-                Text(text = message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(text = message, style = IosType.caption, color = MaterialTheme.colorScheme.error)
             }
 
             SectionTitle("Security and privacy")
@@ -107,6 +118,25 @@ fun ConversationInfoScreen(
                         subtitle = "Stop notifications for this chat",
                         checked = uiState.isMuted,
                         onCheckedChange = viewModel::setMuted,
+                    )
+                    InfoRow(
+                        icon = Icons.Filled.PhotoLibrary,
+                        title = "Media, links and docs",
+                        subtitle = "Everything shared in this chat",
+                        onClick = onOpenSharedContent,
+                    )
+                    ToggleRow(
+                        icon = Icons.Filled.Photo,
+                        title = "Media visibility",
+                        subtitle = "Allow media from this chat in gallery auto-save",
+                        checked = uiState.mediaVisibleInGallery,
+                        onCheckedChange = viewModel::setMediaVisibleInGallery,
+                    )
+                    InfoRow(
+                        icon = Icons.Filled.Security,
+                        title = "Vault media",
+                        subtitle = "Auto-vault, view once and capture protection",
+                        onClick = onOpenVaultMedia,
                     )
                     InfoRow(
                         icon = Icons.Filled.Palette,
@@ -145,7 +175,7 @@ fun ConversationInfoScreen(
 private fun SectionTitle(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
+        style = IosType.bodyBold,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
     )
@@ -175,8 +205,8 @@ private fun InfoRow(
             tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = title, style = IosType.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = subtitle, style = IosType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -196,8 +226,8 @@ private fun ToggleRow(
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = title, style = IosType.bodyLarge)
+            Text(text = subtitle, style = IosType.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }

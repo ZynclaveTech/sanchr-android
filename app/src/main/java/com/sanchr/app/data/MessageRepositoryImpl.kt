@@ -12,8 +12,10 @@ import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
+import com.sanchr.core.model.MediaKind
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
@@ -22,6 +24,7 @@ import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.vault.AutoVaultScheduler
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteConversationRequest
 import com.sanchr.proto.messaging.DeleteMessageRequest
@@ -53,6 +56,7 @@ class MessageRepositoryImpl
         private val sessionManager: SessionManager,
         private val reactionDao: MessageReactionDao,
         private val notificationClient: NotificationServiceClient,
+        private val autoVaultScheduler: AutoVaultScheduler,
     ) : MessageRepository {
         private companion object {
             const val TAG = "MessageRepositoryImpl"
@@ -71,11 +75,41 @@ class MessageRepositoryImpl
         override fun observeHiddenConversations(): Flow<List<Conversation>> =
             withNewestMessages(conversationDao.observeHiddenConversations())
 
+        override suspend fun draftText(conversationId: String): String? = conversationDao.draftText(conversationId)
+
+        override suspend fun setDraftText(
+            conversationId: String,
+            text: String?,
+        ) {
+            conversationDao.setDraftText(conversationId, text?.takeIf { it.isNotBlank() })
+        }
+
         override suspend fun setWallpaper(
             conversationId: String,
             wallpaper: String?,
         ) {
             conversationDao.setWallpaper(conversationId, wallpaper)
+        }
+
+        override suspend fun setVaultPolicy(
+            conversationId: String,
+            policy: ChatVaultPolicy,
+        ) {
+            conversationDao.setVaultPolicy(
+                conversationId = conversationId,
+                autoIncoming = policy.autoVaultIncoming,
+                viewOnce = policy.viewOnceOutgoing,
+                captureProtection = policy.captureProtection,
+            )
+        }
+
+        override suspend fun vaultPolicy(conversationId: String): ChatVaultPolicy =
+            conversationDao.getConversationById(conversationId)?.vaultPolicy() ?: ChatVaultPolicy.DEFAULT
+
+        override suspend fun message(messageId: String): Message? = messageDao.getMessageById(messageId)?.toDomain()
+
+        override suspend fun tombstoneAutoVaulted(messageId: String) {
+            messageDao.replaceContent(messageId, MessageContent.System.CONTENT_TYPE, MessageContent.System.AUTO_VAULTED)
         }
 
         override suspend fun setDisappearingDuration(
@@ -127,9 +161,12 @@ class MessageRepositoryImpl
                 entity?.toDomain()
             }
 
-        override fun observeMessages(conversationId: String): Flow<List<Message>> =
+        override fun observeRecentMessages(
+            conversationId: String,
+            limit: Int,
+        ): Flow<List<Message>> =
             combine(
-                messageDao.observeMessages(conversationId),
+                messageDao.observeRecentMessages(conversationId, limit),
                 reactionDao.observeForConversation(conversationId),
             ) { entities, reactions ->
                 val byMessage = reactions.groupBy { it.messageId }
@@ -192,6 +229,8 @@ class MessageRepositoryImpl
             messageDao.insertMessage(entity)
             return entity
         }
+
+        override suspend fun outboundMessage(messageId: String): MessageEntity? = messageDao.getMessageById(messageId)
 
         override suspend fun recordSendAttempt(
             messageId: String,
@@ -313,21 +352,6 @@ class MessageRepositoryImpl
             return messageDao.searchTextMessageIds(conversationId, escaped)
         }
 
-        override suspend fun loadMoreMessages(
-            conversationId: String,
-            beforeTimestamp: Long,
-            limit: Int,
-        ): List<Message> {
-            // DAO uses limit+offset pagination; offset 0 for simplicity — caller manages externally
-            val entities =
-                messageDao.getMessagesPaginated(
-                    conversationId = conversationId,
-                    limit = limit,
-                    offset = 0,
-                )
-            return entities.map { it.toDomain() }
-        }
-
         override suspend fun createConversation(participantId: String): Conversation {
             val protoConv =
                 messagingClient.startDirectConversation(
@@ -392,6 +416,13 @@ class MessageRepositoryImpl
             messageDao.insertMessage(entity)
             if (isNewRow && senderId != sessionManager.getUserId()) {
                 conversationDao.incrementUnread(conversationId, timestamp)
+                // Only a cheap check here, on the receive path: is this media,
+                // in a chat that vaults what it receives? Whether this
+                // particular message may be vaulted is decided by the work
+                // itself, from what is stored when it runs.
+                if (MediaKind.fromWire(contentType) != null && vaultPolicy(conversationId).autoVaultIncoming) {
+                    autoVaultScheduler.schedule(messageId)
+                }
             }
             if (stageAck) stagePendingAck(conversationId, messageId, flushAckImmediately)
         }
@@ -460,6 +491,13 @@ class MessageRepositoryImpl
                 failureReason = failureReason,
             )
 
+        private fun ConversationEntity.vaultPolicy(): ChatVaultPolicy =
+            ChatVaultPolicy(
+                autoVaultIncoming = vaultAutoIncoming,
+                viewOnceOutgoing = vaultViewOnce,
+                captureProtection = vaultCaptureProtection,
+            )
+
         private fun String.toMessageContent(body: String): MessageContent = MessageContentCodec.fromStored(this, body)
 
         private fun parseParticipantIds(raw: String): List<String> {
@@ -511,13 +549,14 @@ class MessageRepositoryImpl
                 participants = participants,
                 title = derivedTitle,
                 avatarUrl = avatarUrl,
-                lastMessage = null, // Loaded separately via observeMessages
+                lastMessage = null, // Loaded separately by the chat screen's own observer
                 unreadCount = unreadCount,
                 isPinned = isPinned,
                 isMuted = isMuted,
                 isArchived = isArchived,
                 disappearingMessageDuration = disappearingDurationMs,
                 wallpaper = wallpaper,
+                vaultPolicy = vaultPolicy(),
                 updatedAt = Instant.fromEpochMilliseconds(updatedAt),
                 createdAt = Instant.fromEpochMilliseconds(createdAt),
             )

@@ -19,6 +19,7 @@ import sanchr.messaging.Messaging
 
 class ReceiveMessageUseCasePresenceTest {
     private val sealedSenderCipher = mockk<SealedSenderCipher>()
+    private val typedEnvelopeCipher = mockk<com.sanchr.core.crypto.sealed.TypedEnvelopeCipher>(relaxed = true)
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
     private val dispatchers =
         object : DispatcherProvider {
@@ -33,6 +34,7 @@ class ReceiveMessageUseCasePresenceTest {
     private val useCase =
         ReceiveMessageUseCase(
             sealedSenderCipher,
+            typedEnvelopeCipher,
             mockk<SignalSessionManager>(relaxed = true),
             mockk<QuarantineEnvelopeUseCase>(relaxed = true),
             Lazy<MessageRepository> { messageRepository },

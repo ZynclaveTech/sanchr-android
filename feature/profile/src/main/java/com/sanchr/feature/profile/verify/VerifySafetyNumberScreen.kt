@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -45,6 +46,7 @@ import com.sanchr.core.designsystem.component.QrScanner
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import java.text.DateFormat
 import java.util.Date
@@ -71,6 +73,9 @@ fun VerifySafetyNumberScreen(
     }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = "Verify security code", onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->
@@ -117,7 +122,7 @@ private fun SafetyNumberBody(
 
     Text(
         text = "Scan this code on $contactName's phone, or compare the digits below out loud.",
-        style = MaterialTheme.typography.bodySmall,
+        style = IosType.caption,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
         modifier = Modifier.padding(vertical = SanchrTheme.spacing.md),
@@ -154,7 +159,7 @@ private fun QrCard(payload: ByteArray) {
             if (bitmap == null) {
                 Text(
                     text = "This code isn't ready yet.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
@@ -184,7 +189,7 @@ private fun DigitGrid(groups: List<String>) {
                     row.forEach { group ->
                         Text(
                             text = group,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                            style = IosType.bodyLarge.copy(fontFamily = FontFamily.Monospace),
                         )
                     }
                 }
@@ -210,7 +215,7 @@ private fun VerificationStatus(verifiedAtMillis: Long?) {
             contentDescription = null,
             tint = if (verifiedAtMillis == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
         )
-        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        Text(text = label, style = IosType.body)
     }
 }
 
@@ -228,7 +233,7 @@ private fun UnavailableNotice(message: String) {
             horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
         ) {
             Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-            Text(text = message, style = MaterialTheme.typography.bodyMedium)
+            Text(text = message, style = IosType.body)
         }
     }
 }
@@ -249,7 +254,7 @@ private fun ScanOutcomeBanner(
             modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.default),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(text = message, style = IosType.body, modifier = Modifier.weight(1f))
             IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
         }
     }
@@ -275,7 +280,7 @@ private fun ScannerOverlay(
             Icon(Icons.Filled.QrCodeScanner, contentDescription = null, tint = Color.White)
             Text(
                 text = "Point at their security code",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = Color.White,
                 modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
             )

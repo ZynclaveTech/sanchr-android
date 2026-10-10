@@ -76,6 +76,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.callengine.CallState
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrGradients
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -236,7 +237,7 @@ private fun CallerInfoSection(
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = initial,
-                        style = MaterialTheme.typography.displayLarge,
+                        style = IosType.heroTitle,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
@@ -247,7 +248,7 @@ private fun CallerInfoSection(
 
         Text(
             text = callerName,
-            style = MaterialTheme.typography.headlineMedium,
+            style = IosType.screenTitle,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onPrimary,
         )
@@ -279,7 +280,7 @@ private fun CallerInfoSection(
 
         Text(
             text = statusText,
-            style = MaterialTheme.typography.bodyLarge,
+            style = IosType.bodyLarge,
             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
         )
     }
@@ -449,7 +450,7 @@ private fun IncomingCallControls(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Decline",
-                style = MaterialTheme.typography.labelMedium,
+                style = IosType.sectionLabel,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
             )
         }
@@ -472,7 +473,7 @@ private fun IncomingCallControls(
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Answer",
-                style = MaterialTheme.typography.labelMedium,
+                style = IosType.sectionLabel,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
             )
         }
@@ -512,7 +513,7 @@ private fun CallControlButton(
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
         )
     }
@@ -604,7 +605,7 @@ private fun EncryptionBadge(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "End-to-end encrypted",
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
             modifier =
                 Modifier.padding(

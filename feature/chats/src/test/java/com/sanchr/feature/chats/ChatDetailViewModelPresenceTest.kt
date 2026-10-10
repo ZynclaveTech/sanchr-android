@@ -44,7 +44,7 @@ class ChatDetailViewModelPresenceTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { messageRepository.observeConversation(any()) } returns emptyFlow()
-        every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+        every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
         every { realtimeManager.typingCache } returns MutableStateFlow(emptyMap())
         coEvery { messageRepository.oneToOneRecipient("conv-1", "self") } returns "peer"
     }
@@ -60,7 +60,9 @@ class ChatDetailViewModelPresenceTest {
             messageRepository = messageRepository,
             sendMessageUseCase = mockk<SendMessageUseCase>(),
             sendAttachmentUseCase = mockk(relaxed = true),
+            sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
+            videoCompressor = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
@@ -80,6 +82,7 @@ class ChatDetailViewModelPresenceTest {
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
             connectivityMonitor = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
 
     @Test

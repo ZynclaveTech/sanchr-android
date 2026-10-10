@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
@@ -66,7 +67,14 @@ class ContactsViewModel
         private val _onlineUserIds = MutableStateFlow<Set<String>>(emptySet())
         private val _isLoading = MutableStateFlow(true)
         private val _errorMessage = MutableStateFlow<String?>(null)
+
+        /**
+         * Exposed, not just set: the flag was written on every refresh and
+         * never read, and the screen hardcoded `isRefreshing = false`, so the
+         * pull-to-refresh spinner never appeared.
+         */
         private val _isRefreshing = MutableStateFlow(false)
+        val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
         private val _syncState = MutableStateFlow(ContactSyncUiState())
         val syncState: StateFlow<ContactSyncUiState> = _syncState
@@ -221,6 +229,20 @@ class ContactsViewModel
                     _events.emit(ContactsEvent.Error("Failed to unblock contact"))
                 }
             }
+        }
+
+        /**
+         * The address-book permission was refused, so there is nothing to
+         * read. Reported rather than swallowed: without the grant the query
+         * returns a null cursor and the sync used to finish "successfully"
+         * having matched nobody.
+         */
+        fun reportSyncDenied() {
+            _syncState.value =
+                ContactSyncUiState(
+                    isSyncing = false,
+                    errorMessage = "Sanchr needs access to your contacts to find who else is here. You can allow it in Settings.",
+                )
         }
 
         fun syncContacts(contentResolver: ContentResolver) {

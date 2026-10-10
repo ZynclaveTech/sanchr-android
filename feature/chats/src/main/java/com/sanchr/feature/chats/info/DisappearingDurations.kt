@@ -7,8 +7,16 @@ package com.sanchr.feature.chats.info
  * global one cannot disagree about what "5m" means.
  */
 object DisappearingDurations {
-    /** Labels in the order the screen lists them. */
-    val LABELS: List<String> = listOf("off", "30s", "5m", "1h", "24h", "7d")
+    /**
+     * Labels in the order the screen lists them.
+     *
+     * The same set iOS offers, plus the 30 seconds it lacks. The two used to
+     * differ at both ends: a chat set to 30s on Android matched no iOS row, so
+     * that screen rendered with nothing selected and lost the value on the next
+     * tap, while a chat set to 30d on iOS read as "Off" on Android — a chat
+     * that did expire, displayed as one that does not.
+     */
+    val LABELS: List<String> = listOf("off", "30s", "5m", "1h", "24h", "7d", "30d")
 
     private const val SECOND = 1_000L
     private const val MINUTE = 60 * SECOND
@@ -22,6 +30,7 @@ object DisappearingDurations {
             "1h" to HOUR,
             "24h" to DAY,
             "7d" to 7 * DAY,
+            "30d" to 30 * DAY,
         )
 
     /**
@@ -52,6 +61,7 @@ object DisappearingDurations {
             "1h" -> "1 hour"
             "24h" -> "24 hours"
             "7d" -> "7 days"
+            "30d" -> "30 days"
             else -> label
         }
 }

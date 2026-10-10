@@ -59,6 +59,30 @@ sealed interface MessageContent {
         val attachment: MediaAttachment? = null,
     ) : MessageContent
 
+    /**
+     * Several photos or videos sent as one message, as iOS sends them.
+     *
+     * Received albums used to be decoded with `attachments.first()` and the
+     * rest discarded: an album of four photos from iOS arrived on Android as
+     * one photo, and the other three were unrecoverable from the UI.
+     */
+    @Serializable
+    data class Album(
+        val attachments: List<MediaAttachment>,
+        val caption: String? = null,
+    ) : MessageContent {
+        init {
+            require(attachments.isNotEmpty()) { "an album needs at least one attachment" }
+        }
+
+        /** The tile the bubble leads with, and the one a preview falls back to. */
+        val first: MediaAttachment get() = attachments.first()
+
+        companion object {
+            const val CONTENT_TYPE = "album"
+        }
+    }
+
     @Serializable
     data class Voice(
         val url: String,
@@ -99,11 +123,19 @@ sealed interface MessageContent {
         val kind: String,
     ) : MessageContent {
         val text: String
-            get() = if (kind == VIEW_ONCE_CONSUMED) "Viewed" else kind
+            get() =
+                when (kind) {
+                    VIEW_ONCE_CONSUMED -> "Viewed"
+                    AUTO_VAULTED -> "Media moved to Vault"
+                    else -> kind
+                }
 
         companion object {
             const val CONTENT_TYPE = "system"
             const val VIEW_ONCE_CONSUMED = "viewOnceConsumed"
+
+            /** Left where received media was after Auto-Vault Incoming moved it (iOS `.autoVaulted`). */
+            const val AUTO_VAULTED = "autoVaulted"
         }
     }
 }

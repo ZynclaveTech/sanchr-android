@@ -1,6 +1,7 @@
 package com.sanchr.domain.messaging
 
 import com.sanchr.core.database.entity.MessageEntity
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.Message
 import com.sanchr.core.model.MessageReaction
@@ -18,8 +19,17 @@ interface MessageRepository {
     /** Observes a single conversation and its lightweight participant metadata. */
     fun observeConversation(conversationId: String): Flow<Conversation?>
 
-    /** Observes messages in a specific conversation. */
-    fun observeMessages(conversationId: String): Flow<List<Message>>
+    /**
+     * The newest [limit] messages of a conversation, oldest first.
+     *
+     * A window rather than the whole transcript: the unbounded observer
+     * streams every message a conversation has ever had into memory and into
+     * composition on each change.
+     */
+    fun observeRecentMessages(
+        conversationId: String,
+        limit: Int,
+    ): Flow<List<Message>>
 
     /**
      * Persists a new outbound message in the QUEUED state and returns the
@@ -73,6 +83,15 @@ interface MessageRepository {
         messageId: String,
         newStatus: String,
     ): Int
+
+    /**
+     * The stored row for [messageId], or null when there is none.
+     *
+     * Needed to retry a failed send: the attempt runs from the row, and
+     * nothing could read one back, so a message that failed could not be
+     * resent at all.
+     */
+    suspend fun outboundMessage(messageId: String): MessageEntity?
 
     /**
      * On successful send, replaces the local client-generated id with the
@@ -201,13 +220,6 @@ interface MessageRepository {
         query: String,
     ): List<String>
 
-    /** Fetches older messages for pagination. */
-    suspend fun loadMoreMessages(
-        conversationId: String,
-        beforeTimestamp: Long,
-        limit: Int,
-    ): List<Message>
-
     /** Creates a new direct conversation with a user. */
     suspend fun createConversation(participantId: String): Conversation
 
@@ -262,6 +274,20 @@ interface MessageRepository {
     )
 
     /**
+     * Unsent composer text for this chat, or null when there is none.
+     *
+     * Kept in the encrypted database with the messages: a draft is message
+     * content, so it does not belong in plaintext preferences. Deleting the
+     * conversation takes it with it.
+     */
+    suspend fun draftText(conversationId: String): String?
+
+    suspend fun setDraftText(
+        conversationId: String,
+        text: String?,
+    )
+
+    /**
      * Sets this chat's wallpaper, or clears it with null so the chat follows
      * the account-wide choice again.
      */
@@ -269,6 +295,24 @@ interface MessageRepository {
         conversationId: String,
         wallpaper: String?,
     )
+
+    /** Replaces this chat's vault policy. Device-only; nothing is sent. */
+    suspend fun setVaultPolicy(
+        conversationId: String,
+        policy: ChatVaultPolicy,
+    )
+
+    /** This chat's vault policy as stored now; all off for a chat that has none or is unknown. */
+    suspend fun vaultPolicy(conversationId: String): ChatVaultPolicy
+
+    /** One stored message, decoded, or null when it is not on this device. */
+    suspend fun message(messageId: String): Message?
+
+    /**
+     * Replaces a received message with the marker Auto-Vault Incoming leaves
+     * behind. Local only: the sender's copy and the server's are untouched.
+     */
+    suspend fun tombstoneAutoVaulted(messageId: String)
 
     /** Mutes or unmutes notifications for a conversation: tells the server, then the local row. */
     suspend fun setMuted(

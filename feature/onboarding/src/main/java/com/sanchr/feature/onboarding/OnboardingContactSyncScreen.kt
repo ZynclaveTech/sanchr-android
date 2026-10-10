@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.R
 import com.sanchr.core.designsystem.component.SanchrCenteredHeader
 import com.sanchr.core.designsystem.component.SanchrGradientButton
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -117,7 +118,7 @@ fun OnboardingContactSyncScreen(
                     Text(
                         text = "Skip",
                         style =
-                            MaterialTheme.typography.labelLarge.copy(
+                            IosType.button.copy(
                                 fontWeight = FontWeight.SemiBold,
                             ),
                         color = SanchrIndigo500,
@@ -170,7 +171,7 @@ fun OnboardingContactSyncScreen(
             // iOS parity: `ContactSyncView.swift:99` ("Find Your Friends").
             Text(
                 text = "Find Your Friends",
-                style = MaterialTheme.typography.displayMedium,
+                style = IosType.displayTitle,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(12.dp))
@@ -178,7 +179,7 @@ fun OnboardingContactSyncScreen(
             Text(
                 text =
                     "Sync your contacts to see who's already on Sanchr and start secure conversations",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 8.dp),
@@ -275,12 +276,12 @@ private fun PermissionCard(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelLarge,
+                style = IosType.button,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

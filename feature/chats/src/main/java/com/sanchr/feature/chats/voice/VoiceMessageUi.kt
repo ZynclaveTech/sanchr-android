@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -30,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,14 +42,20 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.sanchr.core.designsystem.theme.IosType
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
- * The mic control for the composer. Tap to start (asking for the
- * microphone permission the first time), tap again to stop and send;
- * the close button discards. Shows elapsed time while recording.
+ * The mic control for the composer. Tap to start (asking for the microphone
+ * permission the first time), tap again to stop — which now hands the clip to
+ * a preview rather than sending it.
+ *
+ * Stopping used to send immediately, so a voice note could not be listened to,
+ * re-recorded or thought better of: the only way out was to notice the mistake
+ * before releasing the button. iOS previews every clip before it goes.
  */
 @Composable
 fun VoiceRecordButton(
@@ -58,6 +67,7 @@ fun VoiceRecordButton(
     val recorder = remember { VoiceRecorder(context) }
     var recording by remember { mutableStateOf(false) }
     var elapsedMs by remember { mutableIntStateOf(0) }
+    var pending by remember { mutableStateOf<VoiceClip?>(null) }
     val askPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted && recorder.start()) recording = true
@@ -69,7 +79,31 @@ fun VoiceRecordButton(
             delay(SAMPLE_INTERVAL_MS)
         }
     }
-    DisposableEffect(Unit) { onDispose { recorder.cancel() } }
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder.cancel()
+            // A clip still waiting in the preview when the screen goes is
+            // deleted: it was never sent, and it is audio of the user in the
+            // clear.
+            pending?.file?.delete()
+        }
+    }
+
+    pending?.let { clip ->
+        VoiceClipPreview(
+            clip = clip,
+            onDiscard = {
+                clip.file.delete()
+                pending = null
+            },
+            onSend = {
+                pending = null
+                onClip(clip)
+            },
+            modifier = modifier,
+        )
+        return
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         if (recording) {
@@ -83,7 +117,7 @@ fun VoiceRecordButton(
             ) {
                 Icon(Icons.Filled.Close, contentDescription = "Discard recording", tint = MaterialTheme.colorScheme.error)
             }
-            Text(text = formatClock(elapsedMs), style = MaterialTheme.typography.labelMedium)
+            Text(text = formatClock(elapsedMs), style = IosType.sectionLabel)
             Spacer(modifier = Modifier.width(4.dp))
         }
         FilledIconButton(
@@ -91,7 +125,7 @@ fun VoiceRecordButton(
                 if (recording) {
                     recording = false
                     elapsedMs = 0
-                    recorder.stop()?.let(onClip)
+                    pending = recorder.stop()
                 } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                     PackageManager.PERMISSION_GRANTED
                 ) {
@@ -105,7 +139,42 @@ fun VoiceRecordButton(
         ) {
             Icon(
                 imageVector = if (recording) Icons.Filled.Stop else Icons.Filled.Mic,
-                contentDescription = if (recording) "Stop and send" else "Record voice message",
+                contentDescription = if (recording) "Stop recording" else "Record voice message",
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * A recorded clip before it is sent: play it back, then send or discard.
+ *
+ * Replaces sending the moment the stop button is pressed, which left no way to
+ * hear a voice note before the other person did.
+ */
+@Composable
+private fun VoiceClipPreview(
+    clip: VoiceClip,
+    onDiscard: () -> Unit,
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        IconButton(onClick = onDiscard, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Filled.Delete, contentDescription = "Discard recording", tint = MaterialTheme.colorScheme.error)
+        }
+        VoicePlayback(
+            durationMs = clip.durationMs,
+            waveform = clip.waveform,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Already on disk: this is our own recording, not a download.
+            openFile = { clip.file },
+            modifier = Modifier.weight(1f),
+        )
+        FilledIconButton(onClick = onSend, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Send,
+                contentDescription = "Send voice message",
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -132,6 +201,15 @@ fun VoicePlayback(
     var positionMs by remember { mutableIntStateOf(0) }
     var totalMs by remember { mutableIntStateOf(durationMs) }
     var wantPlay by remember { mutableStateOf(false) }
+    // Read out of the file when the sender attached none — an older build, or
+    // one that failed to sample. Without this the bubble drew forty identical
+    // bars, a flat line presented as the shape of the audio.
+    // Read out of the file on first play, when the sender attached none — an
+    // older build, or one that failed to sample. Until then the bubble draws
+    // the flat placeholder, as iOS does.
+    var decoded by remember(waveform) { mutableStateOf<List<Float>>(emptyList()) }
+    val bars = waveform.ifEmpty { decoded }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(wantPlay) {
         if (!wantPlay) return@LaunchedEffect
@@ -154,6 +232,15 @@ fun VoicePlayback(
                         positionMs = 0
                     }
                 }
+            // Alongside playback, not before it: the decode is bounded but it
+            // is still work, and the clip should start playing the moment the
+            // user asks. On first play rather than at composition time because
+            // `openFile` downloads the attachment, so decoding when a bubble
+            // scrolled past would have fetched every voice note in the
+            // conversation — exactly what the auto-download policy prevents.
+            if (waveform.isEmpty() && decoded.isEmpty()) {
+                scope.launch { decoded = VoiceWaveformDecoder.decode(file) }
+            }
         }
         player?.start()
         playing = true
@@ -193,7 +280,7 @@ fun VoicePlayback(
             }
         }
         WaveformBars(
-            waveform = waveform,
+            waveform = bars,
             progress = if (totalMs > 0) positionMs.toFloat() / totalMs else 0f,
             tint = tint,
             modifier =
@@ -202,7 +289,7 @@ fun VoicePlayback(
                     .height(28.dp),
         )
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text = formatClock(if (playing) positionMs else totalMs), style = MaterialTheme.typography.labelSmall, color = tint)
+        Text(text = formatClock(if (playing) positionMs else totalMs), style = IosType.captionSmall, color = tint)
     }
 }
 
@@ -213,6 +300,10 @@ private fun WaveformBars(
     tint: Color,
     modifier: Modifier = Modifier,
 ) {
+    // A flat run when there is no waveform — a clip from an older build, or
+    // one whose sender sent none. iOS draws the same placeholder rather than a
+    // blank gap, which reads as a broken bubble rather than a quiet one. It is
+    // deliberately uniform: it is not claiming to be the clip's shape.
     val bars = waveform.ifEmpty { List(VoiceWaveform.DEFAULT_BINS) { FLAT_BAR } }
     Canvas(modifier = modifier) {
         val stride = size.width / bars.size

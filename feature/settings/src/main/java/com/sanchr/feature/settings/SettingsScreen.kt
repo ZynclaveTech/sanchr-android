@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,6 +53,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -74,6 +76,9 @@ fun SettingsScreen(
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(title = "Settings")
         },
@@ -91,7 +96,7 @@ fun SettingsScreen(
                 onClick = onNavigateToProfile,
                 modifier =
                     Modifier.padding(
-                        horizontal = SanchrTheme.spacing.default,
+                        horizontal = SanchrTheme.spacing.lg,
                         vertical = SanchrTheme.spacing.sm,
                     ),
             ) {
@@ -125,7 +130,7 @@ fun SettingsScreen(
                                             .take(1)
                                             .uppercase()
                                             .ifEmpty { "?" },
-                                    style = MaterialTheme.typography.titleLarge,
+                                    style = IosType.sectionHeader,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
                             }
@@ -137,13 +142,13 @@ fun SettingsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = uiState.displayName.ifEmpty { "Set up your profile" },
-                            style = MaterialTheme.typography.titleMedium,
+                            style = IosType.cardTitle,
                             fontWeight = FontWeight.Bold,
                         )
                         if (uiState.bio.isNotEmpty()) {
                             Text(
                                 text = uiState.bio,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                             )
@@ -151,7 +156,7 @@ fun SettingsScreen(
                         if (uiState.phoneNumber.isNotEmpty()) {
                             Text(
                                 text = uiState.phoneNumber,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -256,7 +261,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clickable { showDeleteAccountDialog = true }
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = SanchrTheme.spacing.lg,
                             vertical = SanchrTheme.spacing.md,
                         ),
                 verticalAlignment = Alignment.CenterVertically,
@@ -270,7 +275,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(SanchrTheme.spacing.default))
                 Text(
                     text = "Delete Account",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -279,7 +284,7 @@ fun SettingsScreen(
 
             Text(
                 text = "Sanchr v1.0.0",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
@@ -333,7 +338,7 @@ private fun DeleteAccountDialog(
             Column {
                 Text(
                     text = "This permanently deletes your account. It cannot be undone.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 listOf(
@@ -344,7 +349,7 @@ private fun DeleteAccountDialog(
                 ).forEach { consequence ->
                     Text(
                         text = "•  $consequence",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -353,7 +358,7 @@ private fun DeleteAccountDialog(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                     Text(
                         text = state.message,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -367,7 +372,7 @@ private fun DeleteAccountDialog(
                     )
                     Text(
                         text = "I understand this cannot be undone",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                     )
                 }
             }
@@ -398,12 +403,12 @@ private fun SettingsGroupLabel(
 ) {
     Text(
         text = text.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
+        style = IosType.sectionLabel,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.primary,
         modifier =
             modifier.padding(
-                horizontal = SanchrTheme.spacing.default,
+                horizontal = SanchrTheme.spacing.lg,
                 vertical = SanchrTheme.spacing.sm,
             ),
     )
@@ -423,7 +428,7 @@ internal fun SettingsItem(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.md,
                 ),
         verticalAlignment = Alignment.CenterVertically,
@@ -440,12 +445,13 @@ internal fun SettingsItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                // iOS rows: bodyBold for the title, captionSmall beneath.
+                style = IosType.bodyBold,
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

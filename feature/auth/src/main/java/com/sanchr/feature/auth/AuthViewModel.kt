@@ -77,11 +77,15 @@ class AuthViewModel
         fun onLoginPhoneChanged(
             countryCode: String,
             phone: String,
+            countryIso: String = "",
         ) {
             val current = _state.value as? AuthState.LoginPhone ?: return
             _state.value =
                 current.copy(
                     countryCode = countryCode,
+                    // Kept when the caller is only editing the number, so a
+                    // keystroke does not erase which `+1` country was chosen.
+                    countryIso = countryIso.ifEmpty { current.countryIso },
                     phone = phone.filter { it.isDigit() },
                 )
         }

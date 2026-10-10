@@ -531,4 +531,40 @@ class SendMessageUseCaseTest {
             val payload = InnerPayload.decode(plaintextSlot.captured)
             assertEquals("m-quoted", payload!!.replyToMessageId)
         }
+
+    @Test
+    fun `retry runs another attempt from the stored row, keeping the message id`() =
+        runTest {
+            primeCommonMocks()
+            // A send that exhausted its attempts left a FAILED row with
+            // nothing to tap: the text was visible, unsent, and unrecoverable
+            // except by retyping it.
+            val failed = entity.copy(status = MessageStatus.FAILED.name)
+            coEvery { messageRepository.outboundMessage("msg-1") } returns failed
+            coEvery {
+                signalSessionManager.encryptForAllDevices(any(), "peer-uuid")
+            } returns emptyList()
+
+            val result = useCase.retry("msg-1")
+
+            // The attempt ran (and failed again here, with no reachable
+            // device) — what matters is that it ran against the same row.
+            assertTrue(result is Result.Error)
+            coVerify(exactly = 1) { messageRepository.recordSendAttempt("msg-1", MessageStatus.SENDING.name) }
+            // The id is reused, so the receiver treats a repeat as an
+            // idempotent replace rather than a second message.
+            coVerify(exactly = 0) { messageRepository.enqueueOutboundMessage(any(), any(), any(), any(), any()) }
+        }
+
+    @Test
+    fun `retrying a message that is no longer here reports it instead of throwing`() =
+        runTest {
+            primeCommonMocks()
+            coEvery { messageRepository.outboundMessage("gone") } returns null
+
+            val result = useCase.retry("gone")
+
+            assertTrue(result is Result.Error)
+            assertEquals("that message is no longer here", result.exception.message)
+        }
 }

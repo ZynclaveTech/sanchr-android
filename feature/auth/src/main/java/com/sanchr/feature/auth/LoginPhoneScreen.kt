@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +59,7 @@ import com.sanchr.core.designsystem.component.CountryCodePickerInlineChip
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.findCountryByDialCode
 import com.sanchr.core.designsystem.component.resolveDefaultCountry
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -120,12 +122,12 @@ fun LoginPhoneScreen(
             loginPhone.countryCode == "+1" &&
             deviceDefault.dialCode != "+1"
         ) {
-            viewModel.onLoginPhoneChanged(deviceDefault.dialCode, "")
+            viewModel.onLoginPhoneChanged(deviceDefault.dialCode, "", deviceDefault.iso)
         }
     }
 
     val selectedCountry =
-        findCountryByDialCode(loginPhone.countryCode)
+        findCountryByDialCode(loginPhone.countryCode, loginPhone.countryIso.ifEmpty { null })
             ?: deviceDefault.takeIf { it.dialCode == loginPhone.countryCode }
             ?: deviceDefault
 
@@ -151,7 +153,12 @@ fun LoginPhoneScreen(
             if (errorMessage != null) errorColor.copy(alpha = 0.35f) else lineColor
         }
     val logoShape = remember(cardCorner) { RoundedCornerShape(cardCorner) }
-    Scaffold(modifier = modifier) { innerPadding ->
+    Scaffold(
+        // The NavHost\'s Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = modifier,
+    ) { innerPadding ->
         Column(
             modifier =
                 Modifier
@@ -179,14 +186,14 @@ fun LoginPhoneScreen(
                 Spacer(modifier = Modifier.height(40.dp))
                 Text(
                     text = "Welcome to Sanchr",
-                    style = MaterialTheme.typography.displayMedium,
+                    style = IosType.displayTitle,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 Text(
                     text = "Encrypted. Synced. Secure.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = IosType.body,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
@@ -197,7 +204,7 @@ fun LoginPhoneScreen(
             // Phone section — iOS LoginView.swift:97-179.
             Text(
                 text = "Phone Number",
-                style = MaterialTheme.typography.labelLarge,
+                style = IosType.button,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -220,7 +227,7 @@ fun LoginPhoneScreen(
                 CountryCodePickerInlineChip(
                     selected = selectedCountry,
                     onSelected = { country ->
-                        viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone)
+                        viewModel.onLoginPhoneChanged(country.dialCode, loginPhone.phone, country.iso)
                     },
                 )
                 BasicTextField(
@@ -235,7 +242,7 @@ fun LoginPhoneScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     textStyle =
                         LocalTextStyle.current.merge(
-                            MaterialTheme.typography.bodyLarge.copy(
+                            IosType.bodyLarge.copy(
                                 color = MaterialTheme.colorScheme.onBackground,
                             ),
                         ),
@@ -248,7 +255,7 @@ fun LoginPhoneScreen(
                             if (loginPhone.phone.isEmpty()) {
                                 Text(
                                     text = "(555) 123-4567",
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = IosType.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -262,7 +269,7 @@ fun LoginPhoneScreen(
 
             Text(
                 text = "We'll send you a verification code",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -280,7 +287,7 @@ fun LoginPhoneScreen(
                     )
                     Text(
                         text = errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
@@ -349,7 +356,7 @@ private fun LegalConsentLine(modifier: Modifier = Modifier) {
         }
     Text(
         text = text,
-        style = MaterialTheme.typography.labelSmall,
+        style = IosType.captionSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
         modifier = modifier,

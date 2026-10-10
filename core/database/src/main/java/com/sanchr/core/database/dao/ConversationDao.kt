@@ -64,7 +64,7 @@ interface ConversationDao {
     /**
      * Writes what the server knows about these conversations without
      * discarding what only this device knows. `is_archived`, `is_hidden`,
-     * `wallpaper`,
+     * `wallpaper`, `draft_text`, the three `vault_*` policy flags,
      * `disappearing_duration_ms` and `last_message_id` are not on the wire;
      * a plain REPLACE (see [insertConversations]) resets them to defaults,
      * which un-archives every chat, unhides every hidden one, and clears
@@ -83,6 +83,10 @@ interface ConversationDao {
                         isArchived = local.isArchived,
                         isHidden = local.isHidden,
                         wallpaper = local.wallpaper,
+                        draftText = local.draftText,
+                        vaultAutoIncoming = local.vaultAutoIncoming,
+                        vaultViewOnce = local.vaultViewOnce,
+                        vaultCaptureProtection = local.vaultCaptureProtection,
                         disappearingDurationMs = local.disappearingDurationMs,
                         lastMessageId = local.lastMessageId,
                     )
@@ -150,10 +154,31 @@ interface ConversationDao {
         durationMs: Long?,
     )
 
+    @Query("UPDATE conversations SET draft_text = :draftText WHERE id = :conversationId")
+    suspend fun setDraftText(
+        conversationId: String,
+        draftText: String?,
+    )
+
+    @Query("SELECT draft_text FROM conversations WHERE id = :conversationId")
+    suspend fun draftText(conversationId: String): String?
+
     @Query("UPDATE conversations SET wallpaper = :wallpaper WHERE id = :conversationId")
     suspend fun setWallpaper(
         conversationId: String,
         wallpaper: String?,
+    )
+
+    /** All three flags in one statement, so a reader never sees half a policy. */
+    @Query(
+        "UPDATE conversations SET vault_auto_incoming = :autoIncoming, vault_view_once = :viewOnce, " +
+            "vault_capture_protection = :captureProtection WHERE id = :conversationId",
+    )
+    suspend fun setVaultPolicy(
+        conversationId: String,
+        autoIncoming: Boolean,
+        viewOnce: Boolean,
+        captureProtection: Boolean,
     )
 
     @Query("UPDATE conversations SET is_hidden = :isHidden WHERE id = :conversationId")

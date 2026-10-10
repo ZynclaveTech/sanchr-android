@@ -3,6 +3,7 @@ package com.sanchr.feature.contacts.lookup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -39,6 +41,9 @@ fun PhoneLookupScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = "Find by number", onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->
@@ -77,13 +82,13 @@ fun PhoneLookupScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = result.user.displayName.ifBlank { result.user.phoneNumber },
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = IosType.bodyLarge,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     text = result.user.phoneNumber,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = IosType.caption,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -103,7 +108,7 @@ fun PhoneLookupScreen(
 private fun Notice(message: String) {
     Text(
         text = message,
-        style = MaterialTheme.typography.bodyMedium,
+        style = IosType.body,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

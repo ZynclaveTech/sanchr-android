@@ -38,6 +38,7 @@ class MessageRepositoryImplUnreadTest {
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
             reactionDao = mockk(relaxed = true),
             notificationClient = notificationClient,
+            autoVaultScheduler = mockk(relaxed = true),
         )
 
     private suspend fun insert(

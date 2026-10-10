@@ -1,13 +1,22 @@
 package com.sanchr.feature.onboarding
 
+import android.content.ContentResolver
+import android.content.Context
+import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.mediaviewer.ImageSendEncoder
+import com.sanchr.core.network.media.AvatarUploader
+import com.sanchr.proto.settings.ProfileResponse
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -17,6 +26,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -60,11 +70,20 @@ class OnboardingViewModelTest {
 
     private val sessionManager = mockk<SessionManager>(relaxed = true)
     private val userPreferences = mockk<UserPreferences>(relaxed = true)
+    private val profileUpdater = mockk<EncryptedProfileUpdater>()
+    private val avatarUploader = mockk<AvatarUploader>()
+    private val contentResolver = mockk<ContentResolver>(relaxed = true)
+    private val appContext =
+        mockk<Context>(relaxed = true) { every { contentResolver } returns this@OnboardingViewModelTest.contentResolver }
 
     private fun newViewModel(): OnboardingViewModel =
         OnboardingViewModel(
             sessionManager = sessionManager,
             userPreferences = userPreferences,
+            profileUpdater = profileUpdater,
+            avatarUploader = avatarUploader,
+            appContext = appContext,
+            dispatchers = TestDispatcherProvider(testDispatcher),
         )
 
     @BeforeTest
@@ -72,10 +91,24 @@ class OnboardingViewModelTest {
         Dispatchers.setMain(testDispatcher)
         every { sessionManager.getDisplayName() } returns null
         coEvery { userPreferences.setOnboardingCompleted(any()) } just Runs
+        // The avatar step writes the profile; these are the two calls it makes.
+        coEvery { profileUpdater.update(any(), any(), any()) } returns ProfileResponse(success = true)
+        coEvery { avatarUploader.upload(any(), any()) } returns "https://cdn/avatar.jpg"
+        // The re-encoder needs a real BitmapFactory, which a JVM test does
+        // not have; what matters here is that the step uploads what it returns.
+        mockkObject(ImageSendEncoder)
+        every { ImageSendEncoder.encode(any(), any(), any(), any()) } returns
+            ImageSendEncoder.Encoded(
+                bytes = byteArrayOf(1, 2, 3),
+                mimeType = "image/jpeg",
+                width = 100,
+                height = 100,
+            )
     }
 
     @AfterTest
     fun tearDown() {
+        unmockkObject(ImageSendEncoder)
         Dispatchers.resetMain()
     }
 
@@ -204,6 +237,7 @@ class OnboardingViewModelTest {
             vm.onAvatarSelected("content://photo")
 
             vm.skipAvatar()
+            advanceUntilIdle()
 
             val s = vm.state.value
             assertIs<OnboardingState.ContactSync>(s)
@@ -220,6 +254,7 @@ class OnboardingViewModelTest {
             vm.onAvatarSelected("content://frank.jpg")
 
             vm.submitAvatar()
+            advanceUntilIdle()
 
             val s = vm.state.value
             assertIs<OnboardingState.ContactSync>(s)
@@ -235,6 +270,7 @@ class OnboardingViewModelTest {
             vm.submitName()
             vm.onAvatarSelected("content://grace.jpg")
             vm.submitAvatar()
+            advanceUntilIdle()
 
             vm.onContactSyncFinish()
             advanceUntilIdle()
@@ -257,6 +293,7 @@ class OnboardingViewModelTest {
             vm.onNameChanged("Heidi")
             vm.submitName()
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
             advanceUntilIdle()
 
@@ -282,6 +319,7 @@ class OnboardingViewModelTest {
             vm.onNameChanged("Heidi")
             vm.submitName()
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
             advanceUntilIdle()
 
@@ -315,6 +353,7 @@ class OnboardingViewModelTest {
             vm.onNameChanged("Heidi")
             vm.submitName()
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
             advanceUntilIdle()
 
@@ -347,6 +386,7 @@ class OnboardingViewModelTest {
             vm.submitName()
             vm.onAvatarSelected("content://heidi.jpg")
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
             advanceUntilIdle()
 
@@ -379,6 +419,7 @@ class OnboardingViewModelTest {
             vm.onNameChanged("Ivan")
             vm.submitName()
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
             advanceUntilIdle()
 
@@ -397,6 +438,7 @@ class OnboardingViewModelTest {
             vm.onNameChanged("Judy")
             vm.submitName()
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
 
             vm.notificationGranted(true)
@@ -413,6 +455,7 @@ class OnboardingViewModelTest {
             vm.onNameChanged("Kim")
             vm.submitName()
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
             vm.notificationGranted(true)
 
@@ -441,6 +484,7 @@ class OnboardingViewModelTest {
             vm.submitName()
             vm.onAvatarSelected("content://laura.jpg")
             vm.submitAvatar()
+            advanceUntilIdle()
             vm.onContactSyncFinish()
 
             vm.back()
@@ -459,6 +503,7 @@ class OnboardingViewModelTest {
             vm.submitName()
             vm.onAvatarSelected("content://photo")
             vm.submitAvatar()
+            advanceUntilIdle()
             // Now in ContactSync(name = "Alice", avatarUri = "content://photo").
             assertIs<OnboardingState.ContactSync>(vm.state.value)
 
@@ -486,6 +531,7 @@ class OnboardingViewModelTest {
             vm.submitName()
             vm.onAvatarSelected("content://photo")
             vm.submitAvatar()
+            advanceUntilIdle()
             assertIs<OnboardingState.ContactSync>(vm.state.value)
 
             val submittingState =
@@ -546,4 +592,75 @@ class OnboardingViewModelTest {
 
             assertIs<OnboardingState.NameEntry>(vm.state.value)
         }
+
+    @Test
+    fun submitAvatar_uploadsThePhoto_writesTheProfile_andStoresItOnTheDevice() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Hopper")
+            vm.submitName()
+            vm.onAvatarSelected("content://hopper.jpg")
+
+            vm.submitAvatar()
+            advanceUntilIdle()
+
+            coVerify { avatarUploader.upload(any(), "image/jpeg") }
+            coVerify { profileUpdater.update(displayName = "Hopper", bio = "", avatarUrl = "https://cdn/avatar.jpg") }
+            // Nothing else on the device remembers these: GetSettings carries
+            // no profile fields, so without this write a new account finishes
+            // onboarding with no name at all.
+            coVerify {
+                sessionManager.saveProfileDetails(
+                    displayName = "Hopper",
+                    bio = "",
+                    avatarUrl = "https://cdn/avatar.jpg",
+                )
+            }
+        }
+
+    @Test
+    fun skipAvatar_stillSavesTheName_withNoAvatar() =
+        runTest {
+            val vm = newViewModel()
+            vm.onNameChanged("Lovelace")
+            vm.submitName()
+
+            vm.skipAvatar()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { avatarUploader.upload(any(), any()) }
+            coVerify { profileUpdater.update(displayName = "Lovelace", bio = "", avatarUrl = "") }
+            coVerify { sessionManager.saveProfileDetails(displayName = "Lovelace", bio = "", avatarUrl = "") }
+        }
+
+    @Test
+    fun aFailedProfileWrite_keepsTheUserOnTheAvatarStep_withAnError() =
+        runTest {
+            coEvery { profileUpdater.update(any(), any(), any()) } throws IllegalStateException("UNAVAILABLE")
+            val vm = newViewModel()
+            vm.onNameChanged("Turing")
+            vm.submitName()
+
+            vm.submitAvatar()
+            advanceUntilIdle()
+
+            val state = vm.state.value
+            assertIs<OnboardingState.AvatarEntry>(state)
+            assertFalse(state.isSubmitting)
+            assertEquals(
+                "Couldn't save your profile. Check your connection and try again.",
+                state.errorMessage,
+            )
+        }
+}
+
+/** Every dispatcher is the test dispatcher, so the avatar upload is deterministic. */
+private class TestDispatcherProvider(
+    private val dispatcher: CoroutineDispatcher,
+) : DispatcherProvider {
+    override val main: CoroutineDispatcher get() = dispatcher
+    override val io: CoroutineDispatcher get() = dispatcher
+    override val default: CoroutineDispatcher get() = dispatcher
+    override val unconfined: CoroutineDispatcher get() = dispatcher
+    override val signalDispatcher: CoroutineDispatcher get() = dispatcher
 }

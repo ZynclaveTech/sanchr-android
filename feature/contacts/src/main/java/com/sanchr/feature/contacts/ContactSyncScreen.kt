@@ -1,5 +1,9 @@
 package com.sanchr.feature.contacts
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -8,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,11 +44,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrIndigo100
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -58,8 +65,35 @@ fun ContactSyncScreen(
 ) {
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // Nothing on this screen asked for READ_CONTACTS. Without the grant the
+    // contacts query returns a null cursor, the read is skipped, and the sync
+    // reported success having matched nobody — so "Sync Contacts" appeared to
+    // work and found no one, for every user who had not granted the permission
+    // during onboarding.
+    val contactsPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                viewModel.syncContacts(context.contentResolver)
+            } else {
+                viewModel.reportSyncDenied()
+            }
+        }
+
+    fun startSync() {
+        val alreadyGranted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) {
+            viewModel.syncContacts(context.contentResolver)
+        } else {
+            contactsPermission.launch(Manifest.permission.READ_CONTACTS)
+        }
+    }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = "Find Friends",
@@ -114,7 +148,7 @@ fun ContactSyncScreen(
 
             Text(
                 text = "Find Your Friends",
-                style = MaterialTheme.typography.headlineMedium,
+                style = IosType.screenTitle,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
@@ -123,7 +157,7 @@ fun ContactSyncScreen(
 
             Text(
                 text = "Discover which of your contacts are already on Sanchr. Your privacy is our priority.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
@@ -134,15 +168,29 @@ fun ContactSyncScreen(
             PrivacyRationaleCard(
                 icon = Icons.Filled.Lock,
                 title = "Private",
-                description = "Your contacts never leave your device in plain text. Only secure hashes are sent.",
+                description =
+                    "Your address book stays on this device. Names are never " +
+                        "uploaded, and contacts who are not on Sanchr are never revealed.",
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
 
             PrivacyRationaleCard(
                 icon = Icons.Filled.Tag,
-                title = "Hash Only",
-                description = "Phone numbers are converted to SHA-256 hashes before comparison. We never see the actual numbers.",
+                title = "Blinded Lookup",
+                // Two earlier versions of this copy overclaimed, so state
+                // exactly what the two calls do.
+                //
+                // `discoverRegistered` is an OPRF private set intersection:
+                // the server evaluates blinded points and learns none of the
+                // numbers. `resolveAndStore` then sends hashes of *only the
+                // numbers that matched* to `SyncContacts`, because that is how
+                // the accounts behind them are returned — so the server does
+                // learn which of its own users are in this address book. What
+                // it never learns is the rest of the book.
+                description =
+                    "Discovery is blinded, so the server never sees your " +
+                        "numbers. Accounts are then fetched for the ones that matched.",
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
@@ -172,7 +220,7 @@ fun ContactSyncScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
                     Text(
                         text = "Syncing contacts...",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
@@ -189,7 +237,7 @@ fun ContactSyncScreen(
                 ) {
                     Text(
                         text = "${syncState.matchedCount} friends found!",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = IosType.sectionHeader,
                         fontWeight = FontWeight.Bold,
                         color = SanchrSuccess,
                     )
@@ -206,7 +254,7 @@ fun ContactSyncScreen(
             if (syncState.errorMessage != null) {
                 Text(
                     text = syncState.errorMessage!!,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,
                 )
@@ -217,9 +265,7 @@ fun ContactSyncScreen(
                 // Gradient-style sync button
                 SanchrButton(
                     text = "Sync Contacts",
-                    onClick = {
-                        viewModel.syncContacts(context.contentResolver)
-                    },
+                    onClick = ::startSync,
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -229,7 +275,7 @@ fun ContactSyncScreen(
                 TextButton(onClick = onNavigateBack) {
                     Text(
                         text = "Skip",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = IosType.button,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -276,13 +322,13 @@ private fun PrivacyRationaleCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                 Text(
                     text = description,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

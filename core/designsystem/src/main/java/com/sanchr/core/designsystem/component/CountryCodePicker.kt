@@ -341,11 +341,22 @@ private fun CountryPickerSheetContent(onPick: (Country) -> Unit) {
 }
 
 /**
- * Convenience helper: find the [Country] whose [Country.dialCode] matches
- * [dialCode] exactly. Used by screens that store the dial code (not the
- * full Country object) in ViewModel state, so they can re-hydrate the
- * picker selection on recomposition. Returns null when the dial code is
- * shared by multiple countries (e.g. "+1" for US/CA) — callers should
- * handle that by preferring a known default.
+ * The [Country] a stored selection refers to.
+ *
+ * Screens keep the dial code in view-model state rather than the whole
+ * `Country`, and a dial code is not unique: `+1` is both the United States
+ * and Canada. The previous version used `singleOrNull`, which returned null
+ * for exactly that case, so selecting either one fell through to the SIM
+ * country — the chip showed one country while the state held another, and the
+ * number submitted did not match what was on screen.
+ *
+ * [iso] disambiguates when the caller knows it. Without it, the first match in
+ * [SanchrCountries] wins, which is stable and keeps the chip and the state
+ * agreeing even when neither is the user's country.
  */
-fun findCountryByDialCode(dialCode: String): Country? = SanchrCountries.singleOrNull { it.dialCode == dialCode }
+fun findCountryByDialCode(
+    dialCode: String,
+    iso: String? = null,
+): Country? =
+    iso?.let { wanted -> SanchrCountries.firstOrNull { it.iso == wanted && it.dialCode == dialCode } }
+        ?: SanchrCountries.firstOrNull { it.dialCode == dialCode }

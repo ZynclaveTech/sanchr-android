@@ -35,9 +35,36 @@ class UserPreferences
             val NOTIFICATION_VIBRATE = booleanPreferencesKey("notification_vibrate")
             val NOTIFICATION_PREVIEW = stringPreferencesKey("notification_preview") // "always", "contacts", "never"
             val NOTIFICATION_LOCKSCREEN_PREVIEW = booleanPreferencesKey("notification_lockscreen_preview")
+
+            /**
+             * The three per-kind notification switches and the sound/vibrate
+             * pair. They were pushed to the server and stored nowhere, so the
+             * screen could not read back what the user had chosen: every
+             * switch sprang straight back to on.
+             */
+            val NOTIFY_MESSAGES = booleanPreferencesKey("notify_messages")
+            val NOTIFY_GROUPS = booleanPreferencesKey("notify_groups")
+            val NOTIFY_CALLS = booleanPreferencesKey("notify_calls")
             val BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
             val SCREENSHOT_PROTECTION_ENABLED = booleanPreferencesKey("screenshot_protection_enabled")
             val CHAT_WALLPAPER = stringPreferencesKey("chat_wallpaper")
+
+            /**
+             * Bubble shape. "modern", "classic" or "compact" — iOS's
+             * vocabulary, read from `sanchr.chatBubbleStyle` there. Android
+             * offered "default"/"rounded"/"flat", which iOS cannot interpret,
+             * so the same account rendered differently on each phone.
+             */
+            val CHAT_BUBBLE_STYLE = stringPreferencesKey("chat_bubble_style")
+
+            /** Enter sends rather than inserting a newline. True on iOS too. */
+            val ENTER_SENDS_MESSAGE = booleanPreferencesKey("enter_sends_message")
+
+            /** Save received media to the gallery automatically. */
+            val MEDIA_AUTO_SAVE = booleanPreferencesKey("media_auto_save")
+
+            /** Hold back anything that spends data until asked. */
+            val LOW_DATA_MODE = booleanPreferencesKey("low_data_mode")
             val CRASH_REPORTING_ENABLED = booleanPreferencesKey("crash_reporting_enabled")
             val SCREEN_LOCK_ENABLED = booleanPreferencesKey("screen_lock_enabled")
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
@@ -58,6 +85,56 @@ class UserPreferences
         // --- Theme ---
         val themeMode: Flow<String> = dataStore.data.map { it[Keys.THEME_MODE] ?: "system" }
 
+        /**
+         * These three were in-memory flows that nothing persisted and nothing
+         * read: a toggle moved, the session honoured it in Settings alone, and
+         * a relaunch forgot it. iOS stores all three and acts on them, so the
+         * same switch did different things on each phone.
+         */
+        val enterSendsMessage: Flow<Boolean> = dataStore.data.map { it[Keys.ENTER_SENDS_MESSAGE] ?: true }
+
+        val mediaAutoSave: Flow<Boolean> = dataStore.data.map { it[Keys.MEDIA_AUTO_SAVE] ?: false }
+
+        val lowDataMode: Flow<Boolean> = dataStore.data.map { it[Keys.LOW_DATA_MODE] ?: false }
+
+        suspend fun setEnterSendsMessage(enabled: Boolean) {
+            dataStore.edit { it[Keys.ENTER_SENDS_MESSAGE] = enabled }
+        }
+
+        suspend fun setMediaAutoSave(enabled: Boolean) {
+            dataStore.edit { it[Keys.MEDIA_AUTO_SAVE] = enabled }
+        }
+
+        suspend fun setLowDataMode(enabled: Boolean) {
+            dataStore.edit { it[Keys.LOW_DATA_MODE] = enabled }
+        }
+
+        /**
+         * Whether media from one conversation may reach the system gallery
+         * through Media Auto-Save. Per-conversation, visible by default, and
+         * keyed exactly as iOS keys it in the App Group defaults
+         * (`sanchr.chatMediaVisibility.<id>`) so the two platforms describe the
+         * same switch.
+         */
+        fun mediaVisibleInGallery(conversationId: String): Flow<Boolean> =
+            dataStore.data.map { it[mediaVisibilityKey(conversationId)] ?: true }
+
+        suspend fun setMediaVisibleInGallery(
+            conversationId: String,
+            visible: Boolean,
+        ) {
+            dataStore.edit { it[mediaVisibilityKey(conversationId)] = visible }
+        }
+
+        private fun mediaVisibilityKey(conversationId: String) = booleanPreferencesKey("sanchr.chatMediaVisibility.$conversationId")
+
+        /** The chosen bubble shape; "modern" is iOS's default too. */
+        val chatBubbleStyle: Flow<String> = dataStore.data.map { it[Keys.CHAT_BUBBLE_STYLE] ?: "modern" }
+
+        suspend fun setChatBubbleStyle(style: String) {
+            dataStore.edit { it[Keys.CHAT_BUBBLE_STYLE] = style }
+        }
+
         suspend fun setThemeMode(mode: String) {
             dataStore.edit { it[Keys.THEME_MODE] = mode }
         }
@@ -76,6 +153,36 @@ class UserPreferences
         }
 
         val notificationPreview: Flow<String> = dataStore.data.map { it[Keys.NOTIFICATION_PREVIEW] ?: "always" }
+
+        val messageNotificationsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFY_MESSAGES] ?: true }
+
+        val groupNotificationsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFY_GROUPS] ?: true }
+
+        val callNotificationsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFY_CALLS] ?: true }
+
+        val notificationSoundEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFICATION_SOUND] ?: true }
+
+        val notificationVibrateEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFICATION_VIBRATE] ?: true }
+
+        suspend fun setMessageNotificationsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFY_MESSAGES] = enabled }
+        }
+
+        suspend fun setGroupNotificationsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFY_GROUPS] = enabled }
+        }
+
+        suspend fun setCallNotificationsEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFY_CALLS] = enabled }
+        }
+
+        suspend fun setNotificationSoundEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFICATION_SOUND] = enabled }
+        }
+
+        suspend fun setNotificationVibrateEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.NOTIFICATION_VIBRATE] = enabled }
+        }
 
         suspend fun setNotificationPreview(preview: String) {
             dataStore.edit { it[Keys.NOTIFICATION_PREVIEW] = preview }

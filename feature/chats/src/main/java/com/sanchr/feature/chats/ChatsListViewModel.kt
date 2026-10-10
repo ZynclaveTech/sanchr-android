@@ -6,16 +6,21 @@ import androidx.work.WorkManager
 import com.sanchr.core.common.Result
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ObserveConversationsUseCase
+import com.sanchr.domain.messaging.SendAttachmentUseCase
+import com.sanchr.feature.chats.media.AttachmentPreparer
+import com.sanchr.feature.chats.media.CapturedPhotos
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +36,41 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * The chip bar's filters, the same three iOS offers and in the same order.
+ */
+enum class ChatFilter(
+    val label: String,
+) {
+    ALL("All"),
+    UNREAD("Unread"),
+    GROUPS("Groups"),
+}
+
+/**
+ * How the list orders rows, the same three iOS offers.
+ *
+ * Pinned always leads regardless: pinning is the user saying "keep this one
+ * where I can see it", and a sort that buried a pinned chat would be ignoring
+ * that.
+ */
+enum class ChatSortOrder(
+    val label: String,
+) {
+    RECENT("Most recent"),
+    UNREAD_FIRST("Unread first"),
+    NAME("Name"),
+}
+
+/** The four live controls, bundled because `combine` types only five flows. */
+private data class ListControls(
+    val refreshing: Boolean,
+    val syncing: Boolean,
+    val filter: ChatFilter,
+    val sort: ChatSortOrder,
+)
 
 sealed interface ChatsListUiState {
     data object Loading : ChatsListUiState
@@ -46,7 +86,28 @@ sealed interface ChatsListUiState {
         val typingConversationIds: Set<String> = emptySet(),
         /** How many chats are archived; the list shows an "Archived" row when non-zero. */
         val archivedCount: Int = 0,
-    ) : ChatsListUiState
+        /** Which chip is lit. */
+        val selectedFilter: ChatFilter = ChatFilter.ALL,
+    ) : ChatsListUiState {
+        /**
+         * Pinned chats, which lead the list under their own heading as on iOS.
+         *
+         * Split here rather than in the composable so the ordering is a
+         * property of the state and can be asserted without mounting Compose.
+         *
+         * Computed once per state, not on every read. These were `get()`
+         * accessors, and the screen reads them inside the LazyColumn's content
+         * lambda — so each one re-filtered the whole conversation list on
+         * every composition and every scroll frame.
+         */
+        private val partitioned: Pair<List<Conversation>, List<Conversation>> =
+            conversations.partition { it.isPinned }
+
+        val pinned: List<Conversation> = partitioned.first
+
+        /** Everything else, under "ALL CHATS". */
+        val unpinned: List<Conversation> = partitioned.second
+    }
 
     data object Empty : ChatsListUiState
 
@@ -82,6 +143,11 @@ sealed interface NewChatEvent {
     data class OpenConversation(
         val conversationId: String,
     ) : NewChatEvent
+
+    /** Something the user asked for did not happen, and they should hear so. */
+    data class Failed(
+        val message: String,
+    ) : NewChatEvent
 }
 
 @HiltViewModel
@@ -92,11 +158,28 @@ class ChatsListViewModel
         private val workManager: WorkManager,
         private val contactRepository: ContactRepository,
         private val messageRepository: MessageRepository,
+        private val sendAttachmentUseCase: SendAttachmentUseCase,
         val syncState: SyncState,
         private val sessionManager: SessionManager,
         realtimeManager: RealtimeManager,
     ) : ViewModel() {
         private val _searchQuery = MutableStateFlow("")
+        private val _selectedFilter = MutableStateFlow(ChatFilter.ALL)
+        private val _sortOrder = MutableStateFlow(ChatSortOrder.RECENT)
+
+        /** The chosen ordering, for the control in the search field. */
+        val sortOrder: StateFlow<ChatSortOrder> = _sortOrder.asStateFlow()
+
+        /**
+         * The lit chip, exposed on its own rather than only inside
+         * [ChatsListUiState.Success].
+         *
+         * The chip bar is part of the screen's furniture, not of the list: it
+         * shows above an empty account too, as on iOS. Reading the filter out
+         * of the success state hid the chips exactly when someone has no chats
+         * and is most likely to be looking around the screen.
+         */
+        val selectedFilter: StateFlow<ChatFilter> = _selectedFilter.asStateFlow()
         private val _isRefreshing = MutableStateFlow(false)
 
         private val _picker = MutableStateFlow(NewChatPickerState())
@@ -141,15 +224,20 @@ class ChatsListViewModel
             combine(
                 observeConversationsUseCase(),
                 _searchQuery,
-                combine(_isRefreshing, syncState.isSyncing) { r, s -> r to s },
+                combine(_isRefreshing, syncState.isSyncing, _selectedFilter, _sortOrder) { r, s, f, o ->
+                    ListControls(refreshing = r, syncing = s, filter = f, sort = o)
+                },
                 realtimeManager.typingCache,
                 archived,
-            ) { result, query, (refreshing, syncing), typing, archivedList ->
+            ) { result, query, controls, typing, archivedList ->
+                val refreshing = controls.refreshing
+                val syncing = controls.syncing
+                val filter = controls.filter
                 when (result) {
                     is Result.Loading -> ChatsListUiState.Loading
 
                     is Result.Success -> {
-                        val filtered =
+                        val searched =
                             if (query.isBlank()) {
                                 result.data
                             } else {
@@ -157,17 +245,40 @@ class ChatsListViewModel
                                     conversation.title?.contains(query, ignoreCase = true) == true
                                 }
                             }
-                        if (filtered.isEmpty() && query.isBlank()) {
+                        val filtered =
+                            when (filter) {
+                                ChatFilter.ALL -> searched
+                                ChatFilter.UNREAD -> searched.filter { it.unreadCount > 0 }
+                                ChatFilter.GROUPS -> searched.filter { it.type == ConversationType.GROUP }
+                            }
+                        val ordered =
+                            when (controls.sort) {
+                                ChatSortOrder.RECENT -> filtered.sortedByDescending { it.updatedAt }
+                                ChatSortOrder.UNREAD_FIRST ->
+                                    filtered.sortedWith(
+                                        compareByDescending<Conversation> { it.unreadCount > 0 }
+                                            .thenByDescending { it.updatedAt },
+                                    )
+                                ChatSortOrder.NAME ->
+                                    filtered.sortedBy { it.title?.lowercase() ?: "" }
+                            }
+                        // Empty only counts as "nothing here at all" when no
+                        // search and no filter are narrowing the list. A chip
+                        // that matches nothing is a filtered list with no rows,
+                        // not an account with no chats — showing the onboarding
+                        // empty state there tells the user their chats are gone.
+                        if (filtered.isEmpty() && query.isBlank() && filter == ChatFilter.ALL) {
                             ChatsListUiState.Empty
                         } else {
                             ChatsListUiState.Success(
-                                conversations = filtered,
+                                conversations = ordered,
                                 searchQuery = query,
                                 isRefreshing = refreshing,
                                 isSyncing = syncing,
                                 currentUserId = sessionManager.getUserId().orEmpty(),
                                 typingConversationIds = typing.filterValues { it.isTyping }.keys,
                                 archivedCount = archivedList.size,
+                                selectedFilter = filter,
                             )
                         }
                     }
@@ -237,6 +348,50 @@ class ChatsListViewModel
                     _actionError.value = e.message ?: "Something went wrong"
                 }
             }
+        }
+
+        /**
+         * Sends a photo taken from the chats list into [conversationId].
+         *
+         * Read and prepared off the main thread, through the same bounded
+         * decoder the editor uses: a capture from a modern phone camera is
+         * over 100 megapixels and decoding it whole ends the process.
+         */
+        fun sendCapturedPhoto(
+            context: android.content.Context,
+            uri: android.net.Uri,
+            conversationId: String,
+        ) {
+            viewModelScope.launch {
+                val prepared =
+                    withContext(Dispatchers.IO) {
+                        AttachmentPreparer.prepare(context, uri)
+                    }
+                // The capture is the full-resolution original in the clear,
+                // EXIF and all, and it used to stay in the cache for good.
+                // What gets sent is a re-encoded copy, so the original has no
+                // use once preparation is done — success or not.
+                withContext(Dispatchers.IO) { CapturedPhotos.discard(context, uri) }
+                if (prepared == null) {
+                    _events.emit(NewChatEvent.Failed("Could not read that photo"))
+                    return@launch
+                }
+                val result = sendAttachmentUseCase(conversationId, prepared, null) {}
+                if (result is Result.Error) {
+                    _events.emit(NewChatEvent.Failed(result.exception.message ?: "Could not send the photo"))
+                }
+            }
+        }
+
+        /** Chooses the ordering. */
+        fun onSortOrderSelected(order: ChatSortOrder) {
+            _sortOrder.value = order
+        }
+
+        /** Lights a chip and narrows the list to it. */
+
+        fun onFilterSelected(filter: ChatFilter) {
+            _selectedFilter.value = filter
         }
 
         fun onSearchQueryChanged(query: String) {

@@ -38,6 +38,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrTextField
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
@@ -81,13 +83,13 @@ fun NewChatContactPickerSheet(
         ) {
             Text(
                 text = "New Chat",
-                style = MaterialTheme.typography.titleLarge,
+                style = IosType.sectionHeader,
                 fontWeight = FontWeight.SemiBold,
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = IosSpacing.screenHorizontal,
                             vertical = SanchrTheme.spacing.sm,
                         ),
             )
@@ -107,7 +109,7 @@ fun NewChatContactPickerSheet(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = IosSpacing.screenHorizontal,
                             vertical = SanchrTheme.spacing.xs,
                         ),
             )
@@ -119,7 +121,7 @@ fun NewChatContactPickerSheet(
                         Modifier
                             .fillMaxWidth()
                             .padding(
-                                horizontal = SanchrTheme.spacing.default,
+                                horizontal = IosSpacing.screenHorizontal,
                                 vertical = SanchrTheme.spacing.xs,
                             ),
                 )
@@ -176,13 +178,13 @@ private fun PickerBody(
                             } else {
                                 "No matching contacts"
                             },
-                        style = MaterialTheme.typography.titleMedium,
+                        style = IosType.cardTitle,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "Synced Sanchr contacts will appear here.",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = SanchrGray500,
                     )
                 }
@@ -232,7 +234,7 @@ private fun ErrorBanner(
             Spacer(modifier = Modifier.width(SanchrTheme.spacing.sm))
             Text(
                 text = message,
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
         }
@@ -251,7 +253,7 @@ private fun ContactPickerRow(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = IosSpacing.screenHorizontal,
                     vertical = SanchrTheme.spacing.sm,
                 ),
         verticalAlignment = Alignment.CenterVertically,
@@ -283,7 +285,7 @@ private fun ContactPickerRow(
                                 .take(1)
                                 .uppercase()
                                 .ifBlank { "?" },
-                        style = MaterialTheme.typography.titleMedium,
+                        style = IosType.cardTitle,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
@@ -298,7 +300,7 @@ private fun ContactPickerRow(
         ) {
             Text(
                 text = contact.displayName.ifBlank { contact.phoneNumber },
-                style = MaterialTheme.typography.bodyLarge,
+                style = IosType.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -306,7 +308,7 @@ private fun ContactPickerRow(
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = contact.bio?.takeIf { it.isNotBlank() } ?: contact.phoneNumber,
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = SanchrGray500,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

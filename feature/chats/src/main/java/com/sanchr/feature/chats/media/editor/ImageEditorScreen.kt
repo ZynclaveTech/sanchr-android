@@ -49,6 +49,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /** The colours available to the pen. */
@@ -254,7 +255,7 @@ private fun ToolOptions(
                 for (aspect in ImageEditorAspect.entries) {
                     Text(
                         text = aspect.label,
-                        style = MaterialTheme.typography.labelLarge,
+                        style = IosType.button,
                         color = if (aspect == state.aspect) MaterialTheme.colorScheme.primary else Color.White,
                         modifier =
                             Modifier
@@ -299,7 +300,7 @@ private fun ToolButton(
         }
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
         )
     }

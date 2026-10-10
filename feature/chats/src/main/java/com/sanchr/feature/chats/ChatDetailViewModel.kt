@@ -1,5 +1,7 @@
 package com.sanchr.feature.chats
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -8,6 +10,7 @@ import com.sanchr.core.common.Result
 import com.sanchr.core.crypto.verify.SafetyNumberManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.MediaAttachment
@@ -22,6 +25,7 @@ import com.sanchr.domain.messaging.ConsumeViewOnceUseCase
 import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
+import com.sanchr.domain.messaging.SendAlbumUseCase
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
@@ -29,16 +33,21 @@ import com.sanchr.domain.messaging.ToggleReactionUseCase
 import com.sanchr.domain.messaging.UnsupportedContentException
 import com.sanchr.domain.messaging.media.AttachmentDownloader
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.domain.messaging.media.GallerySaver
 import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
+import com.sanchr.domain.messaging.media.MediaAutoSavePolicy
+import com.sanchr.domain.messaging.media.VideoCompressor
+import com.sanchr.feature.chats.info.VaultPolicyRules
 import com.sanchr.feature.chats.location.LocationPayload
+import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.stickers.StickerRenderer
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,13 +55,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChatDetailViewModel
     @Inject
@@ -61,7 +73,9 @@ class ChatDetailViewModel
         private val messageRepository: MessageRepository,
         private val sendMessageUseCase: SendMessageUseCase,
         private val sendAttachmentUseCase: SendAttachmentUseCase,
+        private val sendAlbumUseCase: SendAlbumUseCase,
         private val attachmentDownloader: AttachmentDownloader,
+        private val videoCompressor: VideoCompressor,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val toggleReactionUseCase: ToggleReactionUseCase,
         private val consumeViewOnceUseCase: ConsumeViewOnceUseCase,
@@ -74,11 +88,19 @@ class ChatDetailViewModel
         private val linkPreviewFetcher: LinkPreviewFetcher,
         private val safetyNumbers: SafetyNumberManager,
         private val connectivityMonitor: ConnectivityMonitor,
+        @ApplicationContext private val appContext: Context,
     ) : ViewModel() {
-        private companion object {
+        internal companion object {
             const val TAG = "ChatDetailViewModel"
             const val PRESENCE_REFRESH_MS = 15_000L
             const val SEARCH_DEBOUNCE_MS = 300L
+
+            /** Messages held when a chat opens — several screens' worth. */
+            const val INITIAL_WINDOW = 200
+
+            /** Added each time the user reaches the top of the window. */
+            const val WINDOW_STEP = 200
+            const val DRAFT_SAVE_DEBOUNCE_MS = 400L
         }
 
         private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
@@ -96,7 +118,39 @@ class ChatDetailViewModel
         /** The loaded transcript as domain rows, keyed by id, for actions that need more than the UI model. */
         private var domainMessages: Map<String, Message> = emptyMap()
 
+        /**
+         * The composer's text, saved so leaving a chat mid-sentence does not
+         * destroy it — a process killed behind the photo picker did the same.
+         * iOS has saved and restored this all along.
+         *
+         * Stored with the messages, behind SQLCipher — a draft is message
+         * content, so plaintext preferences are the wrong place for it — and
+         * debounced rather than written per keystroke.
+         */
+        private val draftText = MutableStateFlow("")
+
+        private fun restoreDraft() {
+            viewModelScope.launch {
+                val saved = runCatching { messageRepository.draftText(conversationId) }.getOrDefault(null).orEmpty()
+                if (saved.isNotEmpty() && _uiState.value.inputText.isEmpty()) {
+                    _uiState.update { it.copy(inputText = saved) }
+                    draftText.value = saved
+                }
+            }
+        }
+
+        private fun persistDraft() {
+            viewModelScope.launch {
+                draftText
+                    .debounce(DRAFT_SAVE_DEBOUNCE_MS)
+                    .distinctUntilChanged()
+                    .collect { text -> runCatching { messageRepository.setDraftText(conversationId, text) } }
+            }
+        }
+
         init {
+            restoreDraft()
+            persistDraft()
             observeConversation()
             observeMessages()
             observeForwardTargets()
@@ -153,10 +207,21 @@ class ChatDetailViewModel
             }
         }
 
+        /**
+         * How many of the newest messages the transcript holds.
+         *
+         * A window, not the whole conversation. The observer used to be
+         * unbounded, so opening a long chat streamed every message it had ever
+         * held into memory and into composition on every change — and the
+         * `loadMoreMessages` scaffolding beside it was never called by
+         * anything, so the window it implied did not exist either.
+         */
+        private val windowSize = MutableStateFlow(INITIAL_WINDOW)
+
         private fun observeMessages() {
             viewModelScope.launch {
-                messageRepository
-                    .observeMessages(conversationId)
+                windowSize
+                    .flatMapLatest { limit -> messageRepository.observeRecentMessages(conversationId, limit) }
                     .catch { /* DB closed during logout — nav teardown cancels this scope */ }
                     .collect { messages ->
                         domainMessages = messages.associateBy { it.id }
@@ -164,6 +229,11 @@ class ChatDetailViewModel
                             state.copy(
                                 messages = messages.toUiModels(state.conversation),
                                 isLoading = false,
+                                isLoadingMore = false,
+                                // A full window means there may be more behind
+                                // it; a short one means we have reached the
+                                // start of the conversation.
+                                hasMoreMessages = messages.size >= windowSize.value,
                             )
                         }
                         markReadIfNewInbound(messages)
@@ -240,7 +310,7 @@ class ChatDetailViewModel
          * peer most wants confirmation of, mirroring iOS's explicit
          * `upToMessageId`.
          *
-         * Reads directly from [MessageRepository.observeMessages] rather
+         * Reads directly from the repository's windowed observer rather
          * than [uiState]'s already-mapped list: that list is populated by
          * [observeMessages]'s own collector, launched separately in `init`,
          * and may still be empty by the time this runs. A conversation with
@@ -261,7 +331,11 @@ class ChatDetailViewModel
                 val currentUserId = sessionManager.getUserId() ?: return
                 val newestInboundMessage =
                     messageRepository
-                        .observeMessages(conversationId)
+                        // The window, not the whole transcript: the newest
+                        // inbound message is in the newest window by
+                        // definition, and the unbounded observer would stream
+                        // the entire conversation to find it.
+                        .observeRecentMessages(conversationId, INITIAL_WINDOW)
                         .first()
                         .filter { it.senderId != currentUserId }
                         .maxByOrNull { it.timestamp }
@@ -284,6 +358,7 @@ class ChatDetailViewModel
 
         fun onInputTextChanged(text: String) {
             _uiState.update { it.copy(inputText = text) }
+            draftText.value = text
             viewModelScope.launch {
                 // Read per keystroke rather than cached: the toggle is in
                 // Settings, and a chat left open must stop broadcasting the
@@ -298,6 +373,8 @@ class ChatDetailViewModel
             if (content.isBlank()) return
             val replyToId = takePendingReply()
             _uiState.update { it.copy(inputText = "") }
+            draftText.value = ""
+            viewModelScope.launch { runCatching { messageRepository.setDraftText(conversationId, null) } }
             dispatchSend(content, contentType = "text", replyToId = replyToId)
         }
 
@@ -352,7 +429,10 @@ class ChatDetailViewModel
         fun sendSticker(emoji: String) {
             viewModelScope.launch {
                 val prepared = withContext(Dispatchers.IO) { StickerRenderer.prepare(emoji) }
-                sendAttachment(prepared)
+                // Not through the vault policy: a sticker is an image on the
+                // wire, and one that had to be tapped open and then vanished
+                // would not be a sticker.
+                sendPrepared(prepared)
             }
         }
 
@@ -366,15 +446,14 @@ class ChatDetailViewModel
             val replyToId = takePendingReply()
             _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
             viewModelScope.launch {
-                var failure: String? = null
-                prepared.forEachIndexed { index, file ->
-                    if (failure != null) return@forEachIndexed
-                    val result =
-                        sendAttachmentUseCase(conversationId, file, replyToId.takeIf { index == 0 }) { fraction ->
-                            _uiState.update { it.copy(uploadProgress = (index + fraction) / prepared.size) }
-                        }
-                    if (result is Result.Error) failure = result.exception.message ?: "Failed to send attachment"
-                }
+                // One message for the set, as iOS sends an album — unless this
+                // chat's media goes view-once; see [SendMediaSet].
+                val result =
+                    SendMediaSet(sendAttachmentUseCase, sendAlbumUseCase)(conversationId, prepared, vaultPolicy(), replyToId) { fraction ->
+                        _uiState.update { it.copy(uploadProgress = fraction) }
+                    }
+                val failure =
+                    (result as? Result.Error)?.exception?.message ?: (result as? Result.Error)?.let { "Failed to send attachment" }
                 _uiState.update { it.copy(isSending = false, uploadProgress = null, error = failure) }
             }
         }
@@ -400,8 +479,15 @@ class ChatDetailViewModel
             }
         }
 
-        /** Encrypts and sends a picked file as an attachment message. */
-        fun sendAttachment(prepared: AttachmentUploader.Prepared) {
+        /**
+         * Encrypts and sends a picked file as an attachment message, view-once
+         * if this chat's vault policy says its media goes that way.
+         */
+        fun sendAttachment(prepared: AttachmentUploader.Prepared) = sendPrepared(VaultPolicyRules.outgoing(prepared, vaultPolicy()))
+
+        private fun vaultPolicy(): ChatVaultPolicy? = _uiState.value.conversation?.vaultPolicy
+
+        private fun sendPrepared(prepared: AttachmentUploader.Prepared) {
             if (_uiState.value.isSending) return
             val replyToId = takePendingReply()
             _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
@@ -422,6 +508,57 @@ class ChatDetailViewModel
                             )
                         }
                     is Result.Loading -> Unit
+                }
+            }
+        }
+
+        /**
+         * Reads a picked file into the shape the uploader wants, re-encoding a
+         * video first.
+         *
+         * Here rather than at each picker, because the Low Data Mode switch
+         * lives in preferences and the compression has to happen *before* the
+         * bytes are read: the send path holds the whole file in memory, so
+         * re-encoding afterwards would mean reading the original in first —
+         * which is the cost this avoids.
+         */
+        suspend fun prepareAttachment(uri: Uri): AttachmentUploader.Prepared? =
+            withContext(Dispatchers.IO) {
+                val mimeType = runCatching { appContext.contentResolver.getType(uri) }.getOrNull().orEmpty()
+                if (!mimeType.startsWith("video/")) {
+                    return@withContext AttachmentPreparer.prepare(appContext, uri)
+                }
+                val sourceBytes = AttachmentPreparer.reportedSize(appContext, uri) ?: 0L
+                val lowData = runCatching { userPreferences.lowDataMode.first() }.getOrDefault(false)
+                val compressed =
+                    runCatching { videoCompressor.compressedForSending(uri, sourceBytes, lowData) }.getOrNull()
+                try {
+                    AttachmentPreparer.prepare(
+                        context = appContext,
+                        uri = uri,
+                        readFrom = compressed?.let(Uri::fromFile) ?: uri,
+                    )
+                } finally {
+                    // The re-encoded copy has served its purpose once the bytes
+                    // are in hand, and it is a plaintext video in the cache.
+                    compressed?.delete()
+                }
+            }
+
+        /**
+         * Tries a failed message again.
+         *
+         * A send that exhausted its attempts left a FAILED row with an error
+         * glyph and nothing to tap: the text was visible, unsent, and
+         * unrecoverable except by retyping it. The retry runs from the stored
+         * row so the message keeps its id, which the receiver treats as an
+         * idempotent replace rather than a second message.
+         */
+        fun retryMessage(message: MessageUiModel) {
+            viewModelScope.launch {
+                val result = sendMessageUseCase.retry(message.id)
+                if (result is Result.Error) {
+                    _uiState.update { it.copy(error = result.exception.message ?: "Still couldn't send that") }
                 }
             }
         }
@@ -472,8 +609,14 @@ class ChatDetailViewModel
         /** The decrypted file for a message's attachment, downloading it if needed. */
         suspend fun openAttachment(message: MessageUiModel): File? {
             val attachment = message.attachment ?: return null
+            // Checked before the fetch: a file already on disk was either
+            // auto-saved when it first arrived or deliberately not, and
+            // re-reading a cached bubble must not copy it to the gallery again.
+            val wasCached = runCatching { attachmentDownloader.isCached(message.id, attachment) }.getOrDefault(false)
             return try {
-                attachmentDownloader.open(message.id, attachment)
+                attachmentDownloader.open(message.id, attachment).also { file ->
+                    if (!wasCached) autoSaveToGallery(message, attachment, file)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -483,26 +626,53 @@ class ChatDetailViewModel
             }
         }
 
-        fun loadMoreMessages() {
-            val messages = _uiState.value.messages
-            if (messages.isEmpty() || _uiState.value.isLoadingMore) return
+        /**
+         * Copies freshly downloaded incoming media into the system gallery when
+         * Media Auto-Save is on, as iOS does from `MediaBubbleImage`. Nothing
+         * read the Android switch before: it moved, synced to the server, and
+         * no photo was ever saved.
+         *
+         * Failures are deliberately silent — the gallery copy is a convenience,
+         * and the message itself has already been delivered.
+         */
+        private suspend fun autoSaveToGallery(
+            message: MessageUiModel,
+            attachment: MediaAttachment,
+            file: File,
+        ) {
+            val mimeType = attachment.mimeType
+            if (!MediaAutoSavePolicy.isSaveableType(mimeType)) return
+            val enabled = userPreferences.mediaAutoSave.first()
+            val galleryVisible = userPreferences.mediaVisibleInGallery(conversationId).first()
+            val allowed =
+                MediaAutoSavePolicy.shouldAutoSave(
+                    isViewOnce = message.isViewOnce,
+                    // A disappearing message's media must not outlive it in a
+                    // photo library. Read off the row the bubble was rendered
+                    // from, so an evicted cache cannot turn the check off.
+                    isEphemeral = message.isEphemeral,
+                    autoSaveEnabled = enabled,
+                    galleryVisible = galleryVisible,
+                    isOutgoing = message.isFromMe,
+                    mimeType = mimeType,
+                )
+            if (!allowed) return
+            val saved = withContext(Dispatchers.IO) { GallerySaver.save(appContext, file, mimeType) }
+            if (!saved) Log.w(TAG, "auto-save to gallery failed for ${message.id}")
+        }
 
-            viewModelScope.launch {
-                _uiState.update { it.copy(isLoadingMore = true) }
-                val oldestTimestamp = messages.minOfOrNull { it.timestamp } ?: 0L
-                val olderMessages =
-                    messageRepository.loadMoreMessages(
-                        conversationId = conversationId,
-                        beforeTimestamp = oldestTimestamp,
-                        limit = 50,
-                    )
-                _uiState.update {
-                    it.copy(
-                        isLoadingMore = false,
-                        hasMoreMessages = olderMessages.size == 50,
-                    )
-                }
-            }
+        /**
+         * Grows the window as the user scrolls back.
+         *
+         * This used to call `MessageRepository.loadMoreMessages`, which
+         * ignores the `beforeTimestamp` it is given and always re-queries
+         * offset 0 — the same newest page, merged into nothing. Nothing called
+         * it, which is the only reason that never showed.
+         */
+        fun loadMoreMessages() {
+            if (_uiState.value.isLoadingMore || !_uiState.value.hasMoreMessages) return
+            _uiState.update { it.copy(isLoadingMore = true) }
+            windowSize.update { it + WINDOW_STEP }
         }
 
         fun dismissError() {
@@ -579,50 +749,26 @@ class ChatDetailViewModel
         }
 
         // ------------------------------------------------------------------
-        // In-chat search (iOS `scheduleSearch`: debounced, newest first, wraps around)
+        // In-chat search — the transitions live in [TranscriptSearch]
         // ------------------------------------------------------------------
 
-        private var searchJob: Job? = null
+        private val search =
+            TranscriptSearch(
+                state = _uiState,
+                scope = viewModelScope,
+                debounceMillis = SEARCH_DEBOUNCE_MS,
+                findMatches = { query -> messageRepository.searchMessages(conversationId, query) },
+            )
 
-        fun openSearch() {
-            _uiState.update { it.copy(search = it.search ?: ChatSearchState()) }
-        }
+        fun openSearch() = search.open()
 
-        fun closeSearch() {
-            searchJob?.cancel()
-            _uiState.update { it.copy(search = null) }
-        }
+        fun closeSearch() = search.close()
 
-        fun onSearchQueryChanged(query: String) {
-            _uiState.update { it.copy(search = (it.search ?: ChatSearchState()).copy(query = query)) }
-            searchJob?.cancel()
-            if (query.isBlank()) {
-                _uiState.update { it.copy(search = it.search?.copy(resultIds = emptyList(), currentIndex = 0)) }
-                return
-            }
-            searchJob =
-                viewModelScope.launch {
-                    delay(SEARCH_DEBOUNCE_MS)
-                    val ids = runCatching { messageRepository.searchMessages(conversationId, query) }.getOrDefault(emptyList())
-                    _uiState.update { state ->
-                        val search = state.search ?: return@update state
-                        if (search.query != query) state else state.copy(search = search.copy(resultIds = ids, currentIndex = 0))
-                    }
-                }
-        }
+        fun onSearchQueryChanged(query: String) = search.onQueryChanged(query)
 
-        fun nextSearchResult() = stepSearch(+1)
+        fun nextSearchResult() = search.next()
 
-        fun previousSearchResult() = stepSearch(-1)
-
-        private fun stepSearch(delta: Int) {
-            _uiState.update { state ->
-                val search = state.search ?: return@update state
-                if (search.resultIds.isEmpty()) return@update state
-                val size = search.resultIds.size
-                state.copy(search = search.copy(currentIndex = ((search.currentIndex + delta) % size + size) % size))
-            }
-        }
+        fun previousSearchResult() = search.previous()
 
         fun dismissNotice() {
             _uiState.update { it.copy(notice = null) }
@@ -635,10 +781,16 @@ class ChatDetailViewModel
             viewModelScope.launch {
                 // The full-screen viewer honours the same toggle as the rest of
                 // the app; otherwise opening a photo would be the one window a
-                // screenshot could still catch.
-                userPreferences.screenshotProtectionEnabled.collect { on ->
-                    _uiState.update { it.copy(screenshotProtectionEnabled = on) }
-                }
+                // screenshot could still catch. This chat's own Capture
+                // Protection switch turns it on here even when the
+                // account-wide one is off.
+                combine(
+                    userPreferences.screenshotProtectionEnabled,
+                    messageRepository.observeConversation(conversationId),
+                ) { accountWide, conversation ->
+                    VaultPolicyRules.captureProtected(accountWide, conversation?.vaultPolicy)
+                }.catch { /* DB closed during logout */ }
+                    .collect { on -> _uiState.update { it.copy(screenshotProtectionEnabled = on) } }
             }
             viewModelScope.launch {
                 userPreferences.mediaAutoDownload.collect { setting ->
@@ -683,10 +835,12 @@ class ChatDetailViewModel
                 failureKind = failureClass.toFailureKind(uiStatus),
                 failureReason = failureReason.takeIf { uiStatus == MessageStatus.FAILED },
                 attachment = content.attachmentOrNull(),
+                albumAttachments = (content as? MessageContent.Album)?.attachments.orEmpty(),
                 contact = (content as? MessageContent.Contact)?.let { ContactCard(it.name, it.phoneNumber) },
                 reactions = reactions.toChips(currentUser),
                 replyToId = replyToId,
                 isViewOnce = content.attachmentOrNull()?.isViewOnce == true,
+                isEphemeral = expiresAt != null,
             )
         }
 
@@ -741,6 +895,7 @@ class ChatDetailViewModel
             when (this) {
                 is MessageContent.Text -> body
                 is MessageContent.Image -> caption ?: "[Image]"
+                is MessageContent.Album -> caption ?: ("[" + attachments.size + " photos]")
                 is MessageContent.Voice -> "[Voice message]"
                 is MessageContent.File -> fileName
                 is MessageContent.Location -> label ?: "[Location]"
@@ -751,6 +906,10 @@ class ChatDetailViewModel
         private fun MessageContent.attachmentOrNull(): MediaAttachment? =
             when (this) {
                 is MessageContent.Image -> attachment
+                // The first tile: everything that reads a single attachment
+                // (the gallery's lead, auto-download, auto-save) wants one, and
+                // the whole set travels on the UI model beside it.
+                is MessageContent.Album -> first
                 is MessageContent.Voice -> attachment
                 is MessageContent.File -> attachment
                 is MessageContent.Text, is MessageContent.Location, is MessageContent.Contact, is MessageContent.System -> null
@@ -760,6 +919,7 @@ class ChatDetailViewModel
             when (this) {
                 is MessageContent.Text -> "text"
                 is MessageContent.Image -> "image"
+                is MessageContent.Album -> MessageContent.Album.CONTENT_TYPE
                 is MessageContent.Voice -> "voice"
                 is MessageContent.File -> "file"
                 is MessageContent.Location -> "location"

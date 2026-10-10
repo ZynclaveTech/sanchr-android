@@ -1,6 +1,7 @@
 package com.sanchr.feature.chats.info
 
 import androidx.lifecycle.SavedStateHandle
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.domain.messaging.MessageRepository
@@ -14,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -53,7 +55,12 @@ class ConversationInfoViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = ConversationInfoViewModel(messageRepository, SavedStateHandle(mapOf("conversationId" to "c1")))
+    private fun viewModel() =
+        ConversationInfoViewModel(
+            messageRepository,
+            mockk { every { mediaVisibleInGallery("c1") } returns flowOf(true) },
+            SavedStateHandle(mapOf("conversationId" to "c1")),
+        )
 
     @Test
     fun `the stored timer decides which option is shown`() {
@@ -122,5 +129,56 @@ class ConversationInfoViewModelTest {
             model.setMuted(true)
 
             assertEquals("db closed", model.uiState.value.error)
+        }
+
+    @Test
+    fun `flipping one vault switch stores the whole policy with only that one changed`() =
+        runTest(dispatcher) {
+            val stored = ChatVaultPolicy(captureProtection = true)
+            every { messageRepository.observeConversation("c1") } returns flowOf(conversation().copy(vaultPolicy = stored))
+            val viewModel = viewModel()
+
+            viewModel.updateVaultPolicy { it.copy(viewOnceOutgoing = true) }
+
+            val expected = ChatVaultPolicy(viewOnceOutgoing = true, captureProtection = true)
+            coVerify(exactly = 1) { messageRepository.setVaultPolicy("c1", expected) }
+            assertEquals(
+                expected,
+                viewModel.uiState.value.conversation
+                    ?.vaultPolicy,
+            )
+        }
+
+    @Test
+    fun `two switches flipped in a row both land`() =
+        runTest(dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.updateVaultPolicy { it.copy(viewOnceOutgoing = true) }
+            viewModel.updateVaultPolicy { it.copy(captureProtection = true) }
+
+            // The second change is applied to the first's result, not to the
+            // policy the screen had drawn before either.
+            coVerify { messageRepository.setVaultPolicy("c1", ChatVaultPolicy(viewOnceOutgoing = true, captureProtection = true)) }
+        }
+
+    @Test
+    fun `a change that changes nothing writes nothing`() =
+        runTest(dispatcher) {
+            viewModel().updateVaultPolicy { it.copy(viewOnceOutgoing = false) }
+
+            coVerify(exactly = 0) { messageRepository.setVaultPolicy(any(), any()) }
+        }
+
+    @Test
+    fun `nothing is written before the conversation has loaded`() =
+        runTest(dispatcher) {
+            every { messageRepository.observeConversation("c1") } returns emptyFlow()
+
+            // A write now would be built from defaults and would overwrite
+            // whatever policy the chat really has.
+            viewModel().updateVaultPolicy { it.copy(viewOnceOutgoing = true) }
+
+            coVerify(exactly = 0) { messageRepository.setVaultPolicy(any(), any()) }
         }
 }

@@ -1,4 +1,4 @@
-package com.sanchr.feature.vault
+package com.sanchr.domain.vault
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

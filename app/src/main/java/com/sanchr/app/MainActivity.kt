@@ -12,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +38,8 @@ import com.sanchr.core.common.lock.AppLockPolicy
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.designsystem.theme.LocalBubbleStyle
+import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
@@ -101,76 +104,83 @@ class MainActivity : FragmentActivity() {
             // Settings offers Material You; the theme has always accepted the
             // flag but nothing passed it, so the switch changed nothing.
             val dynamicColor by userPreferences.dynamicColorEnabled.collectAsStateWithLifecycle(initialValue = false)
+            val bubbleStyle = userPreferences.chatBubbleStyle.collectAsStateWithLifecycle(initialValue = "modern")
+            val enterSendsMessage = userPreferences.enterSendsMessage.collectAsStateWithLifecycle(initialValue = true)
             SanchrTheme(
                 darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme()),
                 dynamicColor = dynamicColor,
             ) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    val screenLockEnabled by userPreferences.screenLockEnabled.collectAsStateWithLifecycle(initialValue = false)
-                    val biometricEnabled by userPreferences.biometricEnabled.collectAsStateWithLifecycle(initialValue = false)
-                    val timeoutSeconds by userPreferences.screenLockTimeoutSeconds.collectAsStateWithLifecycle(initialValue = 0)
-                    val configured = AppLockPolicy.isConfigured(screenLockEnabled, biometricEnabled)
+                CompositionLocalProvider(
+                    LocalBubbleStyle provides bubbleStyle,
+                    LocalEnterSendsMessage provides enterSendsMessage,
+                ) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        val screenLockEnabled by userPreferences.screenLockEnabled.collectAsStateWithLifecycle(initialValue = false)
+                        val biometricEnabled by userPreferences.biometricEnabled.collectAsStateWithLifecycle(initialValue = false)
+                        val timeoutSeconds by userPreferences.screenLockTimeoutSeconds.collectAsStateWithLifecycle(initialValue = 0)
+                        val configured = AppLockPolicy.isConfigured(screenLockEnabled, biometricEnabled)
 
-                    // Cold launch with the lock on starts locked; the preferences
-                    // arrive a frame later, so arm it as soon as they say so.
-                    var locked by rememberSaveable { mutableStateOf(false) }
-                    var everConfigured by rememberSaveable { mutableStateOf(false) }
-                    var backgroundedAt by rememberSaveable { mutableStateOf<Long?>(null) }
-                    LaunchedEffect(configured) {
-                        if (configured && !everConfigured) {
-                            everConfigured = true
-                            locked = true
-                        }
-                        if (!configured) locked = false
-                    }
-
-                    val lifecycleOwner = LocalLifecycleOwner.current
-                    DisposableEffect(lifecycleOwner, configured, timeoutSeconds) {
-                        val observer =
-                            LifecycleEventObserver { _, event ->
-                                when (event) {
-                                    Lifecycle.Event.ON_STOP -> backgroundedAt = System.currentTimeMillis()
-                                    Lifecycle.Event.ON_START -> {
-                                        if (AppLockPolicy.shouldLockOnResume(
-                                                configured,
-                                                backgroundedAt,
-                                                System.currentTimeMillis(),
-                                                timeoutSeconds,
-                                            )
-                                        ) {
-                                            locked = true
-                                        }
-                                        backgroundedAt = null
-                                    }
-                                    else -> Unit
-                                }
+                        // Cold launch with the lock on starts locked; the preferences
+                        // arrive a frame later, so arm it as soon as they say so.
+                        var locked by rememberSaveable { mutableStateOf(false) }
+                        var everConfigured by rememberSaveable { mutableStateOf(false) }
+                        var backgroundedAt by rememberSaveable { mutableStateOf<Long?>(null) }
+                        LaunchedEffect(configured) {
+                            if (configured && !everConfigured) {
+                                everConfigured = true
+                                locked = true
                             }
-                        lifecycleOwner.lifecycle.addObserver(observer)
-                        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-                    }
+                            if (!configured) locked = false
+                        }
 
-                    val startDestination by bootstrapViewModel.startDestination.collectAsStateWithLifecycle()
-                    val shared by bootstrapViewModel.sharedContent.collectAsStateWithLifecycle()
-                    val pendingShare = shared.takeIf { startDestination is StartDestination.Main }
+                        val lifecycleOwner = LocalLifecycleOwner.current
+                        DisposableEffect(lifecycleOwner, configured, timeoutSeconds) {
+                            val observer =
+                                LifecycleEventObserver { _, event ->
+                                    when (event) {
+                                        Lifecycle.Event.ON_STOP -> backgroundedAt = System.currentTimeMillis()
+                                        Lifecycle.Event.ON_START -> {
+                                            if (AppLockPolicy.shouldLockOnResume(
+                                                    configured,
+                                                    backgroundedAt,
+                                                    System.currentTimeMillis(),
+                                                    timeoutSeconds,
+                                                )
+                                            ) {
+                                                locked = true
+                                            }
+                                            backgroundedAt = null
+                                        }
+                                        else -> Unit
+                                    }
+                                }
+                            lifecycleOwner.lifecycle.addObserver(observer)
+                            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                        }
 
-                    when {
-                        // The nav host is not composed while locked, so no chat is
-                        // behind this and none reaches the recents thumbnail.
-                        locked -> AppLockGate(onUnlocked = { locked = false })
-                        // Shown after the lock gate, never instead of it: sharing
-                        // into a locked app must not be a way past the lock. Only
-                        // once signed in, since there are no chats to share into
-                        // before that.
-                        pendingShare != null ->
-                            ShareTargetScreen(
-                                content = pendingShare,
-                                onFinished = { bootstrapViewModel.setSharedContent(null) },
-                            )
-                        else ->
-                            SanchrNavHost(
-                                pendingDestination = bootstrapViewModel.pendingDestination,
-                                onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
-                            )
+                        val startDestination by bootstrapViewModel.startDestination.collectAsStateWithLifecycle()
+                        val shared by bootstrapViewModel.sharedContent.collectAsStateWithLifecycle()
+                        val pendingShare = shared.takeIf { startDestination is StartDestination.Main }
+
+                        when {
+                            // The nav host is not composed while locked, so no chat is
+                            // behind this and none reaches the recents thumbnail.
+                            locked -> AppLockGate(onUnlocked = { locked = false })
+                            // Shown after the lock gate, never instead of it: sharing
+                            // into a locked app must not be a way past the lock. Only
+                            // once signed in, since there are no chats to share into
+                            // before that.
+                            pendingShare != null ->
+                                ShareTargetScreen(
+                                    content = pendingShare,
+                                    onFinished = { bootstrapViewModel.setSharedContent(null) },
+                                )
+                            else ->
+                                SanchrNavHost(
+                                    pendingDestination = bootstrapViewModel.pendingDestination,
+                                    onPendingConsumed = { bootstrapViewModel.setPendingDestination(null) },
+                                )
+                        }
                     }
                 }
             }

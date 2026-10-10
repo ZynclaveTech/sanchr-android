@@ -48,6 +48,7 @@ class MessageRepositoryImplConversationTitleTest {
             sessionManager = sessionManager,
             reactionDao = mockk(relaxed = true),
             notificationClient = mockk(relaxed = true),
+            autoVaultScheduler = mockk(relaxed = true),
         )
 
     private fun serverDirectConversation(serverPeerName: String) =

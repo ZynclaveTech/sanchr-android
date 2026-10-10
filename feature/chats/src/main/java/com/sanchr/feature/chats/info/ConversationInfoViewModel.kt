@@ -3,6 +3,8 @@ package com.sanchr.feature.chats.info
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.domain.messaging.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,6 +21,8 @@ import kotlinx.coroutines.launch
 data class ConversationInfoUiState(
     val conversation: Conversation? = null,
     val error: String? = null,
+    /** Whether this chat's media may be auto-saved to the gallery. Visible by default, as on iOS. */
+    val mediaVisibleInGallery: Boolean = true,
 ) {
     val title: String get() = conversation?.title ?: "Chat"
     val isMuted: Boolean get() = conversation?.isMuted == true
@@ -42,6 +46,7 @@ class ConversationInfoViewModel
     @Inject
     constructor(
         private val messageRepository: MessageRepository,
+        private val userPreferences: UserPreferences,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val conversationId: String = savedStateHandle["conversationId"] ?: ""
@@ -56,6 +61,11 @@ class ConversationInfoViewModel
                     .catch { /* DB closed during logout */ }
                     .collect { conversation -> _uiState.update { it.copy(conversation = conversation) } }
             }
+            viewModelScope.launch {
+                userPreferences
+                    .mediaVisibleInGallery(conversationId)
+                    .collect { visible -> _uiState.update { it.copy(mediaVisibleInGallery = visible) } }
+            }
         }
 
         fun setMuted(muted: Boolean) = action { messageRepository.setMuted(conversationId, muted) }
@@ -63,6 +73,17 @@ class ConversationInfoViewModel
         fun setArchived(archived: Boolean) = action { messageRepository.setArchived(conversationId, archived) }
 
         fun hide() = action { messageRepository.setHidden(conversationId, true) }
+
+        /**
+         * Whether media from this chat may reach the system gallery through
+         * Media Auto-Save, as iOS's Media Visibility switch does. Stored per
+         * conversation and per device: it says where this phone's copies may
+         * go, which is not something to share with the account.
+         */
+        fun setMediaVisibleInGallery(visible: Boolean) =
+            action {
+                userPreferences.setMediaVisibleInGallery(conversationId, visible)
+            }
 
         /**
          * Sets this chat's own timer. "Off" clears it rather than storing
@@ -79,6 +100,24 @@ class ConversationInfoViewModel
             action {
                 messageRepository.setWallpaper(conversationId, name.takeIf { it != "default" })
             }
+
+        /**
+         * Changes this chat's vault policy.
+         *
+         * Takes a change rather than a whole policy so that two switches
+         * flipped in quick succession both land: each is applied to what is
+         * stored at that moment, not to what the screen last drew. Does
+         * nothing before the conversation has loaded, when there is no stored
+         * policy to change yet.
+         */
+        fun updateVaultPolicy(change: (ChatVaultPolicy) -> ChatVaultPolicy) {
+            val current = _uiState.value.conversation?.vaultPolicy ?: return
+            val next = change(current)
+            if (next == current) return
+            // Shown at once; the stored row follows and the observer confirms it.
+            _uiState.update { state -> state.copy(conversation = state.conversation?.copy(vaultPolicy = next)) }
+            action { messageRepository.setVaultPolicy(conversationId, next) }
+        }
 
         fun dismissError() = _uiState.update { it.copy(error = null) }
 

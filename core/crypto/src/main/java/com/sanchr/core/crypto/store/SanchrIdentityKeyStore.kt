@@ -331,6 +331,26 @@ class SanchrIdentityKeyStore
             return IdentityKey(existing.identityKey, 0)
         }
 
+        /**
+         * Whether [identityKey] is the key already on record for any of
+         * [userId]'s devices — a key this device accepted earlier, from a
+         * bundle the server vouched for or a message that was itself checked.
+         * A key that is only *pending review* does not count.
+         */
+        fun isKnownIdentityOf(
+            userId: String,
+            identityKey: IdentityKey,
+        ): Boolean {
+            val wanted = identityKey.serialize()
+            // A key adopted on receive after a change sits in the same column
+            // as one that was vouched for, and is marked only by the pending
+            // flag beside it. Counting it would let a changed key vouch for
+            // itself the second time it was seen.
+            return identityDao
+                .getForUserBlocking(userId.likePrefix())
+                .any { it.pendingIdentityKey == null && it.identityKey.contentEquals(wanted) }
+        }
+
         /** Wipes all identity material. Called on account deletion. */
         fun wipeAll() {
             // No ensureHydrated(): we're about to null out staging and wipe

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +44,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.ChatWallpapers
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -55,6 +57,9 @@ fun AppearanceScreen(
     val chatWallpaper by viewModel.chatWallpaper.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = "Appearance",
@@ -73,7 +78,7 @@ fun AppearanceScreen(
         ) {
             Text(
                 text = "Theme",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -119,11 +124,11 @@ fun AppearanceScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Dynamic Color",
-                            style = MaterialTheme.typography.titleSmall,
+                            style = IosType.bodyBold,
                         )
                         Text(
                             text = "Use wallpaper-based Material You colors (Android 12+)",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = IosType.captionSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -139,7 +144,7 @@ fun AppearanceScreen(
             // Font size slider
             Text(
                 text = "Font Size",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -168,7 +173,7 @@ fun AppearanceScreen(
                     fontSizeLabels.forEach { label ->
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = IosType.captionSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -180,7 +185,7 @@ fun AppearanceScreen(
             // Chat wallpaper picker
             Text(
                 text = "Chat Wallpaper",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -263,7 +268,7 @@ private fun ThemePreviewCard(
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            style = IosType.sectionLabel,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
         )

@@ -2,12 +2,12 @@ package com.sanchr.feature.profile
 
 import androidx.lifecycle.SavedStateHandle
 import com.sanchr.core.crypto.profile.EncryptedProfileUpdater
+import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.network.media.AvatarUploader
 import com.sanchr.proto.settings.ProfileResponse
-import com.sanchr.proto.settings.SettingsServiceClient
-import com.sanchr.proto.settings.UserSettings
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,9 +26,16 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProfileViewModelAvatarTest {
     private val dispatcher = StandardTestDispatcher()
-    private val settingsClient =
-        mockk<SettingsServiceClient> {
-            coEvery { getSettings(any()) } returns UserSettings(displayName = "Me", bio = "hi", avatarUrl = "https://cdn/old.jpg")
+
+    // Our own profile is read from the device, not from the server: the wire
+    // settings message carries no profile fields.
+    private val sessionManager =
+        mockk<SessionManager>(relaxed = true) {
+            every { getUserId() } returns "user-1"
+            every { getDisplayName() } returns "Me"
+            every { getProfileBio() } returns "hi"
+            every { getProfileAvatarUrl() } returns "https://cdn/old.jpg"
+            every { getStoredPhoneE164() } returns "+15550100"
         }
     private val uploader = mockk<AvatarUploader>()
     private val profileUpdater = mockk<EncryptedProfileUpdater>()
@@ -47,12 +54,12 @@ class ProfileViewModelAvatarTest {
     private fun vm() =
         ProfileViewModel(
             SavedStateHandle(mapOf("userId" to "me")),
-            settingsClient,
             uploader,
             profileUpdater,
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            sessionManager,
         )
 
     @Test

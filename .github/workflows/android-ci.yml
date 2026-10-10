@@ -48,6 +48,14 @@ jobs:
       # skipped and the gate emits a warning instead of failing.
       - name: Checkout backend protos (drift gate)
         if: ${{ env.BACKEND_READ_TOKEN != '' }}
+        # A token that is present but no longer valid — a fine-grained PAT
+        # expires — makes actions/checkout fail the whole job with exit 128
+        # before Gradle runs, so every PR goes red for a reason unrelated to
+        # the change. The drift gate already degrades on its own: absent
+        # protos make sync-protos.sh emit a warning and exit 0. Letting the
+        # checkout fail softly routes an expired token into that same path
+        # instead of blocking the build.
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend
@@ -127,6 +135,14 @@ jobs:
       # skipped and the gate emits a warning instead of failing.
       - name: Checkout backend protos (drift gate)
         if: ${{ env.BACKEND_READ_TOKEN != '' }}
+        # A token that is present but no longer valid — a fine-grained PAT
+        # expires — makes actions/checkout fail the whole job with exit 128
+        # before Gradle runs, so every PR goes red for a reason unrelated to
+        # the change. The drift gate already degrades on its own: absent
+        # protos make sync-protos.sh emit a warning and exit 0. Letting the
+        # checkout fail softly routes an expired token into that same path
+        # instead of blocking the build.
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend
@@ -222,6 +238,14 @@ jobs:
       # skipped and the gate emits a warning instead of failing.
       - name: Checkout backend protos (drift gate)
         if: ${{ env.BACKEND_READ_TOKEN != '' }}
+        # A token that is present but no longer valid — a fine-grained PAT
+        # expires — makes actions/checkout fail the whole job with exit 128
+        # before Gradle runs, so every PR goes red for a reason unrelated to
+        # the change. The drift gate already degrades on its own: absent
+        # protos make sync-protos.sh emit a warning and exit 0. Letting the
+        # checkout fail softly routes an expired token into that same path
+        # instead of blocking the build.
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           repository: ZynclaveTech/sanchr-backend

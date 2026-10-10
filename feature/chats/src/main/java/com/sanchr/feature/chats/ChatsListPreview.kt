@@ -14,6 +14,7 @@ fun Conversation.previewText(): String {
     return when (val content = last.content) {
         is MessageContent.Text -> content.body
         is MessageContent.Image -> "Photo"
+        is MessageContent.Album -> content.attachments.size.toString() + " photos"
         is MessageContent.Voice -> "Voice message"
         is MessageContent.File -> "Document"
         is MessageContent.Location -> "Location"

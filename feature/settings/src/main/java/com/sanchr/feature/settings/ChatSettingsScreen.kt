@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +44,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.component.SecureScreen
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 @Composable
@@ -66,6 +68,9 @@ fun ChatSettingsScreen(
     }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = "Chat Settings",
@@ -85,7 +90,7 @@ fun ChatSettingsScreen(
             // Bubble Style selector
             Text(
                 text = "Bubble Style",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -97,10 +102,12 @@ fun ChatSettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.md),
             ) {
                 val styles =
+                    // iOS's vocabulary, read from the same stored value:
+                    // anything else renders as "modern" over there.
                     listOf(
-                        "default" to "Default",
-                        "rounded" to "Rounded",
-                        "flat" to "Flat",
+                        "modern" to "Modern",
+                        "classic" to "Classic",
+                        "compact" to "Compact",
                     )
                 styles.forEach { (value, label) ->
                     val isSelected = uiState.bubbleStyle == value
@@ -129,7 +136,7 @@ fun ChatSettingsScreen(
                         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.labelMedium,
+                            style = IosType.sectionLabel,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         )
                         if (isSelected) {
@@ -190,7 +197,7 @@ fun ChatSettingsScreen(
                                     .format(java.util.Date(it))
                             } ?: "Never"
                         ),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
@@ -288,7 +295,7 @@ fun ChatSettingsScreen(
                     Text("Save this recovery key somewhere secure before continuing.")
                     Text(
                         text = recoveryKey,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         fontWeight = FontWeight.Bold,
                     )
                 }

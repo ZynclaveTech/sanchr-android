@@ -55,7 +55,15 @@ class ShareTargetViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel() = ShareTargetViewModel(messageRepository, sendMessageUseCase, sendAttachmentUseCase)
+    private fun viewModel() =
+        ShareTargetViewModel(
+            messageRepository,
+            sendMessageUseCase,
+            sendAttachmentUseCase,
+            videoCompressor = mockk(relaxed = true),
+            userPreferences = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
+        )
 
     @Test
     fun `search narrows the list without losing the selection`() {

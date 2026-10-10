@@ -45,6 +45,8 @@ class SessionManager
             const val KEY_ACCOUNT_PASSWORD = "account_password"
             const val KEY_ACCOUNT_PHONE_E164 = "account_phone_e164"
             const val KEY_DISPLAY_NAME = "display_name"
+            const val KEY_PROFILE_BIO = "profile_bio"
+            const val KEY_PROFILE_AVATAR_URL = "profile_avatar_url"
             const val KEY_FCM_TOKEN = "fcm_token"
             const val KEY_DELIVERY_TOKENS = "delivery_tokens"
         }
@@ -225,6 +227,36 @@ class SessionManager
         }
 
         /**
+         * Our own bio and avatar URL, beside the display name.
+         *
+         * They have no other home on this device. `GetSettings` returns the
+         * `user_settings` row, which has no profile columns — name, bio and
+         * avatar live on `users` and come back only from `UpdateProfile` — so
+         * the profile screen read three permanently empty strings and showed
+         * a blank profile to someone who had one. What this device last set is
+         * what it knows, so it is what it stores. The plaintext never leaves
+         * the device except inside the encrypted profile blobs
+         * (`EncryptedProfileUpdater`), and it lives in the same encrypted
+         * prefs as the display name.
+         */
+        fun getProfileBio(): String? = encryptedPrefs.getString(KEY_PROFILE_BIO, null)
+
+        fun getProfileAvatarUrl(): String? = encryptedPrefs.getString(KEY_PROFILE_AVATAR_URL, null)
+
+        fun saveProfileDetails(
+            displayName: String,
+            bio: String,
+            avatarUrl: String,
+        ) {
+            encryptedPrefs
+                .edit()
+                .putString(KEY_DISPLAY_NAME, displayName)
+                .putString(KEY_PROFILE_BIO, bio)
+                .putString(KEY_PROFILE_AVATAR_URL, avatarUrl)
+                .apply()
+        }
+
+        /**
          * Returns the cached delivery-token pool, oldest first, or an empty
          * list if none is stored.
          *
@@ -366,6 +398,8 @@ class SessionManager
                 .remove(KEY_ACCOUNT_PASSWORD)
                 .remove(KEY_ACCOUNT_PHONE_E164)
                 .remove(KEY_DISPLAY_NAME)
+                .remove(KEY_PROFILE_BIO)
+                .remove(KEY_PROFILE_AVATAR_URL)
                 .remove(KEY_SENDER_CERTIFICATE)
                 .remove(KEY_DEVICE_MASTER_SECRET)
                 .remove(KEY_RECOVERY_KEY)

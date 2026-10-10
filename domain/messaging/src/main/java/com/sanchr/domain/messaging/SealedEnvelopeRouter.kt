@@ -1,5 +1,7 @@
 package com.sanchr.domain.messaging
 
+import com.sanchr.core.model.MessageContent
+
 /**
  * What an inbound decrypted plaintext turned out to be, once
  * [SealedEnvelopeRouter.route] has looked at it.
@@ -88,8 +90,21 @@ sealed interface RoutedPayload {
  * can act on its result without either.
  */
 object SealedEnvelopeRouter {
+    private const val TEXT_CONTENT_TYPE = "text"
+
     /** Content types that are control traffic, never a visible message. */
     private val CONTROL_CONTENT_TYPES = setOf("receipt/v1", "profile-key/v1", "presence/v1")
+
+    /**
+     * The content type a received message is stored under.
+     *
+     * `system` rows are this app talking to the user — "Viewed", "Media moved
+     * to Vault" — and are only ever written locally. The type is a string in
+     * the payload like any other, so a sender who set it to `system` had
+     * their body rendered as one of the app's own notices, in the app's own
+     * style, saying whatever they liked. It is stored as the text it is.
+     */
+    fun storableContentType(wire: String): String = if (wire == MessageContent.System.CONTENT_TYPE) TEXT_CONTENT_TYPE else wire
 
     /**
      * @param plaintext The decrypted envelope bytes.
@@ -110,13 +125,13 @@ object SealedEnvelopeRouter {
         if (!InnerPayload.isInnerPayload(plaintext)) {
             return RoutedPayload.UserMessage(
                 content = String(plaintext, Charsets.UTF_8),
-                contentType = fallbackContentType,
+                contentType = storableContentType(fallbackContentType),
             )
         }
         val payload =
             InnerPayload.decode(plaintext) ?: return RoutedPayload.UserMessage(
                 content = String(plaintext, Charsets.UTF_8),
-                contentType = fallbackContentType,
+                contentType = storableContentType(fallbackContentType),
             )
 
         return if (payload.contentType in CONTROL_CONTENT_TYPES) {
@@ -124,7 +139,7 @@ object SealedEnvelopeRouter {
         } else {
             RoutedPayload.UserMessage(
                 content = String(payload.content, Charsets.UTF_8),
-                contentType = payload.contentType,
+                contentType = storableContentType(payload.contentType),
                 conversationId = payload.conversationId,
                 messageId = payload.messageId,
                 // Treat a non-positive timer as "no timer": the wire field is

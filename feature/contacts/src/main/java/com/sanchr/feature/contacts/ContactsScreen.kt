@@ -1,5 +1,6 @@
 package com.sanchr.feature.contacts
 
+import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,6 +59,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -68,13 +74,33 @@ fun ContactsScreen(
     onSyncContacts: () -> Unit,
     /** Opens the by-number search, for reaching someone not in the address book. */
     onFindByNumber: () -> Unit,
+    /** Starts a voice call with a contact. The row's Call action used to be an empty lambda. */
+    onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ContactsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // The view model emitted these for block, unblock and failure, and no
+    // screen collected them: a block that failed looked like one that worked.
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            val message =
+                when (event) {
+                    ContactsEvent.ContactBlocked -> "Contact blocked"
+                    ContactsEvent.ContactUnblocked -> "Contact unblocked"
+                    is ContactsEvent.Error -> event.message
+                }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = "Contacts",
@@ -118,7 +144,7 @@ fun ContactsScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = SanchrTheme.spacing.lg,
                             vertical = SanchrTheme.spacing.sm,
                         ),
             )
@@ -145,13 +171,13 @@ fun ContactsScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = "Something went wrong",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = IosType.cardTitle,
                                 color = MaterialTheme.colorScheme.error,
                             )
                             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                             Text(
                                 text = state.message,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -160,7 +186,7 @@ fun ContactsScreen(
 
                 is ContactsUiState.Success -> {
                     PullToRefreshBox(
-                        isRefreshing = false,
+                        isRefreshing = isRefreshing,
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
@@ -171,7 +197,7 @@ fun ContactsScreen(
                             onBlockContact = viewModel::blockContact,
                             onUnblockContact = viewModel::unblockContact,
                             onMessageContact = { userId -> onContactClick(userId) },
-                            onCallContact = { /* Navigate to call */ },
+                            onCallContact = { contact -> onStartCall(contact.userId, contact.displayName, false) },
                         )
                     }
                 }
@@ -196,13 +222,13 @@ private fun EmptyContactsState() {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
             Text(
                 text = "No contacts found",
-                style = MaterialTheme.typography.titleMedium,
+                style = IosType.cardTitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Sync your contacts to find friends on Sanchr",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -218,7 +244,7 @@ private fun ContactsList(
     onBlockContact: (String) -> Unit,
     onUnblockContact: (String) -> Unit,
     onMessageContact: (String) -> Unit,
-    onCallContact: (String) -> Unit,
+    onCallContact: (Contact) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -232,7 +258,27 @@ private fun ContactsList(
                 items = contacts,
                 key = { it.userId },
             ) { contact ->
-                val dismissState = rememberSwipeToDismissBoxState()
+                // `SwipeToDismissBox` has no completion callback: the only
+                // hook is `confirmValueChange`, and without it the row slid
+                // away and neither action ran. Returning false keeps the row —
+                // Message and Block are actions on a contact, not a removal of
+                // one — while still performing the action the gesture names.
+                val dismissState =
+                    rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            when (value) {
+                                SwipeToDismissBoxValue.StartToEnd -> onMessageContact(contact.userId)
+                                SwipeToDismissBoxValue.EndToStart ->
+                                    if (contact.isBlocked) {
+                                        onUnblockContact(contact.userId)
+                                    } else {
+                                        onBlockContact(contact.userId)
+                                    }
+                                SwipeToDismissBoxValue.Settled -> Unit
+                            }
+                            false
+                        },
+                    )
 
                 SwipeToDismissBox(
                     state = dismissState,
@@ -256,7 +302,7 @@ private fun ContactsList(
                         val label =
                             when (direction) {
                                 SwipeToDismissBoxValue.StartToEnd -> "Message"
-                                SwipeToDismissBoxValue.EndToStart -> "Block"
+                                SwipeToDismissBoxValue.EndToStart -> if (contact.isBlocked) "Unblock" else "Block"
                                 else -> ""
                             }
                         val alignment =
@@ -281,7 +327,7 @@ private fun ContactsList(
                                 )
                                 Text(
                                     text = label,
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = IosType.captionSmall,
                                     color = MaterialTheme.colorScheme.onPrimary,
                                 )
                             }
@@ -297,7 +343,7 @@ private fun ContactsList(
                         onBlock = { onBlockContact(contact.userId) },
                         onUnblock = { onUnblockContact(contact.userId) },
                         onMessage = { onMessageContact(contact.userId) },
-                        onCall = { onCallContact(contact.userId) },
+                        onCall = { onCallContact(contact) },
                     )
                 }
             }
@@ -313,13 +359,13 @@ private fun SectionHeader(letter: Char) {
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.xs,
                 ),
     ) {
         Text(
             text = letter.toString(),
-            style = MaterialTheme.typography.titleSmall,
+            style = IosType.sectionLabel,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -349,20 +395,20 @@ private fun ContactRow(
                     onClick = onClick,
                     onLongClick = { showContextMenu = true },
                 ).padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.md,
                 ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Avatar with online indicator
-        Box(modifier = Modifier.size(48.dp)) {
+        Box(modifier = Modifier.size(IosSpacing.chatAvatarSize)) {
             if (contact.avatarUrl.isNotEmpty()) {
                 AsyncImage(
                     model = contact.avatarUrl,
                     contentDescription = "${contact.displayName} avatar",
                     modifier =
                         Modifier
-                            .size(48.dp)
+                            .size(IosSpacing.chatAvatarSize)
                             .clip(CircleShape),
                     contentScale = ContentScale.Crop,
                 )
@@ -370,12 +416,12 @@ private fun ContactRow(
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(IosSpacing.chatAvatarSize),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = contact.displayName.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = IosType.cardTitle,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
@@ -403,14 +449,14 @@ private fun ContactRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = contact.displayName,
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = if (isOnline) "Online" else contact.bio.ifEmpty { contact.phoneNumber },
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = if (isOnline) SanchrSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

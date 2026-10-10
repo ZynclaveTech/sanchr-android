@@ -24,6 +24,7 @@ import org.junit.Test
  */
 class ReceiveMessageUseCaseProfileKeyTest {
     private val sealedSenderCipher = mockk<SealedSenderCipher>()
+    private val typedEnvelopeCipher = mockk<com.sanchr.core.crypto.sealed.TypedEnvelopeCipher>(relaxed = true)
     private val signalSessionManager = mockk<SignalSessionManager>(relaxed = true)
     private val quarantineUseCase = mockk<QuarantineEnvelopeUseCase>(relaxed = true)
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
@@ -42,6 +43,7 @@ class ReceiveMessageUseCaseProfileKeyTest {
     private val useCase =
         ReceiveMessageUseCase(
             sealedSenderCipher,
+            typedEnvelopeCipher,
             signalSessionManager,
             quarantineUseCase,
             messageRepositoryLazy,

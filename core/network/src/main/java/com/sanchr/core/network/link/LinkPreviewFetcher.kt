@@ -3,6 +3,7 @@ package com.sanchr.core.network.link
 import android.content.Context
 import android.util.Log
 import android.util.LruCache
+import com.sanchr.core.network.link.LinkPreviewGuard.refusePrivateAddresses
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.IOException
@@ -51,8 +52,8 @@ class LinkPreviewFetcher internal constructor(
             .Builder()
             .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
+            // The URL is chosen by whoever sent the message.
+            .refusePrivateAddresses()
             .build(),
     )
 
@@ -183,11 +184,16 @@ class LinkPreviewFetcher internal constructor(
         private const val DISK_TTL_MS = 7L * 24 * 60 * 60 * 1000
         private const val USER_AGENT = "Mozilla/5.0 (Android) SanchrLinkPreview/1.0"
 
-        fun domainOf(url: String): String =
-            url
-                .substringAfter("://")
-                .substringBefore('/')
-                .substringBefore('?')
-                .removePrefix("www.")
+        /**
+         * The site shown on the card.
+         *
+         * Goes through [LinkDetector.hostOf] rather than splitting the string:
+         * everything before the first slash includes the userinfo, so
+         * `https://example.com@evil.example/x` was labelled
+         * "example.com@evil.example" and, in a one-line card, read as
+         * "example.com@evil…". The card is how someone decides whether to tap
+         * a link, so it has to name the host that will actually be reached.
+         */
+        fun domainOf(url: String): String = LinkDetector.hostOf(url)?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: url
     }
 }

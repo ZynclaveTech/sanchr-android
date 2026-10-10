@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
@@ -48,6 +49,7 @@ import coil.compose.SubcomposeAsyncImage
 import com.sanchr.core.designsystem.component.SanchrGradientButton
 import com.sanchr.core.designsystem.component.SanchrOnboardingProgress
 import com.sanchr.core.designsystem.component.SanchrStepEyebrow
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo600
@@ -141,13 +143,13 @@ fun OnboardingAvatarScreen(
         Spacer(Modifier.height(12.dp))
         Text(
             text = "Add a photo",
-            style = MaterialTheme.typography.displayMedium,
+            style = IosType.displayTitle,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = "Help your contacts recognize you instantly.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(30.dp))
@@ -221,7 +223,7 @@ fun OnboardingAvatarScreen(
                 } else {
                     "Tap to change photo"
                 },
-            style = MaterialTheme.typography.bodySmall,
+            style = IosType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -237,10 +239,16 @@ fun OnboardingAvatarScreen(
                     .padding(bottom = 36.dp),
         ) {
             SanchrOnboardingProgress(currentStep = 2)
-            // TODO: error surface when AvatarEntry exposes errorMessage
-            // (server-side avatar upload lands in a later phase, see
-            // OnboardingViewModel.swift:86-97). Today there is no failure
-            // path for this step on Android.
+            // This step writes the profile, so it is the one step in
+            // onboarding that can fail for a reason the user can act on.
+            avatarState.errorMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = IosType.caption,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+            }
             SanchrGradientButton(
                 text = "Continue",
                 onClick = viewModel::submitAvatar,

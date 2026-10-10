@@ -108,6 +108,28 @@ class SendMessageUseCase
                 runCatchingResult { attemptSendOrThrow(entity) }
             }
 
+        /**
+         * Tries a failed message again.
+         *
+         * There was no way to do this: a send that exhausted its attempts left
+         * a FAILED row with an error glyph and nothing to tap, so the text was
+         * visible, unsent, and unrecoverable except by retyping it. iOS has
+         * had Retry in its long-press menu throughout.
+         *
+         * The attempt runs from the stored row, so the message keeps its id —
+         * the envelope carries that id, and the receiver treats a repeat as an
+         * idempotent replace rather than a second message.
+         */
+        suspend fun retry(messageId: String): Result<Message> =
+            withContext(dispatcherProvider.io) {
+                runCatchingResult {
+                    val entity =
+                        messageRepository.outboundMessage(messageId)
+                            ?: error("that message is no longer here")
+                    attemptSendOrThrow(entity)
+                }
+            }
+
         private suspend fun attemptSendOrThrow(entity: MessageEntity): Message {
             val attempts =
                 messageRepository.recordSendAttempt(

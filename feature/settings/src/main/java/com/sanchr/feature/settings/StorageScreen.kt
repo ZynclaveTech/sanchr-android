@@ -1,9 +1,11 @@
 package com.sanchr.feature.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,9 +19,11 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -27,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrOutlinedButton
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrSuccess
@@ -40,8 +45,27 @@ fun StorageScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cacheBytes by viewModel.localCacheBytes.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // Nothing on this screen collected the view model's events, so a cleared
+    // cache — and a failure to clear one — were both silent.
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is SettingsEvent.CacheCleared ->
+                    Toast
+                        .makeText(context, "Cache cleared (${formatBytes(event.freedBytes)} freed)", Toast.LENGTH_SHORT)
+                        .show()
+                is SettingsEvent.Error -> Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                else -> Unit
+            }
+        }
+    }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = "Storage & Data",
@@ -61,7 +85,7 @@ fun StorageScreen(
             // Storage Usage visualization
             Text(
                 text = "Storage Usage",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -81,7 +105,7 @@ fun StorageScreen(
                     ) {
                         Text(
                             text = "Total: ${formatBytes(storage.totalBytes)}",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = IosType.cardTitle,
                             fontWeight = FontWeight.Bold,
                         )
 
@@ -122,7 +146,7 @@ fun StorageScreen(
             } else {
                 Text(
                     text = "Calculating storage usage...",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -132,7 +156,7 @@ fun StorageScreen(
             // Auto-download settings
             Text(
                 text = "Media Auto-Download",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -154,7 +178,7 @@ fun StorageScreen(
                     )
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
                     )
                 }
@@ -175,17 +199,16 @@ fun StorageScreen(
             // Clear Cache
             Text(
                 text = "Cache",
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.bodyBold,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
-            val cacheSize = storage?.cacheBytes?.let { formatBytes(it) } ?: "Calculating..."
             Text(
-                text = "Cache size: $cacheSize",
-                style = MaterialTheme.typography.bodySmall,
+                text = "Cache size: " + formatBytes(cacheBytes),
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
@@ -218,11 +241,11 @@ private fun StorageBarItem(
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
             )
             Text(
                 text = formatBytes(bytes),
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

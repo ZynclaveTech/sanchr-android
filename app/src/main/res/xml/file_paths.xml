@@ -10,4 +10,6 @@
         a file URI reports nothing and the photo uploads as octet-stream.
     -->
     <cache-path name="edited" path="edited/" />
+    <!-- Photos taken from the chats list, before a destination is chosen. -->
+    <cache-path name="captures" path="captures/" />
 </paths>

@@ -10,28 +10,28 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MessageDao {
+    /**
+     * The newest [limit] messages, oldest first.
+     *
+     * A window, because the unbounded observer this replaced streamed an
+     * entire conversation into memory and into composition on every change —
+     * the cost iOS avoids by bounding its transcript. The inner query takes
+     * the newest rows; the outer one puts them back in reading order.
+     */
     @Query(
         """
-        SELECT * FROM messages
-        WHERE conversation_id = :conversationId AND is_deleted = 0
-        ORDER BY timestamp ASC
+        SELECT * FROM (
+            SELECT * FROM messages
+            WHERE conversation_id = :conversationId AND is_deleted = 0
+            ORDER BY timestamp DESC
+            LIMIT :limit
+        ) ORDER BY timestamp ASC
         """,
     )
-    fun observeMessages(conversationId: String): Flow<List<MessageEntity>>
-
-    @Query(
-        """
-        SELECT * FROM messages
-        WHERE conversation_id = :conversationId AND is_deleted = 0
-        ORDER BY timestamp DESC
-        LIMIT :limit OFFSET :offset
-        """,
-    )
-    suspend fun getMessagesPaginated(
+    fun observeRecentMessages(
         conversationId: String,
         limit: Int,
-        offset: Int,
-    ): List<MessageEntity>
+    ): Flow<List<MessageEntity>>
 
     @Query("SELECT * FROM messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): MessageEntity?

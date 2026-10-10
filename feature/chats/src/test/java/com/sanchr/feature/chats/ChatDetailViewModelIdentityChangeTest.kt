@@ -42,7 +42,7 @@ class ChatDetailViewModelIdentityChangeTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { messageRepository.observeConversation(any()) } returns emptyFlow()
-        every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+        every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
         every { realtimeManager.typingCache } returns MutableStateFlow(emptyMap())
         coEvery { messageRepository.oneToOneRecipient("conv-1", "self") } returns "peer"
     }
@@ -56,7 +56,9 @@ class ChatDetailViewModelIdentityChangeTest {
             messageRepository = messageRepository,
             sendMessageUseCase = mockk(relaxed = true),
             sendAttachmentUseCase = mockk(relaxed = true),
+            sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
+            videoCompressor = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
@@ -76,6 +78,7 @@ class ChatDetailViewModelIdentityChangeTest {
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = safetyNumbers,
             connectivityMonitor = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
 
     @Test

@@ -33,15 +33,27 @@ object MessageContentCodec {
         val decoded = MediaContentEnvelope.decode(body, kind) ?: return null
         val a = decoded.attachments.first()
         return when (decoded.kind) {
+            // Several photos or videos in one message is how iOS sends an
+            // album. Decoding `attachments.first()` and dropping the rest meant
+            // an album of four arrived as one photo, with the other three
+            // unreachable: the bytes were in the message and the UI could not
+            // show them.
             MediaKind.IMAGE, MediaKind.VIDEO ->
-                MessageContent.Image(
-                    url = a.url,
-                    thumbnailUrl = a.thumbnailUrl,
-                    width = a.width ?: 0,
-                    height = a.height ?: 0,
-                    caption = a.caption,
-                    attachment = a,
-                )
+                if (decoded.attachments.size > 1) {
+                    MessageContent.Album(
+                        attachments = decoded.attachments,
+                        caption = decoded.attachments.firstNotNullOfOrNull { it.caption },
+                    )
+                } else {
+                    MessageContent.Image(
+                        url = a.url,
+                        thumbnailUrl = a.thumbnailUrl,
+                        width = a.width ?: 0,
+                        height = a.height ?: 0,
+                        caption = a.caption,
+                        attachment = a,
+                    )
+                }
             MediaKind.AUDIO ->
                 MessageContent.Voice(
                     url = a.url,

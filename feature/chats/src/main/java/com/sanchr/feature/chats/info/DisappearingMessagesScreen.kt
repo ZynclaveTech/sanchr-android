@@ -2,6 +2,7 @@ package com.sanchr.feature.chats.info
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -36,6 +38,9 @@ fun DisappearingMessagesScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = "Disappearing messages", onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->
@@ -46,7 +51,7 @@ fun DisappearingMessagesScreen(
                 text =
                     "New messages you send in this chat disappear after the chosen time. " +
                         "Off uses your account-wide default instead.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = SanchrTheme.spacing.default),
             )
@@ -69,7 +74,7 @@ fun DisappearingMessagesScreen(
                             )
                             Text(
                                 text = DisappearingDurations.displayName(label),
-                                style = MaterialTheme.typography.bodyLarge,
+                                style = IosType.bodyLarge,
                                 modifier = Modifier.padding(start = SanchrTheme.spacing.sm),
                             )
                         }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
@@ -53,6 +55,9 @@ fun BlockedContactsScreen(
         }
     }
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = "Blocked Contacts", onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->
@@ -69,11 +74,11 @@ fun BlockedContactsScreen(
                 ) {
                     Icon(imageVector = Icons.Filled.Block, contentDescription = null, tint = SanchrGray400, modifier = Modifier.size(48.dp))
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
-                    Text(text = "No blocked contacts", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(text = "No blocked contacts", style = IosType.bodyBold, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
                     Text(
                         text = "You can block someone from their profile.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.captionSmall,
                         color = SanchrGray400,
                     )
                 }
@@ -95,7 +100,7 @@ fun BlockedContactsScreen(
                                 Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
                                 Text(
                                     text = contact.displayName,
-                                    style = MaterialTheme.typography.bodyLarge,
+                                    style = IosType.bodyLarge,
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(1f),
                                 )

@@ -40,6 +40,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrTextField
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.mediaviewer.BoundedBitmaps
 import com.sanchr.feature.chats.media.editor.EditedImageStore
@@ -114,7 +115,7 @@ fun MediaBatchReview(
                 IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, contentDescription = "Cancel") }
                 Text(
                     text = if (selected.size == 1) "1 photo" else "${selected.size} photos",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = IosType.cardTitle,
                 )
             }
 

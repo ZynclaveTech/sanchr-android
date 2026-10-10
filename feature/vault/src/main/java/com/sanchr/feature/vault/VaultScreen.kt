@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -82,12 +83,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.mediaviewer.DocumentPreviewScreen
 import com.sanchr.core.model.VaultItem
 import com.sanchr.core.model.VaultItemType
+import com.sanchr.domain.vault.VaultThumbnails
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -135,6 +139,9 @@ fun VaultScreen(
     }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = if (uiState.isSelectMode) selectionTitle(uiState.selectedIds.size) else "Vault",
@@ -145,6 +152,10 @@ fun VaultScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(
+                // iOS fabSize. Material's default is 56, and next to a 64dp
+                // iOS button the Android one reads as a smaller affordance for
+                // the same action.
+                modifier = Modifier.size(IosSpacing.fabSize),
                 onClick = { pickFile.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                 containerColor = MaterialTheme.colorScheme.primary,
             ) {
@@ -160,7 +171,7 @@ fun VaultScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Add to Vault",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = IosType.bodyBold,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
@@ -201,7 +212,7 @@ fun VaultScreen(
                             SecureStorageInfoCard(
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -213,7 +224,7 @@ fun VaultScreen(
                                 stats = uiState.stats,
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -226,7 +237,7 @@ fun VaultScreen(
                                 onFilterSelected = viewModel::setFilter,
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -239,7 +250,7 @@ fun VaultScreen(
                                     modifier =
                                         Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = SanchrTheme.spacing.default),
+                                            .padding(horizontal = IosSpacing.screenHorizontal),
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
@@ -262,7 +273,7 @@ fun VaultScreen(
                                 onShare = { viewModel.beginShare(item) },
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.sm,
                                     ),
                             )
@@ -273,7 +284,7 @@ fun VaultScreen(
                             EncryptionNotice(
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.default,
+                                        horizontal = IosSpacing.screenHorizontal,
                                         vertical = SanchrTheme.spacing.default,
                                     ),
                             )
@@ -329,12 +340,12 @@ private fun SecureStorageInfoCard(modifier: Modifier = Modifier) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Secure Storage",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = "All items are encrypted end-to-end. Only you can access your vault.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -389,12 +400,12 @@ private fun StatItem(
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
         Text(
             text = "$count",
-            style = MaterialTheme.typography.titleMedium,
+            style = IosType.cardTitle,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -417,7 +428,7 @@ private fun FilterChipsRow(
                 label = {
                     Text(
                         text = filter.label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = IosType.sectionLabel,
                     )
                 },
                 colors =
@@ -500,13 +511,13 @@ private fun VaultItemCard(
                                 VaultItemType.NOTE -> "Note"
                                 VaultItemType.DOCUMENT -> "File"
                             },
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
                 Text(
                     text = formatFileSize(item.sizeBytes),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier =
                         Modifier
@@ -526,7 +537,7 @@ private fun VaultItemCard(
             ) {
                 Text(
                     text = item.name,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -534,7 +545,7 @@ private fun VaultItemCard(
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                 Text(
                     text = item.expiresAt?.let { "Expires ${formatExpiry(it.toEpochMilliseconds())}" } ?: "Encrypted on this device",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = if (item.expiresAt != null) SanchrWarning else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
@@ -596,12 +607,12 @@ private fun VaultEmptyState() {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
             Text(
                 text = "Your encrypted vault",
-                style = MaterialTheme.typography.headlineSmall,
+                style = IosType.sectionHeader,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Store photos, videos, and files\nwith end-to-end encryption.",
-                style = MaterialTheme.typography.bodyMedium,
+                style = IosType.body,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
@@ -625,7 +636,7 @@ private fun EncryptionNotice(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
         Text(
             text = "End-to-end encrypted",
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -861,7 +872,7 @@ private fun VaultToolbarMenu(
             )
             Text(
                 text = "Sort by",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )

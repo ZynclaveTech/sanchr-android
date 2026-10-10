@@ -49,6 +49,11 @@ fun AppLockGate(
 ) {
     val activity = LocalContext.current.findFragmentActivity()
     var attempted by remember { mutableStateOf(false) }
+    // Only `onAuthenticationSucceeded` was implemented, so a wrong finger, a
+    // lockout or a cancelled prompt left the lock screen with no word of what
+    // had happened — the user was left to guess whether the prompt had even
+    // appeared. iOS surfaces every failure on its own lock screen.
+    var failure by remember { mutableStateOf<String?>(null) }
 
     fun prompt() {
         if (activity == null) {
@@ -64,7 +69,33 @@ fun AppLockGate(
         }
         val callback =
             object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onUnlocked()
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    failure = null
+                    onUnlocked()
+                }
+
+                override fun onAuthenticationFailed() {
+                    failure = "That wasn't recognised. Try again, or use your device passcode."
+                }
+
+                override fun onAuthenticationError(
+                    errorCode: Int,
+                    errString: CharSequence,
+                ) {
+                    failure =
+                        when (errorCode) {
+                            // The user dismissed it; "Unlock" is right there,
+                            // so say nothing about an error that was a choice.
+                            BiometricPrompt.ERROR_USER_CANCELED,
+                            BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+                            BiometricPrompt.ERROR_CANCELED,
+                            -> null
+                            BiometricPrompt.ERROR_LOCKOUT,
+                            BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
+                            -> "Too many attempts. Use your device passcode to unlock."
+                            else -> errString.toString().ifBlank { "Couldn't unlock. Try again." }
+                        }
+                }
             }
         val info =
             BiometricPrompt.PromptInfo
@@ -104,6 +135,15 @@ fun AppLockGate(
                 color = SanchrGray400,
                 textAlign = TextAlign.Center,
             )
+            failure?.let { message ->
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
             SanchrButton(text = "Unlock", onClick = { prompt() })
         }

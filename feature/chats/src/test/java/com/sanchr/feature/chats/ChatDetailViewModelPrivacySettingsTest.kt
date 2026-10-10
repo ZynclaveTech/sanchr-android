@@ -41,7 +41,7 @@ class ChatDetailViewModelPrivacySettingsTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { messageRepository.observeConversation(any()) } returns emptyFlow()
-        every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
+        every { messageRepository.observeRecentMessages(any(), any()) } returns flowOf(emptyList())
         every { realtimeManager.typingCache } returns MutableStateFlow(emptyMap())
         coEvery { messageRepository.oneToOneRecipient(any(), any()) } returns "peer"
     }
@@ -57,7 +57,9 @@ class ChatDetailViewModelPrivacySettingsTest {
         messageRepository = messageRepository,
         sendMessageUseCase = mockk(relaxed = true),
         sendAttachmentUseCase = mockk(relaxed = true),
+        sendAlbumUseCase = mockk(relaxed = true),
         attachmentDownloader = mockk(relaxed = true),
+        videoCompressor = mockk(relaxed = true),
         sendReadReceiptUseCase = mockk(relaxed = true),
         toggleReactionUseCase = mockk(relaxed = true),
         consumeViewOnceUseCase = mockk(relaxed = true),
@@ -77,6 +79,7 @@ class ChatDetailViewModelPrivacySettingsTest {
         linkPreviewFetcher = mockk(relaxed = true),
         safetyNumbers = mockk(relaxed = true),
         connectivityMonitor = connectivityMonitor,
+        appContext = mockk(relaxed = true),
     )
 
     @Test

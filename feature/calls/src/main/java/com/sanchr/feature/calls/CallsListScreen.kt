@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -59,6 +62,9 @@ fun CallsListScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(title = "Calls")
         },
@@ -76,7 +82,7 @@ fun CallsListScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = SanchrTheme.spacing.lg,
                             vertical = SanchrTheme.spacing.sm,
                         ),
                 horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
@@ -88,7 +94,7 @@ fun CallsListScreen(
                         label = {
                             Text(
                                 text = filter.label,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = IosType.filterTab,
                             )
                         },
                         colors =
@@ -157,13 +163,13 @@ private fun EmptyCallsState() {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
             Text(
                 text = "No call history",
-                style = MaterialTheme.typography.titleMedium,
+                style = IosType.cardTitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
             Text(
                 text = "Your calls will appear here",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -189,7 +195,7 @@ private fun CallEntryRow(
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(
-                    horizontal = SanchrTheme.spacing.default,
+                    horizontal = SanchrTheme.spacing.lg,
                     vertical = SanchrTheme.spacing.md,
                 ),
         verticalAlignment = Alignment.CenterVertically,
@@ -198,12 +204,12 @@ private fun CallEntryRow(
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(48.dp),
+            modifier = Modifier.size(IosSpacing.chatAvatarSize),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = displayName.take(1).uppercase().ifEmpty { "?" },
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.cardTitle,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
@@ -218,7 +224,7 @@ private fun CallEntryRow(
         ) {
             Text(
                 text = displayName.ifEmpty { "Unknown" },
-                style = MaterialTheme.typography.titleSmall,
+                style = IosType.conversationName,
                 fontWeight = FontWeight.Bold,
                 color = if (isMissed) SanchrError else MaterialTheme.colorScheme.onSurface,
             )
@@ -254,7 +260,7 @@ private fun CallEntryRow(
                 // Timestamp
                 Text(
                     text = formatTimestamp(entry.startedAt),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.conversationPreview,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
@@ -262,7 +268,7 @@ private fun CallEntryRow(
                 if (!isMissed && entry.durationSecs > 0) {
                     Text(
                         text = " - ${formatDuration(entry.durationSecs)}",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

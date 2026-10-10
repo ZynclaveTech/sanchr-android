@@ -20,6 +20,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,11 +40,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -53,21 +60,23 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GppMaybe
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -79,6 +88,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -87,6 +97,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -97,11 +108,13 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -117,6 +130,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -130,10 +145,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.theme.ChatWallpapers
+import com.sanchr.core.designsystem.theme.IosRadius
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
+import com.sanchr.core.designsystem.theme.LocalBubbleStyle
+import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
 import com.sanchr.core.designsystem.theme.SanchrGray400
+import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
@@ -154,6 +175,7 @@ import com.sanchr.feature.chats.location.CurrentLocation
 import com.sanchr.feature.chats.location.LocationPayload
 import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.media.BlurHashImages
+import com.sanchr.feature.chats.media.CapturedPhotos
 import com.sanchr.feature.chats.media.GallerySelection
 import com.sanchr.feature.chats.media.GalleryState
 import com.sanchr.feature.chats.media.MediaBatchReview
@@ -167,6 +189,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -188,6 +211,7 @@ fun ChatDetailScreen(
     var viewOnceNext by remember { mutableStateOf(false) }
     val pickAttachment =
         rememberAttachmentPicker(
+            prepare = viewModel::prepareAttachment,
             onPicked = { prepared ->
                 val once = viewOnceNext
                 viewOnceNext = false
@@ -221,6 +245,7 @@ fun ChatDetailScreen(
                 onForward = { forwarding = it },
                 onCopy = { clipboard.setText(AnnotatedString(it.text)) },
                 onDelete = { deleting = it },
+                onRetry = viewModel::retryMessage,
             )
         }
     val noticeContext = LocalContext.current
@@ -233,6 +258,9 @@ fun ChatDetailScreen(
     val context = LocalContext.current
     val shareLocation = rememberLocationSharer(onShare = viewModel::sendLocation)
     val scope = rememberCoroutineScope()
+    // Straight into the review screen, so the shot can be looked at and
+    // captioned before it goes, as iOS allows.
+    val capture = rememberChatCameraCapture(onCaptured = { uri -> batch = listOf(uri) })
     val listState = rememberLazyListState()
     val focusedResultId = uiState.search?.currentId
     LaunchedEffect(focusedResultId, uiState.messages.size) {
@@ -251,6 +279,9 @@ fun ChatDetailScreen(
     }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             val search = uiState.search
@@ -277,63 +308,6 @@ fun ChatDetailScreen(
         },
         bottomBar = {
             Column {
-                // --- Bottom action bar: Voice + Vault ---
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = SanchrTheme.spacing.default, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Surface(
-                        shape = SanchrShapeTokens.CornerFull,
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.GraphicEq,
-                                contentDescription = "Voice",
-                                modifier = Modifier.size(16.dp),
-                                tint = SanchrGray400,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Voice",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SanchrGray400,
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = SanchrShapeTokens.CornerFull,
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Shield,
-                                contentDescription = "Vault",
-                                modifier = Modifier.size(16.dp),
-                                tint = SanchrGray400,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Vault",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SanchrGray400,
-                            )
-                        }
-                    }
-                }
-
                 // --- Message input bar ---
                 MessageDialogs(
                     viewModel = viewModel,
@@ -351,8 +325,13 @@ fun ChatDetailScreen(
                     onDocumentPreviewClosed = { documentPreview = null },
                 )
                 BatchReviewIfPicked(
+                    prepare = viewModel::prepareAttachment,
                     uris = batch,
-                    onCancel = { batch = emptyList() },
+                    // A camera capture is the full-resolution original in the
+                    // clear and only ever lived to be reviewed, so it goes
+                    // whether the review sent it or the user backed out.
+                    discard = { uri -> CapturedPhotos.discard(context, uri) },
+                    onDismiss = { batch = emptyList() },
                     onPrepared = viewModel::sendAttachments,
                 )
                 uiState.uploadProgress?.let { fraction ->
@@ -386,14 +365,17 @@ fun ChatDetailScreen(
                     onStickerDismiss = { stickerPickerOpen = false },
                     onStickerSelect = viewModel::sendSticker,
                 )
+                val enterSendsMessage by LocalEnterSendsMessage.current
                 MessageInputBar(
                     value = uiState.inputText,
                     onValueChange = viewModel::onInputTextChanged,
+                    enterSendsMessage = enterSendsMessage,
                     onEmojiClick = { emojiPickerOpen = true },
                     onAttachSticker = { stickerPickerOpen = true },
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
+                    onCapturePhoto = capture.launch,
                     onAttachLocation = shareLocation,
                     onAttachViewOnce = {
                         viewOnceNext = true
@@ -429,7 +411,7 @@ fun ChatDetailScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(
-                                horizontal = SanchrTheme.spacing.default,
+                                horizontal = IosSpacing.screenHorizontal,
                                 vertical = SanchrTheme.spacing.sm,
                             ),
                     verticalAlignment = Alignment.CenterVertically,
@@ -444,29 +426,8 @@ fun ChatDetailScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Messages are end-to-end encrypted",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = SanchrCyan500,
-                    )
-                }
-            }
-
-            // --- "Today" date chip ---
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = SanchrTheme.spacing.sm),
-                contentAlignment = Alignment.Center,
-            ) {
-                Surface(
-                    shape = SanchrShapeTokens.CornerFull,
-                    color = SanchrGray100,
-                ) {
-                    Text(
-                        text = "Today",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SanchrGray400,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
             }
@@ -475,11 +436,11 @@ fun ChatDetailScreen(
             if (uiState.peerTyping) {
                 Text(
                     text = "typing...",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                     modifier =
                         Modifier.padding(
-                            horizontal = SanchrTheme.spacing.default,
+                            horizontal = IosSpacing.screenHorizontal,
                             vertical = 2.dp,
                         ),
                 )
@@ -492,44 +453,182 @@ fun ChatDetailScreen(
                 onAccept = viewModel::acceptIdentityChange,
             )
 
-            val wallpaper = ChatWallpapers.colorOf(uiState.wallpaper, isSystemInDarkTheme())
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        // Null means the chat keeps the ordinary theme
-                        // background, so an unknown stored name degrades to
-                        // plain rather than to some arbitrary colour.
-                        .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
-                        .padding(horizontal = SanchrTheme.spacing.default),
-                state = listState,
-                reverseLayout = true,
-                verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
+            TranscriptList(
+                uiState = uiState,
+                viewModel = viewModel,
+                actions = actions,
+                listState = listState,
+                focusedResultId = focusedResultId,
+                onOpenViewOnce = { viewOnceOpen = it },
+                onOpenMedia = { tapped -> gallery = GallerySelection.from(uiState.messages, tapped.id) },
+                onPreviewDocument = { file, attachment -> documentPreview = file to attachment },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/**
+ * The transcript itself: day separators and message rows, newest at the
+ * bottom.
+ *
+ * Extracted from the screen so the screen stays inside detekt's complexity
+ * limit, and so the list's own state — which row is highlighted by a search
+ * hit, which wallpaper is behind it — reads in one place.
+ */
+@Composable
+private fun TranscriptList(
+    uiState: ChatDetailUiState,
+    viewModel: ChatDetailViewModel,
+    actions: MessageActions,
+    listState: LazyListState,
+    focusedResultId: String?,
+    onOpenViewOnce: (MessageUiModel) -> Unit,
+    onOpenMedia: (MessageUiModel) -> Unit,
+    onPreviewDocument: (File, MediaAttachment) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val wallpaper = ChatWallpapers.colorOf(uiState.wallpaper, isSystemInDarkTheme())
+    // Remembered, not recomputed: the list used to call `messages.reversed()`
+    // inside `items`, allocating a copy of the whole transcript on every
+    // recomposition of the busiest screen in the app. Day separators come from
+    // the same pass.
+    // The unread count is read once, when the window first arrives: the chat
+    // marks itself read on open, so reading it live would erase the divider
+    // from under the user as they look at it.
+    val unreadOnEntry = remember(uiState.conversation?.id) { uiState.conversation?.unreadCount ?: 0 }
+    val rows =
+        remember(uiState.messages, unreadOnEntry) {
+            transcriptRows(uiState.messages, unreadCount = unreadOnEntry)
+        }
+
+    // Older messages, as the user reaches the end of what is loaded.
+    //
+    // `loadMoreMessages` existed on the view model and nothing ever called it,
+    // so a conversation stopped at its first page: scrolling back far enough
+    // simply ran out of transcript, with the rest sitting in the database. The
+    // list is reverseLayout, so the *last* index is the oldest row.
+    LaunchedEffect(listState, rows.size, uiState.hasMoreMessages) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo
+                .lastOrNull()
+                ?.index ?: 0
+        }.distinctUntilChanged()
+            .collect { lastVisible ->
+                if (uiState.hasMoreMessages && rows.isNotEmpty() && lastVisible >= rows.size - LOAD_MORE_THRESHOLD) {
+                    viewModel.loadMoreMessages()
+                }
+            }
+    }
+
+    val scope = rememberCoroutineScope()
+    // Scrolled away from the newest message. Index 0 is the bottom of a
+    // reverseLayout list, so anything past the first few rows means the user
+    // has scrolled back.
+    val showJumpToLatest by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > JUMP_VISIBLE_AFTER_ROWS }
+    }
+
+    Box(modifier = modifier) {
+        if (rows.isEmpty() && !uiState.isLoading) {
+            // iOS says this. Android drew an empty rectangle, which reads as a
+            // chat that failed to load rather than one with nothing in it yet.
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                items(
-                    items = uiState.messages.reversed(),
-                    key = { it.id },
-                ) { message ->
+                Text(text = "No messages yet", style = IosType.bodyBold, color = SanchrGray500)
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
+                Text(
+                    text = "Send a message to start the conversation.",
+                    style = IosType.caption,
+                    color = SanchrGray400,
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    // Null means the chat keeps the ordinary theme background,
+                    // so an unknown stored name degrades to plain rather than
+                    // to some arbitrary colour.
+                    .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
+                    .padding(horizontal = IosSpacing.screenHorizontal),
+            state = listState,
+            reverseLayout = true,
+            // Spacing is per row, not uniform: a grouped message sits 2dp
+            // under its predecessor and an ungrouped one 6dp, as iOS does.
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            if (uiState.isLoadingMore) {
+                // After the items, which is above them in a reverseLayout list.
+                item(key = "loading-older") {
                     Box(
-                        modifier =
-                            if (message.id == focusedResultId) {
-                                Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
-                            } else {
-                                Modifier
-                            },
+                        modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.md),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        MessageRow(
-                            message = message,
-                            viewModel = viewModel,
-                            actions = actions,
-                            onOpenViewOnce = { viewOnceOpen = it },
-                            onOpenMedia = { tapped -> gallery = GallerySelection.from(uiState.messages, tapped.id) },
-                            onPreviewDocument = { file, attachment -> documentPreview = file to attachment },
-                            loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     }
                 }
+            }
+            items(
+                items = rows,
+                key = { it.key },
+                contentType = { it is TranscriptRow.Day },
+            ) { row ->
+                when (row) {
+                    is TranscriptRow.Day -> DaySeparator(row.label)
+                    is TranscriptRow.Unread -> UnreadDivider()
+                    is TranscriptRow.Msg ->
+                        Box(
+                            modifier =
+                                if (row.message.id == focusedResultId) {
+                                    Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
+                                } else {
+                                    Modifier
+                                },
+                        ) {
+                            // Drag sideways to reply, as iOS does. Applied
+                            // here so every bubble gets it rather than only the
+                            // text one.
+                            SwipeToReply(onReply = { actions.onReply(row.message) }) {
+                                MessageRow(
+                                    message = row.message,
+                                    viewModel = viewModel,
+                                    actions = actions,
+                                    // One timestamp per run, as iOS shows it:
+                                    // repeating it under every bubble of a burst is
+                                    // most of why a busy chat read differently from
+                                    // the same chat on an iPhone.
+                                    showTimestamp = !row.groupedWithNext,
+                                    onOpenViewOnce = onOpenViewOnce,
+                                    onOpenMedia = onOpenMedia,
+                                    onPreviewDocument = onPreviewDocument,
+                                    loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
+                                )
+                            }
+                        }
+                }
+            }
+        }
+
+        // Back to the newest message, as iOS's chevron does. Scrolling back
+        // through a long chat left no way to return except scrolling all the
+        // way down again.
+        if (showJumpToLatest) {
+            SmallFloatingActionButton(
+                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(SanchrTheme.spacing.default),
+            ) {
+                Icon(imageVector = Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to the newest message")
             }
         }
     }
@@ -545,28 +644,42 @@ fun ChatDetailScreen(
 @Composable
 private fun BatchReviewIfPicked(
     uris: List<Uri>,
-    onCancel: () -> Unit,
+    /**
+     * The view model's prepare step, not `AttachmentPreparer` directly: it is
+     * what re-encodes a video and reads the Low Data Mode setting, and reading
+     * the files here would have skipped both for every photo and clip picked
+     * through this screen.
+     */
+    prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
+    /**
+     * Called once a URI has served its purpose. Deletes a camera capture; a
+     * no-op for a gallery URI, which is not ours to delete.
+     */
+    discard: (Uri) -> Unit,
+    onDismiss: () -> Unit,
     onPrepared: (List<AttachmentUploader.Prepared>) -> Unit,
 ) {
     if (uris.isEmpty()) return
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     MediaBatchReview(
         uris = uris,
-        onCancel = onCancel,
+        onCancel = {
+            uris.forEach(discard)
+            onDismiss()
+        },
         onSend = { chosen, caption ->
-            onCancel()
+            onDismiss()
             scope.launch {
                 val prepared =
-                    withContext(Dispatchers.IO) {
-                        chosen.mapIndexedNotNull { index, uri ->
-                            AttachmentPreparer
-                                .prepare(context, uri)
-                                // The caption rides the first file only, so a
-                                // set of photos does not repeat it.
-                                ?.let { if (index == 0 && caption != null) it.withCaption(caption) else it }
-                        }
+                    chosen.mapIndexedNotNull { index, uri ->
+                        prepare(uri)
+                            // The caption rides the first file only, so a set
+                            // of photos does not repeat it.
+                            ?.let { if (index == 0 && caption != null) it.withCaption(caption) else it }
                     }
+                // After the bytes are in hand, never before: dismissing the
+                // sheet does not mean the files have been read yet.
+                uris.forEach(discard)
                 onPrepared(prepared)
             }
         },
@@ -612,12 +725,12 @@ private fun LocationMessageBubble(
                 Column {
                     Text(
                         text = "Location",
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = IosType.bodyLarge,
                         color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                     )
                     Text(
                         text = "%.5f, %.5f".format(pin.latitude, pin.longitude),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = if (message.isFromMe) SanchrWhite.copy(alpha = 0.8f) else SanchrGray400,
                     )
                 }
@@ -696,7 +809,7 @@ private fun IdentityChangeBanner(
             Column {
                 Text(
                     text = "Security code changed",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
@@ -704,7 +817,7 @@ private fun IdentityChangeBanner(
                         "$contactName's security code changed. This happens when they reinstall or switch " +
                             "devices, but it can also mean someone is intercepting this chat. Messages won't " +
                             "send until you review.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -740,12 +853,60 @@ private fun ComposerSheets(
     }
 }
 
+/**
+ * "Unread messages", above the first message the user has not seen.
+ *
+ * iOS draws one from `firstUnreadMessageId`; Android had nothing, so returning
+ * to a chat with forty new messages gave no indication of where to start.
+ */
+@Composable
+private fun UnreadDivider() {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = SanchrTheme.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = SanchrIndigo500.copy(alpha = 0.4f))
+        Text(
+            text = "Unread messages",
+            style = IosType.captionSmall,
+            color = SanchrIndigo500,
+            modifier = Modifier.padding(horizontal = SanchrTheme.spacing.sm),
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = SanchrIndigo500.copy(alpha = 0.4f))
+    }
+}
+
+/** The date chip above a day's first message. */
+@Composable
+private fun DaySeparator(label: String) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = SanchrTheme.spacing.sm),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(shape = SanchrShapeTokens.CornerFull, color = SanchrGray100) {
+            Text(
+                text = label,
+                style = IosType.captionSmall,
+                color = SanchrGray400,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
 /** Picks the bubble for one transcript row. */
 @Composable
 private fun MessageRow(
     message: MessageUiModel,
     viewModel: ChatDetailViewModel,
     actions: MessageActions,
+    showTimestamp: Boolean,
     onOpenViewOnce: (MessageUiModel) -> Unit,
     onOpenMedia: (MessageUiModel) -> Unit,
     onPreviewDocument: (File, MediaAttachment) -> Unit,
@@ -755,31 +916,58 @@ private fun MessageRow(
     when {
         message.contentType == "system" -> SystemNote(message.text)
 
-        message.isViewOnce -> ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
+        // Every bubble below is wrapped in [MessageActionHost]. Only the plain
+        // text bubble used to carry the long-press menu, so a photo, video,
+        // voice note, pin, contact card or view-once message could not be
+        // replied to, forwarded, deleted or reacted to at all — the actions
+        // existed and most of the transcript could not reach them.
+        message.isViewOnce ->
+            MessageActionHost(message, viewModel, actions) {
+                ViewOnceBubble(message = message, onOpen = { onOpenViewOnce(message) })
+            }
+
+        message.isAlbum ->
+            MessageActionHost(message, viewModel, actions) {
+                AlbumMessageBubble(
+                    message = message,
+                    openAttachment = viewModel::openAttachment,
+                    onOpenTile = { tile -> onOpenMedia(tile) },
+                    autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
+                )
+            }
 
         message.contentType == "image" ->
-            ImageMessageBubble(
-                message = message,
-                openAttachment = viewModel::openAttachment,
-                onOpen = { onOpenMedia(message) },
-                // Cached media always shows: the policy only holds back a
-                // fetch that would actually spend data.
-                autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
-            )
+            MessageActionHost(message, viewModel, actions) {
+                ImageMessageBubble(
+                    message = message,
+                    openAttachment = viewModel::openAttachment,
+                    onOpen = { onOpenMedia(message) },
+                    // Cached media always shows: the policy only holds back a
+                    // fetch that would actually spend data.
+                    autoDownload = viewModel.mayAutoDownload() || viewModel.isCached(message),
+                )
+            }
 
         message.contentType == "voice" && message.attachment != null ->
-            VoiceMessageBubble(
-                message = message,
-                openAttachment = viewModel::openAttachment,
-            )
+            MessageActionHost(message, viewModel, actions) {
+                VoiceMessageBubble(
+                    message = message,
+                    openAttachment = viewModel::openAttachment,
+                )
+            }
 
         message.contentType == "location" && LocationPayload.decode(message.text) != null ->
-            LocationMessageBubble(
-                message = message,
-                pin = requireNotNull(LocationPayload.decode(message.text)),
-            )
+            MessageActionHost(message, viewModel, actions) {
+                LocationMessageBubble(
+                    message = message,
+                    pin = requireNotNull(LocationPayload.decode(message.text)),
+                )
+            }
 
-        message.contact != null -> ContactMessageBubble(message = message, card = message.contact)
+        message.contact != null ->
+            MessageActionHost(message, viewModel, actions) {
+                ContactMessageBubble(message = message, card = message.contact)
+            }
 
         message.attachment != null ->
             MessageBubble(
@@ -806,8 +994,56 @@ private fun MessageRow(
                 message = message,
                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
                 actions = actions,
+                showTimestamp = showTimestamp,
                 loadLinkPreview = loadLinkPreview,
             )
+    }
+}
+
+/**
+ * Wraps a bubble that draws itself — media, voice, a pin, a contact card — in
+ * the long-press menu and reaction chips the plain text bubble has always had.
+ *
+ * The menu is anchored to the bubble, so it opens where the finger is, and the
+ * chips sit under it exactly as they do under text. A tap still reaches the
+ * bubble's own handler: the host adds a long press, it does not consume
+ * anything.
+ */
+@Composable
+private fun MessageActionHost(
+    message: MessageUiModel,
+    viewModel: ChatDetailViewModel,
+    actions: MessageActions,
+    content: @Composable () -> Unit,
+) {
+    var pickerOpen by remember(message.id) { mutableStateOf(false) }
+    Column(
+        horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier =
+                Modifier.combinedClickable(
+                    // No ripple and no click action of its own: the bubble
+                    // inside owns the tap.
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = {},
+                    onLongClick = { pickerOpen = true },
+                ),
+        ) {
+            content()
+            ReactionPicker(
+                open = pickerOpen,
+                onDismiss = { pickerOpen = false },
+                message = message,
+                actions = actions,
+            ) { emoji ->
+                pickerOpen = false
+                viewModel.toggleReaction(message.id, emoji)
+            }
+        }
+        ReactionChips(message.reactions) { emoji -> viewModel.toggleReaction(message.id, emoji) }
     }
 }
 
@@ -841,14 +1077,14 @@ private fun ChatDetailTopBar(
                 Surface(
                     modifier =
                         Modifier
-                            .size(36.dp)
+                            .size(IosSpacing.chatHeaderAvatarSize)
                             .clip(CircleShape),
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = title.take(1).uppercase(),
-                            style = MaterialTheme.typography.labelLarge,
+                            style = IosType.bodyBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
@@ -859,7 +1095,7 @@ private fun ChatDetailTopBar(
                 Column {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = IosType.bodyBold,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -867,7 +1103,7 @@ private fun ChatDetailTopBar(
                     statusText?.let { subtitle ->
                         Text(
                             text = subtitle,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = IosType.captionSmall,
                             color = SanchrGray400,
                         )
                     }
@@ -911,6 +1147,8 @@ private fun MessageBubble(
     message: MessageUiModel,
     onToggleReaction: (String) -> Unit,
     actions: MessageActions,
+    /** False for all but the last bubble of a run, as iOS hides the rest. */
+    showTimestamp: Boolean = true,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     /** Null when the privacy setting is off: no link is ever fetched. */
@@ -919,20 +1157,30 @@ private fun MessageBubble(
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
     var pickerOpen by remember(message.id) { mutableStateOf(false) }
 
+    // The chosen shape, which Android stored and then ignored: the picker in
+    // Chat Settings lit up and the chat never changed. iOS's vocabulary —
+    // classic is a pill, compact is tighter, modern is the default 20.
+    val bubbleStyle by LocalBubbleStyle.current
+    val mainRadius =
+        when (bubbleStyle) {
+            "classic" -> IosRadius.full
+            "compact" -> IosRadius.bubbleCompact
+            else -> IosRadius.bubbleMain
+        }
     val bubbleShape =
         if (message.isFromMe) {
             RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 4.dp,
+                topStart = mainRadius,
+                topEnd = mainRadius,
+                bottomStart = mainRadius,
+                bottomEnd = IosRadius.bubbleTail,
             )
         } else {
             RoundedCornerShape(
-                topStart = 4.dp,
-                topEnd = 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 16.dp,
+                topStart = IosRadius.bubbleTail,
+                topEnd = mainRadius,
+                bottomStart = mainRadius,
+                bottomEnd = mainRadius,
             )
         }
 
@@ -958,7 +1206,12 @@ private fun MessageBubble(
                     color = Color.Transparent,
                     modifier =
                         Modifier
-                            .widthIn(max = 280.dp)
+                            // A fraction of the width, as iOS, not a fixed
+                            // 280dp: that was near enough on a 360dp handset
+                            // and left bubbles stranded in a narrow column on
+                            // anything wider.
+                            .fillMaxWidth(IosSpacing.MESSAGE_MAX_WIDTH_FRACTION)
+                            .wrapContentWidth(if (message.isFromMe) Alignment.End else Alignment.Start)
                             .combinedClickable(onClick = { onClick?.invoke() }, onLongClick = { pickerOpen = true }),
                 ) {
                     Box(
@@ -980,12 +1233,12 @@ private fun MessageBubble(
                             }
                             Text(
                                 text = message.text,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = IosType.messageBubbleText,
                                 color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                                 modifier =
                                     Modifier.padding(
-                                        horizontal = SanchrTheme.spacing.md,
-                                        vertical = SanchrTheme.spacing.sm,
+                                        horizontal = IosSpacing.bubbleHPadding,
+                                        vertical = IosSpacing.bubbleVPadding,
                                     ),
                             )
                             if (loadLinkPreview != null && message.contentType == "text") {
@@ -1001,19 +1254,21 @@ private fun MessageBubble(
             ReactionChips(message.reactions, onToggleReaction)
 
             // --- Timestamp + read receipts ---
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
-            ) {
-                Text(
-                    text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SanchrGray400,
-                )
+            if (showTimestamp) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+                ) {
+                    Text(
+                        text = formatTimestamp(message.timestamp),
+                        style = IosType.captionSmall,
+                        color = SanchrGray400,
+                    )
 
-                if (message.isFromMe) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    MessageStatusIcon(message)
+                    if (message.isFromMe) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        MessageStatusIcon(message)
+                    }
                 }
             }
         }
@@ -1029,6 +1284,8 @@ private class MessageActions(
     val onForward: (MessageUiModel) -> Unit,
     val onCopy: (MessageUiModel) -> Unit,
     val onDelete: (MessageUiModel) -> Unit,
+    /** Tries a failed send again; iOS has had this in the same menu throughout. */
+    val onRetry: (MessageUiModel) -> Unit,
 )
 
 @Composable
@@ -1061,6 +1318,16 @@ private fun ReactionPicker(
                 onClick = { run(actions.onCopy) },
             )
         }
+        if (message.status == MessageStatus.FAILED) {
+            // A send that exhausted its attempts left an error glyph and
+            // nothing to tap: the text was visible, unsent, and unrecoverable
+            // except by retyping it.
+            DropdownMenuItem(
+                text = { Text("Try again") },
+                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                onClick = { run(actions.onRetry) },
+            )
+        }
         DropdownMenuItem(
             text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
             leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
@@ -1070,7 +1337,7 @@ private fun ReactionPicker(
             QUICK_REACTIONS.forEach { emoji ->
                 Text(
                     text = emoji,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = IosType.sectionHeader,
                     modifier =
                         Modifier
                             .clickable { onPick(emoji) }
@@ -1109,14 +1376,14 @@ private fun QuoteCard(
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
             Text(
                 text = quote?.authorName ?: "Reply",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = textColor,
                 maxLines = 1,
             )
             Text(
                 text = quote?.preview ?: "Replied to a message",
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = textColor.copy(alpha = 0.85f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1148,14 +1415,14 @@ private fun ReplyBanner(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = authorName,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = SanchrIndigo500,
                     maxLines = 1,
                 )
                 Text(
                     text = preview,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1185,7 +1452,7 @@ private fun ReactionChips(
             ) {
                 Text(
                     text = if (chip.count > 1) "${chip.emoji} ${chip.count}" else chip.emoji,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = IosType.sectionLabel,
                     color = SanchrGray900,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
@@ -1233,28 +1500,131 @@ private fun MessageStatusIcon(message: MessageUiModel) {
                 tint = tint,
             )
         }
-        else -> {
+        // The ladder iOS draws: clock while it is still here, one tick once
+        // the server has it, two once the device has it, two in accent once it
+        // has been read. Every state but FAILED used to draw two ticks and
+        // differ only in tint, so a message that had not left the phone looked
+        // delivered on a bad connection.
+        MessageStatus.SENDING ->
+            Icon(
+                imageVector = Icons.Filled.Schedule,
+                contentDescription = "Sending",
+                modifier = Modifier.size(14.dp),
+                tint = SanchrGray400.copy(alpha = 0.5f),
+            )
+        MessageStatus.SENT ->
+            Icon(
+                imageVector = Icons.Filled.Done,
+                contentDescription = "Sent",
+                modifier = Modifier.size(14.dp),
+                tint = SanchrGray400,
+            )
+        MessageStatus.DELIVERED ->
             Icon(
                 imageVector = Icons.Filled.DoneAll,
-                contentDescription =
-                    when (message.status) {
-                        MessageStatus.READ -> "Read"
-                        MessageStatus.DELIVERED -> "Delivered"
-                        else -> "Sent"
-                    },
+                contentDescription = "Delivered",
                 modifier = Modifier.size(14.dp),
-                tint =
-                    when (message.status) {
-                        MessageStatus.READ -> SanchrIndigo500
-                        MessageStatus.DELIVERED -> SanchrGray400
-                        MessageStatus.SENT -> SanchrGray400
-                        MessageStatus.SENDING -> SanchrGray400.copy(alpha = 0.5f)
-                        MessageStatus.FAILED -> MaterialTheme.colorScheme.error
-                    },
+                tint = SanchrGray400,
             )
+        MessageStatus.READ ->
+            Icon(
+                imageVector = Icons.Filled.DoneAll,
+                contentDescription = "Read",
+                modifier = Modifier.size(14.dp),
+                tint = SanchrIndigo500,
+            )
+    }
+}
+
+/**
+ * Several photos or videos sent as one message, drawn as a collage.
+ *
+ * Each tile is its own row — `<messageId>#<n>` — so it decrypts and caches
+ * separately, exactly as iOS keys an album's tiles, and tapping one opens the
+ * gallery on that tile rather than on the first.
+ *
+ * Four tiles at most, with a count over the last when there are more, which is
+ * the shape iOS's `AlbumBubbleLayout` produces for a crowded album.
+ */
+@Composable
+private fun AlbumMessageBubble(
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+    onOpenTile: (MessageUiModel) -> Unit,
+    modifier: Modifier = Modifier,
+    autoDownload: Boolean = true,
+) {
+    val tiles = remember(message.id, message.albumAttachments.size) { message.albumAttachments.indices.mapNotNull(message::albumTile) }
+    if (tiles.isEmpty()) return
+    val shown = tiles.take(ALBUM_MAX_TILES)
+    val hidden = tiles.size - shown.size
+    val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
+
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth(IosSpacing.MESSAGE_MAX_WIDTH_FRACTION)
+                    .clip(SanchrShapeTokens.CornerLarge),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            shown.chunked(ALBUM_COLUMNS).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    row.forEach { tile ->
+                        val isLastShown = tile === shown.last()
+                        Box(
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .clickable { onOpenTile(tile) },
+                        ) {
+                            AttachmentImage(
+                                message = tile,
+                                openAttachment = openAttachment,
+                                autoDownload = autoDownload,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            if (hidden > 0 && isLastShown) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "+" + hidden,
+                                        style = IosType.cardTitle,
+                                        color = SanchrWhite,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // A trailing odd tile keeps its square rather than
+                    // stretching across the row.
+                    if (row.size < ALBUM_COLUMNS) Spacer(modifier = Modifier.weight((ALBUM_COLUMNS - row.size).toFloat()))
+                }
+            }
+            message.text.takeIf { it.isNotBlank() && !it.startsWith("[") }?.let { caption ->
+                Text(
+                    text = caption,
+                    style = IosType.messageBubbleText,
+                    color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                    modifier =
+                        Modifier
+                            .background(if (message.isFromMe) SanchrIndigo500 else SanchrGray100)
+                            .fillMaxWidth()
+                            .padding(horizontal = IosSpacing.bubbleHPadding, vertical = IosSpacing.bubbleVPadding),
+                )
+            }
         }
     }
 }
+
+private const val ALBUM_MAX_TILES = 4
+private const val ALBUM_COLUMNS = 2
 
 // --- Image message bubble ---
 @Composable
@@ -1295,7 +1665,7 @@ private fun ImageMessageBubble(
                 if (message.text.isNotEmpty() && message.text != "[Image]") {
                     Text(
                         text = message.text,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                         modifier = Modifier.padding(SanchrTheme.spacing.sm),
                     )
@@ -1309,7 +1679,7 @@ private fun ImageMessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
                 if (message.isFromMe) {
@@ -1331,11 +1701,13 @@ private fun ImageMessageBubble(
 private fun MessageInputBar(
     value: String,
     onValueChange: (String) -> Unit,
+    enterSendsMessage: Boolean,
     onSend: () -> Unit,
     onEmojiClick: () -> Unit,
     onAttachSticker: () -> Unit,
     onAttachFile: () -> Unit,
     onAttachPhotos: () -> Unit,
+    onCapturePhoto: () -> Unit,
     onAttachLocation: () -> Unit,
     onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
@@ -1359,7 +1731,7 @@ private fun MessageInputBar(
             // "+" attach button
             IconButton(
                 onClick = onAttachFile,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(IosSpacing.composerButtonSize),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add,
@@ -1373,10 +1745,23 @@ private fun MessageInputBar(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
+                // The Enter-sends setting, which nothing read before: the
+                // toggle in Chat Settings moved and the key kept inserting a
+                // newline. iOS switches the return key between Send and
+                // Return on the same preference.
+                keyboardOptions =
+                    KeyboardOptions(
+                        imeAction = if (enterSendsMessage) ImeAction.Send else ImeAction.Default,
+                        capitalization = KeyboardCapitalization.Sentences,
+                    ),
+                keyboardActions =
+                    KeyboardActions(
+                        onSend = { if (value.isNotBlank() && !isSending) onSend() },
+                    ),
                 placeholder = {
                     Text(
                         text = "Type a message...",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                     )
                 },
                 trailingIcon = {
@@ -1404,7 +1789,7 @@ private fun MessageInputBar(
             Box {
                 IconButton(
                     onClick = { attachMenuOpen = true },
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(IosSpacing.composerButtonSize),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.AttachFile,
@@ -1413,6 +1798,14 @@ private fun MessageInputBar(
                     )
                 }
                 DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Camera") },
+                        leadingIcon = { Icon(Icons.Filled.PhotoCamera, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onCapturePhoto()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Photos") },
                         leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
@@ -1474,7 +1867,10 @@ private fun MessageInputBar(
             FilledIconButton(
                 onClick = onSend,
                 enabled = value.isNotBlank() && !isSending,
-                modifier = Modifier.size(40.dp),
+                // iOS composerSendSize, a notch larger than the 40 the other
+                // composer buttons take: send is the primary action and reads
+                // as one.
+                modifier = Modifier.size(IosSpacing.composerSendSize),
                 colors =
                     IconButtonDefaults.filledIconButtonColors(
                         containerColor = SanchrIndigo500,
@@ -1545,10 +1941,10 @@ private fun AttachmentImage(
             deferred ->
                 Text(
                     text = "Tap to download",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.caption,
                     color = SanchrGray400,
                 )
-            failed -> Text(text = "Image unavailable", style = MaterialTheme.typography.bodySmall, color = SanchrGray400)
+            failed -> Text(text = "Image unavailable", style = IosType.caption, color = SanchrGray400)
             else -> {
                 // The BlurHash placeholder shows the picture's shape and colours
                 // while the blob downloads and decrypts, as on iOS.
@@ -1654,14 +2050,14 @@ private fun ContactMessageBubble(
                     Column {
                         Text(
                             text = card.name.ifBlank { card.phoneNumber },
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = IosType.body,
                             fontWeight = FontWeight.SemiBold,
                             color = foreground,
                         )
                         if (card.name.isNotBlank()) {
                             Text(
                                 text = card.phoneNumber,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = IosType.caption,
                                 color = foreground.copy(alpha = 0.8f),
                             )
                         }
@@ -1674,7 +2070,7 @@ private fun ContactMessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
                 if (message.isFromMe) {
@@ -1704,16 +2100,78 @@ private fun addToContacts(
     }
 }
 
+/**
+ * Taking a photo inside the chat, which iOS has had and Android offered only
+ * from the chat list.
+ *
+ * `TakePicture` reports success alone, so the destination has to be named up
+ * front and held across the launch. The shot then goes to the review screen
+ * rather than straight out: iOS lets a camera photo be captioned before it is
+ * sent, and sending the instant the shutter closes gives no chance to look at
+ * what was taken.
+ */
+private class ChatCameraCapture(
+    val launch: () -> Unit,
+)
+
+@Composable
+private fun rememberChatCameraCapture(onCaptured: (Uri) -> Unit): ChatCameraCapture {
+    val context = LocalContext.current
+    var pending by remember { mutableStateOf<Uri?>(null) }
+    val takePicture =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            val captured = pending
+            pending = null
+            when {
+                captured == null -> Unit
+                saved -> onCaptured(captured)
+                // Cancelled at the shutter: the file was created up front, so
+                // it has to go whether or not a photo landed in it.
+                else -> CapturedPhotos.discard(context, captured)
+            }
+        }
+    return remember(takePicture) {
+        ChatCameraCapture(
+            launch = {
+                val uri = CapturedPhotos.newUri(context)
+                if (uri == null) {
+                    Toast.makeText(context, "Could not open the camera", Toast.LENGTH_SHORT).show()
+                } else {
+                    pending = uri
+                    takePicture.launch(uri)
+                }
+            },
+        )
+    }
+}
+
 /** The system document picker; reads the file off the main thread and measures images. */
 @Composable
-private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> Unit): ManagedActivityResultLauncher<Array<String>, Uri?> {
+private fun rememberAttachmentPicker(
+    prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
+    onPicked: (AttachmentUploader.Prepared) -> Unit,
+): ManagedActivityResultLauncher<Array<String>, Uri?> {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            val prepared = withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, uri) }
-            if (prepared != null) onPicked(prepared)
+            val tooLarge =
+                withContext(Dispatchers.IO) {
+                    AttachmentPreparer.reportedSize(context, uri)?.let { it > AttachmentPreparer.MAX_BYTES } == true
+                }
+            if (tooLarge) {
+                // Said before anything is read: reading costs about three
+                // times the file in heap, and the server refuses it anyway.
+                Toast.makeText(context, "That file is too large to send (100 MB maximum).", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            val prepared = prepare(uri)
+            if (prepared != null) {
+                onPicked(prepared)
+            } else {
+                Toast.makeText(context, "That file couldn't be read.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }
@@ -1765,7 +2223,7 @@ private fun VoiceMessageBubble(
             ) {
                 Text(
                     text = formatTimestamp(message.timestamp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
                 if (message.isFromMe) {
@@ -1800,7 +2258,7 @@ private fun SystemNote(text: String) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = SanchrGray400,
             modifier = Modifier.padding(vertical = 4.dp),
         )
@@ -1835,17 +2293,17 @@ private fun ViewOnceBubble(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (message.isVideoAttachment) "Video" else "Photo",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = IosType.body,
                             color = SanchrGray900,
                         )
-                        Text(text = "View once", style = MaterialTheme.typography.labelSmall, color = SanchrGray400)
+                        Text(text = "View once", style = IosType.captionSmall, color = SanchrGray400)
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = SanchrGray400)
                 }
             }
             Text(
                 text = formatTimestamp(message.timestamp),
-                style = MaterialTheme.typography.labelSmall,
+                style = IosType.captionSmall,
                 color = SanchrGray400,
                 modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
             )
@@ -2081,11 +2539,11 @@ private fun ChatSearchBar(
             if (state.resultIds.isNotEmpty()) {
                 Text(
                     text = "${state.currentIndex + 1}/${state.resultIds.size}",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = IosType.sectionLabel,
                     color = SanchrGray400,
                 )
             } else if (state.query.isNotBlank()) {
-                Text(text = "0/0", style = MaterialTheme.typography.labelMedium, color = SanchrGray400)
+                Text(text = "0/0", style = IosType.sectionLabel, color = SanchrGray400)
             }
             IconButton(onClick = onPrevious, enabled = state.resultIds.size > 1) {
                 Icon(imageVector = Icons.Filled.KeyboardArrowUp, contentDescription = "Previous result")
@@ -2143,7 +2601,7 @@ private fun LinkPreviewCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = LinkPreviewFetcher.domainOf(url),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = IosType.captionSmall,
                         color = fg.copy(alpha = 0.7f),
                     )
                 }
@@ -2151,14 +2609,14 @@ private fun LinkPreviewCard(
                 card.title?.let { title ->
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = IosType.sectionLabel,
                         fontWeight = FontWeight.SemiBold,
                         color = fg,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(text = card.domain, style = MaterialTheme.typography.labelSmall, color = fg.copy(alpha = 0.7f), maxLines = 1)
+                Text(text = card.domain, style = IosType.captionSmall, color = fg.copy(alpha = 0.7f), maxLines = 1)
             }
         }
     }
@@ -2188,3 +2646,13 @@ private fun ViewOnceVideo(file: File) {
 }
 
 private const val BANNER_TINT = 0.12f
+
+/** How close to the oldest loaded row triggers the next page. */
+private const val LOAD_MORE_THRESHOLD = 5
+
+/** Rows scrolled past before the jump-to-latest control appears. */
+private const val JUMP_VISIBLE_AFTER_ROWS = 3
+
+/** iOS's margins between bubbles: 2pt inside a run, 6pt between runs. */
+private val GROUPED_GAP = 2.dp
+private val UNGROUPED_GAP = 6.dp

@@ -46,6 +46,16 @@ class SanchrPreKeyStore
          */
         fun getNextPreKeyId(): Int = (preKeyDao.maxIdBlocking() ?: 0) + 1
 
+        /**
+         * One-time pre-keys still held on this device, i.e. those the server
+         * has not yet handed out and had consumed.
+         *
+         * The Encryption Keys screen printed "-- keys remaining on server"; the
+         * count this device holds is the number it can actually know, and it
+         * falls as the server issues them.
+         */
+        suspend fun remainingPreKeyCount(): Int = preKeyDao.count()
+
         /** Wipes all pre-key data. Called on account deletion. */
         fun wipeAll() {
             preKeyDao.deleteAllBlocking()

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +44,7 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextButton
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import kotlinx.coroutines.launch
@@ -75,8 +77,8 @@ fun RegistrationLockScreen(
     fun submit(
         enabled: Boolean,
         pin: String,
-        currentPin: String,
         success: String,
+        currentPin: String = "",
     ) {
         busy = true
         scope.launch {
@@ -94,6 +96,9 @@ fun RegistrationLockScreen(
     }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(title = "Registration Lock", onNavigateBack = {
                 if (phase ==
@@ -177,7 +182,12 @@ fun RegistrationLockScreen(
                         title = "Enter PIN",
                         subtitle = "Enter your current Registration Lock PIN to turn it off.",
                         error = error,
-                        onComplete = { pin -> submit(enabled = false, pin = "", currentPin = pin, success = "Registration Lock is off") },
+                        // The server verifies `pin` on the disable branch and
+                        // ignores `current_pin`, so sending the PIN as
+                        // `currentPin` meant it compared against an empty
+                        // string: Registration Lock could never be turned off,
+                        // whatever the user typed.
+                        onComplete = { pin -> submit(enabled = false, pin = pin, success = "Registration Lock is off") },
                         onCancel = { phase = LockPhase.IDLE },
                     )
             }
@@ -207,12 +217,12 @@ private fun IdleContent(
             Column {
                 Text(
                     text = if (enabled) "Enabled" else "Disabled",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = IosType.bodyBold,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = if (enabled) "Your account is protected with a PIN" else "Anyone with your number could re-register",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = IosType.captionSmall,
                     color = SanchrGray400,
                 )
             }
@@ -224,21 +234,21 @@ private fun IdleContent(
             modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.default),
             verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
         ) {
-            Text(text = "How it works", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(text = "How it works", style = IosType.bodyBold, fontWeight = FontWeight.Bold)
             Text(
                 text = "• If someone tries to register with your number on a new device, they'll need your PIN.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
             )
             Text(
                 text = "• Choose a PIN you'll remember; losing it means a 7-day waiting period to regain access.",
-                style = MaterialTheme.typography.bodySmall,
+                style = IosType.captionSmall,
             )
-            Text(text = "• You can change or disable the lock at any time.", style = MaterialTheme.typography.bodySmall)
+            Text(text = "• You can change or disable the lock at any time.", style = IosType.caption)
         }
     }
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
-    notice?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-    error?.let { Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    notice?.let { Text(text = it, style = IosType.captionSmall, color = MaterialTheme.colorScheme.primary) }
+    error?.let { Text(text = it, style = IosType.captionSmall, color = MaterialTheme.colorScheme.error) }
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
     if (enabled) {
         SanchrButton(text = "Change PIN", onClick = onChange, enabled = !busy, isLoading = busy, modifier = Modifier.fillMaxWidth())
@@ -270,9 +280,9 @@ internal fun PinEntry(
     var pin by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    Text(text = title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Text(text = title, style = IosType.sectionHeader, fontWeight = FontWeight.Bold)
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
-    Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = SanchrGray400)
+    Text(text = subtitle, style = IosType.body, color = SanchrGray400)
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
     OutlinedTextField(
         value = pin,
@@ -286,7 +296,7 @@ internal fun PinEntry(
     )
     error?.let {
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
-        Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(text = it, style = IosType.captionSmall, color = MaterialTheme.colorScheme.error)
     }
     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xl))
     SanchrButton(text = "Continue", onClick = {

@@ -1,7 +1,10 @@
 package com.sanchr.feature.chats
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
 
 /**
@@ -39,6 +44,8 @@ fun HiddenChatsScreen(
     viewModel: ChatsListViewModel = hiltViewModel(),
 ) {
     val hidden by viewModel.hidden.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentUserId = (uiState as? ChatsListUiState.Success)?.currentUserId.orEmpty()
     var query by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<com.sanchr.core.model.Conversation?>(null) }
 
@@ -50,6 +57,9 @@ fun HiddenChatsScreen(
         }
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { SanchrTopBar(title = "Hidden", onNavigateBack = onNavigateBack) },
         modifier = modifier,
     ) { innerPadding ->
@@ -65,21 +75,37 @@ fun HiddenChatsScreen(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(items = visible, key = { it.id }) { conversation ->
-                        ConversationItem(
-                            conversation = conversation,
-                            currentUserId = "",
-                            isTyping = false,
-                            onClick = { onConversationClick(conversation.id) },
-                            actions =
-                                ConversationActions(
-                                    onTogglePin = { viewModel.togglePin(conversation) },
-                                    onToggleMute = { viewModel.toggleMute(conversation) },
-                                    onMarkAsRead = { viewModel.markAsRead(conversation) },
-                                    onArchive = null,
-                                    onDelete = { deleting = conversation },
-                                    onUnhide = { viewModel.setHidden(conversation, hidden = false) },
-                                ),
-                        )
+                        // As on the archived screen: Restore was long-press
+                        // only, so a user who did not know that could not get
+                        // a chat back.
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                ConversationItem(
+                                    conversation = conversation,
+                                    // Was the empty string, so any "You:" or
+                                    // own-message logic keyed on it could never
+                                    // match on this screen.
+                                    currentUserId = currentUserId,
+                                    isTyping = false,
+                                    onClick = { onConversationClick(conversation.id) },
+                                    actions =
+                                        ConversationActions(
+                                            onTogglePin = { viewModel.togglePin(conversation) },
+                                            onToggleMute = { viewModel.toggleMute(conversation) },
+                                            onMarkAsRead = { viewModel.markAsRead(conversation) },
+                                            onArchive = null,
+                                            onDelete = { deleting = conversation },
+                                            onUnhide = { viewModel.setHidden(conversation, hidden = false) },
+                                        ),
+                                )
+                            }
+                            TextButton(
+                                onClick = { viewModel.setHidden(conversation, hidden = false) },
+                                modifier = Modifier.padding(end = SanchrTheme.spacing.sm),
+                            ) {
+                                Text(text = "Restore", style = IosType.captionSmall)
+                            }
+                        }
                     }
                 }
             }
@@ -107,7 +133,7 @@ private fun EmptyHiddenState(hasQuery: Boolean) {
     ) {
         Text(
             text = if (hasQuery) "No hidden chat matches that." else "Nothing is hidden.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )

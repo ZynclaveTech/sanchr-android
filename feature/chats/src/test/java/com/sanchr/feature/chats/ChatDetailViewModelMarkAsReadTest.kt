@@ -38,7 +38,7 @@ import kotlinx.datetime.Instant
  * ([ChatDetailViewModel]'s `init` -> `markAsRead()`) must, in addition to
  * zeroing the unread count, send a read receipt naming the newest inbound
  * message via [SendReadReceiptUseCase]. Sending is resolved from
- * [MessageRepository.observeMessages] directly (not the ViewModel's
+ * the repository's windowed observer directly (not the ViewModel's
  * already-mapped [ChatDetailUiState.messages]) — see
  * [ChatDetailViewModel.sendReadReceiptForNewestInboundMessage]'s KDoc for
  * why.
@@ -80,7 +80,9 @@ class ChatDetailViewModelMarkAsReadTest {
             messageRepository = messageRepository,
             sendMessageUseCase = sendMessageUseCase,
             sendAttachmentUseCase = mockk(relaxed = true),
+            sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
+            videoCompressor = mockk(relaxed = true),
             sendReadReceiptUseCase = sendReadReceiptUseCase,
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),
@@ -100,6 +102,7 @@ class ChatDetailViewModelMarkAsReadTest {
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
             connectivityMonitor = mockk(relaxed = true),
+            appContext = mockk(relaxed = true),
         )
 
     private fun message(
@@ -120,7 +123,7 @@ class ChatDetailViewModelMarkAsReadTest {
     fun `opening a conversation with inbound messages sends a receipt naming the newest one`() =
         runTest(testDispatcher) {
             val newestInbound = message(id = "msg-newest", senderId = "user-peer", timestampMillis = 3_000L)
-            every { messageRepository.observeMessages(conversationId) } returns
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns
                 flowOf(
                     listOf(
                         message(id = "msg-oldest", senderId = "user-peer", timestampMillis = 1_000L),
@@ -138,7 +141,7 @@ class ChatDetailViewModelMarkAsReadTest {
     @Test
     fun `an empty conversation sends no receipt`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns flowOf(emptyList())
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns flowOf(emptyList())
 
             newViewModel()
             advanceUntilIdle()
@@ -149,7 +152,7 @@ class ChatDetailViewModelMarkAsReadTest {
     @Test
     fun `a conversation with only outbound messages sends no receipt`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns
                 flowOf(
                     listOf(
                         message(id = "msg-mine-1", senderId = currentUserId, timestampMillis = 1_000L),
@@ -166,7 +169,7 @@ class ChatDetailViewModelMarkAsReadTest {
     @Test
     fun `markAsRead still zeroes the unread count independent of receipt sending`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns flowOf(emptyList())
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns flowOf(emptyList())
 
             newViewModel()
             advanceUntilIdle()
@@ -183,7 +186,7 @@ class ChatDetailViewModelMarkAsReadTest {
     @Test
     fun `a failing markAsRead does not crash and leaves the receipt unaffected`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns
                 flowOf(listOf(message(id = "msg-in", senderId = "user-peer", timestampMillis = 1_000L)))
             coEvery { messageRepository.markAsRead(any()) } throws IllegalStateException("DB closed during logout")
 
@@ -204,7 +207,7 @@ class ChatDetailViewModelMarkAsReadTest {
     @Test
     fun `a failing message flow loses the receipt without crashing`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns
                 flow { throw IllegalStateException("DB closed during logout") }
 
             newViewModel()
@@ -223,7 +226,7 @@ class ChatDetailViewModelMarkAsReadTest {
     @Test
     fun `a message flow that completes without emitting loses the receipt without crashing`() =
         runTest(testDispatcher) {
-            every { messageRepository.observeMessages(conversationId) } returns emptyFlow()
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns emptyFlow()
 
             newViewModel()
             advanceUntilIdle()
@@ -236,7 +239,7 @@ class ChatDetailViewModelMarkAsReadTest {
     fun `a message arriving while the chat is open marks it read again, an outbound one does not`() =
         runTest(testDispatcher) {
             val stream = MutableSharedFlow<List<Message>>(replay = 1)
-            every { messageRepository.observeMessages(conversationId) } returns stream
+            every { messageRepository.observeRecentMessages(conversationId, any()) } returns stream
             stream.emit(listOf(message(id = "m1", senderId = "user-peer", timestampMillis = 1_000L)))
 
             newViewModel()

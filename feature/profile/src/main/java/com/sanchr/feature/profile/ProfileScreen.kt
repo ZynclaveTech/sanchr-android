@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -71,10 +72,22 @@ import com.sanchr.core.designsystem.component.SanchrButton
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTextField
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.IosSpacing
+import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import com.sanchr.core.mediaviewer.ImageSendEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/**
+ * Avatars are displayed at 96dp here and smaller everywhere else, so 1024 is
+ * already more than any surface shows.
+ */
+private const val AVATAR_MAX_EDGE = 1024
+
+/** iOS ProfileView's avatar frame. */
+private val IosProfileAvatar = 96.dp
 
 @Composable
 fun ProfileScreen(
@@ -92,6 +105,9 @@ fun ProfileScreen(
     ProfileEvents(viewModel = viewModel, onOpenConversation = onOpenConversation)
 
     Scaffold(
+        // The NavHost's Scaffold has already inset this for the system
+        // bars; applying them again counts the status bar twice.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             SanchrTopBar(
                 title = if (uiState.isOwnProfile) "My Profile" else "Profile",
@@ -158,9 +174,10 @@ fun ProfileScreen(
         ) {
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
 
-            // Large avatar (120dp) with edit overlay
+            // 96dp, as iOS. Android drew 120, which pushed the name and
+            // every field below it down a quarter of the screen.
             Box(
-                modifier = Modifier.size(120.dp),
+                modifier = Modifier.size(IosProfileAvatar),
                 contentAlignment = Alignment.Center,
             ) {
                 if (uiState.avatarUrl.isNotEmpty()) {
@@ -169,7 +186,7 @@ fun ProfileScreen(
                         contentDescription = "${uiState.displayName} avatar",
                         modifier =
                             Modifier
-                                .size(120.dp)
+                                .size(IosProfileAvatar)
                                 .clip(CircleShape),
                         contentScale = ContentScale.Crop,
                     )
@@ -177,7 +194,7 @@ fun ProfileScreen(
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(120.dp),
+                        modifier = Modifier.size(IosProfileAvatar),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -186,7 +203,7 @@ fun ProfileScreen(
                                         .take(1)
                                         .uppercase()
                                         .ifEmpty { "?" },
-                                style = MaterialTheme.typography.displaySmall,
+                                style = IosType.screenTitle,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
@@ -260,7 +277,7 @@ fun ProfileScreen(
                 // Display mode
                 Text(
                     text = uiState.displayName.ifEmpty { "Unknown" },
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = IosType.screenTitle,
                     fontWeight = FontWeight.Bold,
                 )
 
@@ -268,7 +285,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxs))
                     Text(
                         text = uiState.phoneNumber,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -277,7 +294,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                     Text(
                         text = uiState.bio,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = IosType.body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = SanchrTheme.spacing.xxl),
@@ -356,7 +373,7 @@ fun ProfileScreen(
             // Info card with phone and status
             if (!uiState.isEditing) {
                 SanchrCard(
-                    modifier = Modifier.padding(horizontal = SanchrTheme.spacing.default),
+                    modifier = Modifier.padding(horizontal = IosSpacing.screenHorizontal),
                 ) {
                     Column(
                         modifier =
@@ -407,7 +424,7 @@ private fun ProfileActionButton(
         Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -422,12 +439,12 @@ private fun ProfileInfoRow(
     Column(modifier = modifier) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = IosType.captionSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
+            style = IosType.body,
         )
     }
 }
@@ -448,11 +465,12 @@ private fun rememberAvatarPicker(
         scope.launch {
             val picked =
                 withContext(Dispatchers.IO) {
-                    val type = context.contentResolver.getType(uri) ?: "image/jpeg"
-                    context.contentResolver
-                        .openInputStream(uri)
-                        ?.use { it.readBytes() }
-                        ?.let { it to type }
+                    // Re-encoded, not forwarded: a camera photo's EXIF carries
+                    // the location it was taken, and an avatar is the most
+                    // widely shared image an account has.
+                    ImageSendEncoder
+                        .encode(context.contentResolver, uri, maxLongEdge = AVATAR_MAX_EDGE)
+                        ?.let { it.bytes to it.mimeType }
                 }
             if (picked != null) onPicked(picked.first, picked.second)
         }
@@ -543,12 +561,12 @@ private fun ProfileQrDialog(
                     Spacer(modifier = Modifier.height(SanchrTheme.spacing.md))
                     Text(
                         text = "Scan this to open my Sanchr profile.",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = IosType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
                 } else {
-                    Text(text = "This code isn't ready yet.", style = MaterialTheme.typography.bodySmall)
+                    Text(text = "This code isn't ready yet.", style = IosType.caption)
                 }
             }
         },
