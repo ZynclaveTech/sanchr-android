@@ -60,6 +60,7 @@ class ChatDetailViewModelPresenceTest {
             messageRepository = messageRepository,
             sendMessageUseCase = mockk<SendMessageUseCase>(),
             sendAttachmentUseCase = mockk(relaxed = true),
+            sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),

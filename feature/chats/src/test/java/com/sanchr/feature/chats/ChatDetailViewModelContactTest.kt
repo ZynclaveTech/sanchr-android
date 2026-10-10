@@ -66,6 +66,7 @@ class ChatDetailViewModelContactTest {
             messageRepository = messageRepository,
             sendMessageUseCase = sendMessageUseCase,
             sendAttachmentUseCase = sendAttachmentUseCase,
+            sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk<SendReadReceiptUseCase>(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),

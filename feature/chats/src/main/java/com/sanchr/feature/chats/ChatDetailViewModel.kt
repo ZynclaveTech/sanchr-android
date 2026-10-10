@@ -23,6 +23,7 @@ import com.sanchr.domain.messaging.ConsumeViewOnceUseCase
 import com.sanchr.domain.messaging.ForwardMessageUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.PresenceStore
+import com.sanchr.domain.messaging.SendAlbumUseCase
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.domain.messaging.SendMessageUseCase
 import com.sanchr.domain.messaging.SendReadReceiptUseCase
@@ -65,6 +66,7 @@ class ChatDetailViewModel
         private val messageRepository: MessageRepository,
         private val sendMessageUseCase: SendMessageUseCase,
         private val sendAttachmentUseCase: SendAttachmentUseCase,
+        private val sendAlbumUseCase: SendAlbumUseCase,
         private val attachmentDownloader: AttachmentDownloader,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val toggleReactionUseCase: ToggleReactionUseCase,
@@ -371,15 +373,21 @@ class ChatDetailViewModel
             val replyToId = takePendingReply()
             _uiState.update { it.copy(isSending = true, uploadProgress = 0f) }
             viewModelScope.launch {
-                var failure: String? = null
-                prepared.forEachIndexed { index, file ->
-                    if (failure != null) return@forEachIndexed
-                    val result =
-                        sendAttachmentUseCase(conversationId, file, replyToId.takeIf { index == 0 }) { fraction ->
-                            _uiState.update { it.copy(uploadProgress = (index + fraction) / prepared.size) }
+                // One message for the set, as iOS sends an album. This used to
+                // send one message per file, so picking ten photos produced ten
+                // bubbles on both sides and ten notifications for the recipient.
+                val result =
+                    if (prepared.size > 1) {
+                        sendAlbumUseCase(conversationId, prepared, replyToId) { fraction ->
+                            _uiState.update { it.copy(uploadProgress = fraction) }
                         }
-                    if (result is Result.Error) failure = result.exception.message ?: "Failed to send attachment"
-                }
+                    } else {
+                        sendAttachmentUseCase(conversationId, prepared.first(), replyToId) { fraction ->
+                            _uiState.update { it.copy(uploadProgress = fraction) }
+                        }
+                    }
+                val failure =
+                    (result as? Result.Error)?.exception?.message ?: (result as? Result.Error)?.let { "Failed to send attachment" }
                 _uiState.update { it.copy(isSending = false, uploadProgress = null, error = failure) }
             }
         }

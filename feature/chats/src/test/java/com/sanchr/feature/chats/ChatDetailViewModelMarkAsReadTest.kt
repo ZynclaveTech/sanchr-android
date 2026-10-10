@@ -80,6 +80,7 @@ class ChatDetailViewModelMarkAsReadTest {
             messageRepository = messageRepository,
             sendMessageUseCase = sendMessageUseCase,
             sendAttachmentUseCase = mockk(relaxed = true),
+            sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
             sendReadReceiptUseCase = sendReadReceiptUseCase,
             toggleReactionUseCase = mockk(relaxed = true),

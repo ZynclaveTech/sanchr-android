@@ -57,6 +57,7 @@ class ChatDetailViewModelPrivacySettingsTest {
         messageRepository = messageRepository,
         sendMessageUseCase = mockk(relaxed = true),
         sendAttachmentUseCase = mockk(relaxed = true),
+        sendAlbumUseCase = mockk(relaxed = true),
         attachmentDownloader = mockk(relaxed = true),
         sendReadReceiptUseCase = mockk(relaxed = true),
         toggleReactionUseCase = mockk(relaxed = true),
