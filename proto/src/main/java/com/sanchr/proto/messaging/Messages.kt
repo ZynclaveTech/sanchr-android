@@ -282,6 +282,10 @@ data class SealedDeviceMessage(
     // Opt-out flag: suppresses only the recipient's offline push. Defaults to false so an
     // ordinary message still alerts, matching the proto's opt-out design for older clients.
     val silent: Boolean = false,
+    // The registration id of the device this was encrypted for, so the server can
+    // refuse the send if that device has been set up again since. Zero states nothing
+    // and is not checked.
+    val recipientRegistrationId: Int = 0,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -290,7 +294,8 @@ data class SealedDeviceMessage(
             deviceId == other.deviceId &&
             sealedEnvelope.contentEquals(other.sealedEnvelope) &&
             conversationId == other.conversationId &&
-            silent == other.silent
+            silent == other.silent &&
+            recipientRegistrationId == other.recipientRegistrationId
     }
 
     override fun hashCode(): Int {
@@ -299,6 +304,7 @@ data class SealedDeviceMessage(
         result = 31 * result + sealedEnvelope.contentHashCode()
         result = 31 * result + conversationId.hashCode()
         result = 31 * result + silent.hashCode()
+        result = 31 * result + recipientRegistrationId
         return result
     }
 }
@@ -318,6 +324,17 @@ data class SendSealedMessageRequest(
 
 data class SendSealedMessageResponse(
     val serverTimestamp: Long = 0L,
+    // Not empty means NOTHING in the request was delivered, to any device: start new
+    // sessions with these and send the whole message again.
+    val staleDevices: List<StaleDevice> = emptyList(),
+)
+
+/** A device the sender's session is out of date for. */
+data class StaleDevice(
+    val recipientId: String = "",
+    val deviceId: Int = 0,
+    // False when the device publishes no keys any more: nothing to start over with.
+    val registered: Boolean = true,
 )
 
 data class DeleteConversationRequest(

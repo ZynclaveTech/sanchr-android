@@ -5,8 +5,6 @@ import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
-import com.sanchr.proto.messaging.MessagingServiceClient
-import com.sanchr.proto.messaging.SendSealedMessageRequest
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -26,8 +24,6 @@ class SendPresenceUseCase
         private val sendMessageUseCase: SendMessageUseCase,
         private val sessionManager: SessionManager,
         private val userPreferences: UserPreferences,
-        private val deliveryTokenStore: DeliveryTokenStore,
-        private val messagingClient: MessagingServiceClient,
         private val profileKeyStore: ProfileKeyStore,
         private val dispatcherProvider: DispatcherProvider,
     ) {
@@ -71,16 +67,19 @@ class SendPresenceUseCase
                     content = update.toByteArray(),
                     senderProfileKey = profileKeyStore.ownProfileKey(),
                 )
-            val deviceMessages =
-                sendMessageUseCase.encryptAndWrapDeviceMessages(
-                    plaintext = payload.encode(),
-                    recipients = listOf(peerId),
-                    conversationId = "",
-                    kind = SealedSendKind.Control,
-                )
+            val plaintext = payload.encode()
+            val encrypt =
+                suspend {
+                    sendMessageUseCase.encryptAndWrapDeviceMessages(
+                        plaintext = plaintext,
+                        recipients = listOf(peerId),
+                        conversationId = "",
+                        kind = SealedSendKind.Control,
+                    )
+                }
+            val deviceMessages = encrypt()
             if (deviceMessages.isEmpty()) return
-            val token = deliveryTokenStore.acquire()
-            messagingClient.sendSealedMessage(SendSealedMessageRequest(deliveryToken = token, deviceMessages = deviceMessages))
+            sendMessageUseCase.sendControl(deviceMessages, encrypt)
         }
 
         private fun PresenceStatus.toWire(): Messaging.PresenceStatus =

@@ -4,9 +4,7 @@ import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
-import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SealedDeviceMessage
-import com.sanchr.proto.messaging.SendSealedMessageResponse
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -29,17 +27,11 @@ class SendPresenceUseCaseTest {
             override val unconfined: CoroutineDispatcher = Dispatchers.Unconfined
             override val signalDispatcher: CoroutineDispatcher = Dispatchers.Unconfined
         }
-    private val sender = mockk<SendMessageUseCase>()
+    private val sender = mockk<SendMessageUseCase> { coEvery { sendControl(any(), any()) } returns Unit }
     private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" }
     private val prefs = mockk<UserPreferences>()
-    private val tokens = mockk<DeliveryTokenStore> { coEvery { acquire() } returns byteArrayOf(9) }
-    private val client =
-        mockk<MessagingServiceClient> {
-            coEvery { sendSealedMessage(any()) } returns
-                SendSealedMessageResponse(serverTimestamp = 1)
-        }
     private val keys = mockk<ProfileKeyStore> { every { ownProfileKey() } returns ByteArray(32) { 1 } }
-    private val useCase = SendPresenceUseCase(sender, sessionManager, prefs, tokens, client, keys, dispatchers)
+    private val useCase = SendPresenceUseCase(sender, sessionManager, prefs, keys, dispatchers)
 
     private fun captureSent(): InnerPayload {
         val plaintext = slot<ByteArray>()
@@ -65,7 +57,7 @@ class SendPresenceUseCaseTest {
             assertEquals("self", update.userId)
             assertEquals(0L, update.lastSeen)
             assertEquals(32, payload.senderProfileKey!!.size)
-            coVerify { client.sendSealedMessage(any()) }
+            coVerify { sender.sendControl(any(), any()) }
         }
 
     @Test
@@ -94,7 +86,6 @@ class SendPresenceUseCaseTest {
             every { prefs.onlineStatusVisible } returns flowOf(true)
             coEvery { sender.encryptAndWrapDeviceMessages(any(), any(), any(), any()) } returns emptyList()
             useCase("peer", PresenceStatus.ONLINE)
-            coVerify(exactly = 0) { tokens.acquire() }
-            coVerify(exactly = 0) { client.sendSealedMessage(any()) }
+            coVerify(exactly = 0) { sender.sendControl(any(), any()) }
         }
 }

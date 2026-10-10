@@ -71,8 +71,6 @@ class SendReadReceiptUseCaseTest {
             sessionManager,
             userPreferences,
             sendMessageUseCase,
-            deliveryTokenStore,
-            messagingClient,
             dispatchers,
             receiptClock,
             receiptJitter,
