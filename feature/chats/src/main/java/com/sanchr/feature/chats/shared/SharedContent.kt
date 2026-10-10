@@ -81,12 +81,17 @@ object SharedContent {
     }
 
     /**
-     * The host, for a row that has to read at a glance. Falls back to the
-     * whole link rather than to nothing when there is no host to show.
+     * The host, for a row that has to read at a glance.
+     *
+     * Parsed rather than split on punctuation. Taking everything before the
+     * first slash includes the userinfo, so
+     * `https://example.com@evil.example/x` produced "example.com@evil.example"
+     * — which, in a row that is one line with an ellipsis, reads as
+     * "example.com@evil…", i.e. as example.com. The link is sent by whoever is
+     * in the conversation, so that is a spoof someone can choose to send.
+     *
+     * A link whose host cannot be parsed shows in full, so a row never claims
+     * a host the link does not have.
      */
-    fun domainOf(url: String): String {
-        val withoutScheme = url.substringAfter("://", url)
-        val host = withoutScheme.substringBefore('/').substringBefore('?').removePrefix("www.")
-        return host.ifBlank { url }
-    }
+    fun domainOf(url: String): String = LinkDetector.hostOf(url)?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: url
 }

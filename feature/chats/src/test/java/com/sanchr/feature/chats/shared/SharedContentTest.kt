@@ -111,8 +111,26 @@ class SharedContentTest {
     fun `a link row shows the host, not the whole URL`() {
         assertEquals("example.com", SharedContent.domainOf("https://www.example.com/a/b?c=d"))
         assertEquals("sub.example.co.uk", SharedContent.domainOf("http://sub.example.co.uk/x"))
-        // Nothing host-shaped: the whole link beats an empty row.
+        // Nothing host-shaped: the whole link beats a row claiming a host the
+        // link does not have.
         assertEquals("not a url", SharedContent.domainOf("not a url"))
+    }
+
+    @Test
+    fun `userinfo cannot be passed off as the host`() {
+        // Splitting on the first slash gave "example.com@evil.example", which
+        // in a one-line row with an ellipsis reads as "example.com@evil…".
+        // The link comes from whoever is in the conversation, so this is a
+        // spoof someone can choose to send.
+        assertEquals("evil.example", SharedContent.domainOf("https://example.com@evil.example/x"))
+        assertEquals("evil.example", SharedContent.domainOf("https://example.com:pass@evil.example/x"))
+    }
+
+    @Test
+    fun `a port, a fragment and a query do not end up in the host`() {
+        assertEquals("example.com", SharedContent.domainOf("https://example.com:8443/a"))
+        assertEquals("example.com", SharedContent.domainOf("https://example.com#@evil.example"))
+        assertEquals("example.com", SharedContent.domainOf("https://example.com?next=https://evil.example"))
     }
 
     @Test
