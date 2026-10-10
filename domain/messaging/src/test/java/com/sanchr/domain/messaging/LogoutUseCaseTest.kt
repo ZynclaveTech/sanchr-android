@@ -13,6 +13,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,8 @@ class LogoutUseCaseTest {
     private val stagedIdentityStore = mockk<StagedIdentityStore>(relaxed = true)
     private val databasePassphraseProvider = mockk<DatabasePassphraseProvider>(relaxed = true)
     private val deliveryTokenStore = mockk<DeliveryTokenStore>(relaxed = true)
+    private val sessionRebuildLog = InMemorySessionRebuildLog()
+    private val sessionRebuilds = SessionRebuildThrottle(sessionRebuildLog)
 
     private val dispatchers =
         object : DispatcherProvider {
@@ -51,8 +54,21 @@ class LogoutUseCaseTest {
             stagedIdentityStore = stagedIdentityStore,
             databasePassphraseProvider = databasePassphraseProvider,
             deliveryTokenStore = deliveryTokenStore,
+            sessionRebuilds = sessionRebuilds,
             dispatchers = dispatchers,
         )
+
+    @Test
+    fun `the record of recent session rebuilds does not outlive the account`() =
+        runTest {
+            assertTrue(sessionRebuilds.tryStart("alice", 1))
+
+            useCase()
+
+            assertNull(sessionRebuildLog.lastStarted("alice.1"))
+            // Nor does a rebuild that was under way hold the next account's off.
+            assertTrue(sessionRebuilds.tryStart("alice", 1))
+        }
 
     @Test
     fun `clearSession is called before database close`() =

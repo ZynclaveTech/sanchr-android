@@ -58,6 +58,7 @@ class ReceiveMessageUseCaseTypedEnvelopeTest {
             profileResolver,
             sessionManager,
             PresenceStore(),
+            SessionRebuildThrottle(),
         )
 
     private val bytes = byteArrayOf(10, 20, 30)
