@@ -262,6 +262,20 @@ interface MessageRepository {
     )
 
     /**
+     * Unsent composer text for this chat, or null when there is none.
+     *
+     * Kept in the encrypted database with the messages: a draft is message
+     * content, so it does not belong in plaintext preferences. Deleting the
+     * conversation takes it with it.
+     */
+    suspend fun draftText(conversationId: String): String?
+
+    suspend fun setDraftText(
+        conversationId: String,
+        text: String?,
+    )
+
+    /**
      * Sets this chat's wallpaper, or clears it with null so the chat follows
      * the account-wide choice again.
      */

@@ -31,7 +31,8 @@ import kotlinx.coroutines.test.setMain
  *
  * It lived in view-model state alone, so backing out mid-sentence — or
  * having the process killed behind the photo picker — destroyed it. iOS has
- * saved and restored it all along.
+ * saved and restored it all along, in its own encrypted database, which is
+ * where this keeps it too: a draft is message content.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatDetailViewModelDraftTest {
@@ -55,7 +56,7 @@ class ChatDetailViewModelDraftTest {
         every { messageRepository.observeMessages(any()) } returns flowOf(emptyList())
         every { realtimeManager.typingCache } returns MutableStateFlow(emptyMap())
         coEvery { messageRepository.oneToOneRecipient(any(), any()) } returns "peer"
-        coEvery { userPreferences.draft(conversationId) } returns ""
+        coEvery { messageRepository.draftText(conversationId) } returns null
     }
 
     @AfterTest
@@ -87,7 +88,7 @@ class ChatDetailViewModelDraftTest {
     @Test
     fun `a stored draft is restored into the composer`() =
         runTest(dispatcher) {
-            coEvery { userPreferences.draft(conversationId) } returns "half a sentence"
+            coEvery { messageRepository.draftText(conversationId) } returns "half a sentence"
 
             val viewModel = newViewModel()
             advanceUntilIdle()
@@ -107,8 +108,8 @@ class ChatDetailViewModelDraftTest {
             advanceUntilIdle()
 
             // Debounced: the intermediate keystroke is not a separate write.
-            coVerify(exactly = 0) { userPreferences.setDraft(conversationId, "on my") }
-            coVerify { userPreferences.setDraft(conversationId, "on my way") }
+            coVerify(exactly = 0) { messageRepository.setDraftText(conversationId, "on my") }
+            coVerify { messageRepository.setDraftText(conversationId, "on my way") }
         }
 
     @Test
@@ -122,7 +123,9 @@ class ChatDetailViewModelDraftTest {
             viewModel.sendMessage()
             advanceUntilIdle()
 
-            coVerify { userPreferences.setDraft(conversationId, "") }
+            // Null, not empty: the column holds no draft rather than an
+            // empty one, and deleting the conversation takes it with it.
+            coVerify { messageRepository.setDraftText(conversationId, null) }
             assertEquals("", viewModel.uiState.value.inputText)
         }
 }

@@ -71,6 +71,15 @@ class MessageRepositoryImpl
         override fun observeHiddenConversations(): Flow<List<Conversation>> =
             withNewestMessages(conversationDao.observeHiddenConversations())
 
+        override suspend fun draftText(conversationId: String): String? = conversationDao.draftText(conversationId)
+
+        override suspend fun setDraftText(
+            conversationId: String,
+            text: String?,
+        ) {
+            conversationDao.setDraftText(conversationId, text?.takeIf { it.isNotBlank() })
+        }
+
         override suspend fun setWallpaper(
             conversationId: String,
             wallpaper: String?,

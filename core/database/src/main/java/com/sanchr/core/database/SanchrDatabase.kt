@@ -62,7 +62,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -364,6 +364,20 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * Adds the per-conversation draft.
+     *
+     * In the encrypted database rather than DataStore: a draft is message
+     * content, and message content belongs behind SQLCipher with the rest of
+     * it. Nullable, so every existing chat starts with none.
+     */
+    internal val migration13To14 =
+        object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `conversations` ADD COLUMN `draft_text` TEXT DEFAULT NULL")
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -400,6 +414,7 @@ object DatabaseModule {
                     migration10To11,
                     migration11To12,
                     migration12To13,
+                    migration13To14,
                 ).build()
         }
     }

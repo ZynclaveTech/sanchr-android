@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
@@ -168,6 +169,7 @@ import com.sanchr.feature.chats.location.CurrentLocation
 import com.sanchr.feature.chats.location.LocationPayload
 import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.media.BlurHashImages
+import com.sanchr.feature.chats.media.CapturedPhotos
 import com.sanchr.feature.chats.media.GallerySelection
 import com.sanchr.feature.chats.media.GalleryState
 import com.sanchr.feature.chats.media.MediaBatchReview
@@ -247,6 +249,22 @@ fun ChatDetailScreen(
     val context = LocalContext.current
     val shareLocation = rememberLocationSharer(onShare = viewModel::sendLocation)
     val scope = rememberCoroutineScope()
+    // Taking a photo inside the chat, which iOS has had and Android only
+    // offered from the chat list. TakePicture reports success alone, so the
+    // destination has to be held across the launch.
+    var pendingCapture by remember { mutableStateOf<Uri?>(null) }
+    val takePicture =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            val captured = pendingCapture
+            pendingCapture = null
+            if (saved && captured != null) {
+                scope.launch {
+                    val prepared = withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, captured) }
+                    if (prepared != null) viewModel.sendAttachment(prepared)
+                }
+            }
+        }
+
     val listState = rememberLazyListState()
     val focusedResultId = uiState.search?.currentId
     LaunchedEffect(focusedResultId, uiState.messages.size) {
@@ -356,6 +374,15 @@ fun ChatDetailScreen(
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
+                    onCapturePhoto = {
+                        val uri = CapturedPhotos.newUri(context)
+                        if (uri == null) {
+                            Toast.makeText(context, "Could not open the camera", Toast.LENGTH_SHORT).show()
+                        } else {
+                            pendingCapture = uri
+                            takePicture.launch(uri)
+                        }
+                    },
                     onAttachLocation = shareLocation,
                     onAttachViewOnce = {
                         viewOnceNext = true
@@ -1533,6 +1560,7 @@ private fun MessageInputBar(
     onAttachSticker: () -> Unit,
     onAttachFile: () -> Unit,
     onAttachPhotos: () -> Unit,
+    onCapturePhoto: () -> Unit,
     onAttachLocation: () -> Unit,
     onAttachViewOnce: () -> Unit,
     onAttachContact: () -> Unit,
@@ -1623,6 +1651,14 @@ private fun MessageInputBar(
                     )
                 }
                 DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Camera") },
+                        leadingIcon = { Icon(Icons.Filled.PhotoCamera, contentDescription = null) },
+                        onClick = {
+                            attachMenuOpen = false
+                            onCapturePhoto()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Photos") },
                         leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },

@@ -110,14 +110,15 @@ class ChatDetailViewModel
          * destroy it — a process killed behind the photo picker did the same.
          * iOS has saved and restored this all along.
          *
-         * Debounced rather than written per keystroke: it is a convenience,
-         * not a message, and it is not worth a DataStore write per character.
+         * Stored with the messages, behind SQLCipher — a draft is message
+         * content, so plaintext preferences are the wrong place for it — and
+         * debounced rather than written per keystroke.
          */
         private val draftText = MutableStateFlow("")
 
         private fun restoreDraft() {
             viewModelScope.launch {
-                val saved = runCatching { userPreferences.draft(conversationId) }.getOrDefault("")
+                val saved = runCatching { messageRepository.draftText(conversationId) }.getOrDefault(null).orEmpty()
                 if (saved.isNotEmpty() && _uiState.value.inputText.isEmpty()) {
                     _uiState.update { it.copy(inputText = saved) }
                     draftText.value = saved
@@ -130,7 +131,7 @@ class ChatDetailViewModel
                 draftText
                     .debounce(DRAFT_SAVE_DEBOUNCE_MS)
                     .distinctUntilChanged()
-                    .collect { text -> runCatching { userPreferences.setDraft(conversationId, text) } }
+                    .collect { text -> runCatching { messageRepository.setDraftText(conversationId, text) } }
             }
         }
 
@@ -340,7 +341,7 @@ class ChatDetailViewModel
             val replyToId = takePendingReply()
             _uiState.update { it.copy(inputText = "") }
             draftText.value = ""
-            viewModelScope.launch { runCatching { userPreferences.setDraft(conversationId, "") } }
+            viewModelScope.launch { runCatching { messageRepository.setDraftText(conversationId, null) } }
             dispatchSend(content, contentType = "text", replyToId = replyToId)
         }
 
