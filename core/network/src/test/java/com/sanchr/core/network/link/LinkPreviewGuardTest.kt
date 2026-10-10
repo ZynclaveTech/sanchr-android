@@ -1,5 +1,6 @@
 package com.sanchr.core.network.link
 
+import com.sanchr.core.network.link.LinkPreviewGuard.NoProxyBypassInterceptor
 import com.sanchr.core.network.link.LinkPreviewGuard.PublicOnlyDns
 import com.sanchr.core.network.link.LinkPreviewGuard.PublicPeerInterceptor
 import io.mockk.every
@@ -7,6 +8,11 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.io.IOException
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import java.net.UnknownHostException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,6 +21,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import okhttp3.Dns
 import okhttp3.Interceptor
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.Response
 
 /**
@@ -89,6 +97,46 @@ class LinkPreviewGuardTest {
         every { chain.proceed(any()) } returns response
         assertEquals(response, PublicPeerInterceptor().intercept(chain))
     }
+
+    @Test
+    fun `a preview is refused rather than fetched around a configured proxy`() {
+        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.corp.example", 3128))
+        val chain = chainRequesting("https://example.com/a")
+        assertFailsWith<IOException> { NoProxyBypassInterceptor { selecting(proxy) }.intercept(chain) }
+        verify(exactly = 0) { chain.proceed(any()) }
+    }
+
+    @Test
+    fun `with no proxy configured the fetch goes ahead`() {
+        val chain = chainRequesting("https://example.com/a")
+        val response = mockk<Response>()
+        every { chain.proceed(any()) } returns response
+        assertEquals(response, NoProxyBypassInterceptor { selecting(Proxy.NO_PROXY) }.intercept(chain))
+        assertEquals(response, NoProxyBypassInterceptor { null }.intercept(chain))
+    }
+
+    @Test
+    fun `the guarded client connects directly`() {
+        val client = with(LinkPreviewGuard) { OkHttpClient.Builder().refusePrivateAddresses() }.build()
+        assertEquals(Proxy.NO_PROXY, client.proxy)
+    }
+
+    private fun chainRequesting(url: String): Interceptor.Chain {
+        val chain = mockk<Interceptor.Chain>(relaxed = true)
+        every { chain.request() } returns Request.Builder().url(url).build()
+        return chain
+    }
+
+    private fun selecting(proxy: Proxy): ProxySelector =
+        object : ProxySelector() {
+            override fun select(uri: URI?): List<Proxy> = listOf(proxy)
+
+            override fun connectFailed(
+                uri: URI?,
+                sa: SocketAddress?,
+                ioe: IOException?,
+            ) = Unit
+        }
 
     private fun resolvingTo(vararg literals: String): Dns =
         object : Dns {

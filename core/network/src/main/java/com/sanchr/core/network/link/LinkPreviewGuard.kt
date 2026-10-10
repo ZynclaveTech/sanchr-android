@@ -2,6 +2,8 @@ package com.sanchr.core.network.link
 
 import java.io.IOException
 import java.net.InetAddress
+import java.net.Proxy
+import java.net.ProxySelector
 import java.net.UnknownHostException
 import okhttp3.Dns
 import okhttp3.Interceptor
@@ -17,6 +19,9 @@ import okhttp3.Response
  * answers with a redirect to `http://127.0.0.1/`. Both are decided here, on
  * every hop:
  *
+ *  - The client never uses a proxy, and [NoProxyBypassInterceptor] refuses the
+ *    fetch outright when one is configured, so the two checks below always
+ *    see the real destination and a user's proxy is never bypassed.
  *  - [PublicOnlyDns] refuses a name any of whose addresses is private, before
  *    anything is connected.
  *  - [PublicPeerInterceptor] looks at the address the socket actually reached
@@ -27,7 +32,34 @@ import okhttp3.Response
  */
 object LinkPreviewGuard {
     fun OkHttpClient.Builder.refusePrivateAddresses(): OkHttpClient.Builder =
-        dns(PublicOnlyDns(Dns.SYSTEM)).addNetworkInterceptor(PublicPeerInterceptor())
+        // Direct only: through a proxy the name is resolved by the proxy and
+        // the socket's peer is the proxy, so neither check below would be
+        // looking at the destination.
+        proxy(Proxy.NO_PROXY)
+            .addInterceptor(NoProxyBypassInterceptor { ProxySelector.getDefault() })
+            .dns(PublicOnlyDns(Dns.SYSTEM))
+            .addNetworkInterceptor(PublicPeerInterceptor())
+
+    /**
+     * Refuses the fetch when the device is configured to use a proxy.
+     *
+     * The client connects directly so that the checks are sound, and that
+     * must not become a way around a proxy the user set up: someone who
+     * routes traffic through one would have their own address shown to
+     * whatever site a message linked to. No preview is the honest outcome.
+     */
+    internal class NoProxyBypassInterceptor(
+        private val selector: () -> ProxySelector?,
+    ) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+            val configured = runCatching { selector()?.select(request.url.toUri()) }.getOrNull().orEmpty()
+            if (configured.any { it.type() != Proxy.Type.DIRECT }) {
+                throw IOException("link preview refused: a proxy is configured")
+            }
+            return chain.proceed(request)
+        }
+    }
 
     internal class PublicOnlyDns(
         private val delegate: Dns,
