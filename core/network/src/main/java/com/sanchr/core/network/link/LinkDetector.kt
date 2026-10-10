@@ -89,32 +89,6 @@ object LinkDetector {
     /** Private when the literal cannot be read, so an unparseable address is never fetched. */
     private fun isPrivateAddress(literal: String): Boolean {
         val address = runCatching { InetAddress.getByName(literal) }.getOrNull() ?: return true
-        if (isReservedByJava(address)) return true
-        val bytes = address.address
-        // fc00::/7, IPv6 unique-local — not covered by isSiteLocalAddress,
-        // which only knows the deprecated fec0::/10.
-        if (bytes.size == IPV6_BYTES && bytes[0].toInt() and UNIQUE_LOCAL_MASK == UNIQUE_LOCAL_PREFIX) return true
-        // 100.64.0.0/10, carrier-grade NAT: another machine on the same
-        // provider's network rather than a site on the internet.
-        if (bytes.size == IPV4_BYTES && bytes[0].toInt() and 0xFF == CGNAT_FIRST_OCTET) {
-            val second = bytes[1].toInt() and 0xFF
-            if (second in CGNAT_SECOND_OCTETS) return true
-        }
-        return false
+        return PrivateAddresses.isPrivate(address)
     }
-
-    /** The ranges [InetAddress] already names: loopback, 0.0.0.0, link-local, site-local, multicast. */
-    private fun isReservedByJava(address: InetAddress): Boolean =
-        address.isLoopbackAddress ||
-            address.isAnyLocalAddress ||
-            address.isLinkLocalAddress ||
-            address.isSiteLocalAddress ||
-            address.isMulticastAddress
-
-    private const val IPV4_BYTES = 4
-    private const val IPV6_BYTES = 16
-    private const val UNIQUE_LOCAL_MASK = 0xFE
-    private const val UNIQUE_LOCAL_PREFIX = 0xFC
-    private const val CGNAT_FIRST_OCTET = 100
-    private val CGNAT_SECOND_OCTETS = 64..127
 }

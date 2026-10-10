@@ -3,6 +3,7 @@ package com.sanchr.core.network.link
 import android.content.Context
 import android.util.Log
 import android.util.LruCache
+import com.sanchr.core.network.link.LinkPreviewGuard.refusePrivateAddresses
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.IOException
@@ -53,6 +54,8 @@ class LinkPreviewFetcher internal constructor(
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
+            // The URL is chosen by whoever sent the message.
+            .refusePrivateAddresses()
             .build(),
     )
 
