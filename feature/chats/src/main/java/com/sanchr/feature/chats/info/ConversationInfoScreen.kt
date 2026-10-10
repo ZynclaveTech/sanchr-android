@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -53,6 +54,8 @@ fun ConversationInfoScreen(
     onVerifySafetyNumber: (peerId: String, peerName: String) -> Unit,
     onOpenDisappearing: () -> Unit,
     onOpenWallpaper: () -> Unit,
+    /** The chat's Media / Links / Docs browser, which Android had no entry to. */
+    onOpenSharedContent: () -> Unit,
     onLeft: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ConversationInfoViewModel = hiltViewModel(),
@@ -113,6 +116,12 @@ fun ConversationInfoScreen(
                         subtitle = "Stop notifications for this chat",
                         checked = uiState.isMuted,
                         onCheckedChange = viewModel::setMuted,
+                    )
+                    InfoRow(
+                        icon = Icons.Filled.PhotoLibrary,
+                        title = "Media, links and docs",
+                        subtitle = "Everything shared in this chat",
+                        onClick = onOpenSharedContent,
                     )
                     ToggleRow(
                         icon = Icons.Filled.Photo,
