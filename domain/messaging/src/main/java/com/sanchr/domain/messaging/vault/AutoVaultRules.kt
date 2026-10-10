@@ -27,6 +27,11 @@ object AutoVaultRules {
         if (message.senderId == selfUserId) return emptyList()
         if (message.expiresAt != null) return emptyList()
         val attachments = attachmentsOf(message.content)
+        // Uploaded media only. An attachment may instead carry a plain URL of
+        // the sender's choosing, and vaulting fetches without anyone tapping
+        // anything: that would be a request to wherever a message said, made
+        // the moment it arrived.
+        if (attachments.any { it.mediaId == null }) return emptyList()
         // All or nothing: the message becomes a single marker in the chat,
         // so it cannot be half moved.
         return if (attachments.any { it.isViewOnce == true }) emptyList() else attachments

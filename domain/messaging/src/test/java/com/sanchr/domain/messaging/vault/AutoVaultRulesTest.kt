@@ -71,6 +71,16 @@ class AutoVaultRulesTest {
     }
 
     @Test
+    fun `an attachment that is a plain link is never fetched for the vault`() {
+        // Vaulting downloads with nobody tapping anything; a URL of the
+        // sender's choosing must not be requested the moment it arrives.
+        val link = MediaAttachment(url = "https://example.com/a.jpg", mimeType = "image/jpeg")
+        assertTrue(AutoVaultRules.attachmentsToVault(message(image(link)), "self", on).isEmpty())
+        val mixed = message(MessageContent.Album(listOf(attachment("a.jpg"), link)))
+        assertTrue(AutoVaultRules.attachmentsToVault(mixed, "self", on).isEmpty())
+    }
+
+    @Test
     fun `an album is vaulted whole, each tile under its own cache id`() {
         val album = message(MessageContent.Album(listOf(attachment("a.jpg"), attachment("b.jpg"))))
         assertEquals(listOf("a.jpg", "b.jpg"), AutoVaultRules.attachmentsToVault(album, "self", on).map { it.filename })

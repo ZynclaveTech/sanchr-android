@@ -12,7 +12,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.sanchr.core.common.DispatcherProvider
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.domain.messaging.media.AttachmentException
+import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
 import com.sanchr.domain.messaging.vault.AutoVaultScheduler
 import dagger.Binds
 import dagger.Module
@@ -25,6 +27,7 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -74,10 +77,11 @@ class AutoVaultWorker
             fun enqueue(
                 context: Context,
                 messageId: String,
+                network: NetworkType,
             ) {
                 val request =
                     OneTimeWorkRequestBuilder<AutoVaultWorker>()
-                        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                        .setConstraints(Constraints.Builder().setRequiredNetworkType(network).build())
                         .setInputData(workDataOf(KEY_MESSAGE_ID to messageId))
                         .build()
                 // One job per message, and a redelivered message does not
@@ -92,8 +96,25 @@ class AutoVaultSchedulerImpl
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
+        private val userPreferences: UserPreferences,
     ) : AutoVaultScheduler {
-        override fun schedule(messageId: String) = AutoVaultWorker.enqueue(context, messageId)
+        override suspend fun schedule(messageId: String) {
+            val setting = runCatching { userPreferences.mediaAutoDownload.first() }.getOrDefault(MediaAutoDownloadPolicy.WIFI)
+            AutoVaultWorker.enqueue(context, messageId, networkFor(setting))
+        }
+
+        companion object {
+            /**
+             * Vaulting downloads the media and uploads it again, so it costs
+             * data twice. The chat's switch is what asks for it; the
+             * auto-download setting still decides what kind of connection it
+             * may spend. Only "always" allows mobile data — "never" does not
+             * stop the vaulting the user asked for, but it does make it wait
+             * for Wi-Fi.
+             */
+            fun networkFor(autoDownloadSetting: String): NetworkType =
+                if (autoDownloadSetting == MediaAutoDownloadPolicy.ALWAYS) NetworkType.CONNECTED else NetworkType.UNMETERED
+        }
     }
 
 @Module

@@ -7,6 +7,7 @@ import com.sanchr.core.crypto.profile.ProfileCrypto
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
+import com.sanchr.domain.messaging.media.AttachmentCacheNames
 import dagger.Lazy
 import java.util.UUID
 import javax.inject.Inject
@@ -458,14 +459,21 @@ class ReceiveMessageUseCase
             }
         }
 
-        /** Prefers [payloadValue] when non-blank; falls back to [envelopeValue] and logs at debug otherwise. */
+        /**
+         * Prefers [payloadValue] when it is a well-formed id; falls back to
+         * [envelopeValue] and logs at debug otherwise.
+         *
+         * The payload is the sender's, and its ids become row keys, work
+         * names and cache file names here. One that is not the plain shape an
+         * id has is treated like a missing one rather than carried further.
+         */
         private fun resolveId(
             field: String,
             payloadValue: String?,
             envelopeValue: String,
         ): String =
-            payloadValue?.takeIf { it.isNotBlank() } ?: envelopeValue.also {
-                Log.d(TAG, "payload's $field is blank; falling back to the envelope's '$it'")
+            payloadValue?.takeIf(AttachmentCacheNames::isWellFormedId) ?: envelopeValue.also {
+                Log.d(TAG, "payload's $field is blank or malformed; falling back to the envelope's '$it'")
             }
 
         private suspend fun quarantineAndResult(

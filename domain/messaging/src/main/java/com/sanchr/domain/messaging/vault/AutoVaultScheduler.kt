@@ -9,5 +9,5 @@ package com.sanchr.domain.messaging.vault
  * is within seconds.
  */
 interface AutoVaultScheduler {
-    fun schedule(messageId: String)
+    suspend fun schedule(messageId: String)
 }

@@ -11,7 +11,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -63,7 +62,7 @@ class MessageRepositoryImplAutoVaultTest {
         runTest {
             coEvery { conversationDao.getConversationById("c1") } returns conversation(autoVault = true)
             receive("image")
-            verify(exactly = 1) { scheduler.schedule("m1") }
+            coVerify(exactly = 1) { scheduler.schedule("m1") }
         }
 
     @Test
@@ -71,7 +70,7 @@ class MessageRepositoryImplAutoVaultTest {
         runTest {
             coEvery { conversationDao.getConversationById("c1") } returns conversation(autoVault = false)
             receive("image")
-            verify(exactly = 0) { scheduler.schedule(any()) }
+            coVerify(exactly = 0) { scheduler.schedule(any()) }
         }
 
     @Test
@@ -82,7 +81,7 @@ class MessageRepositoryImplAutoVaultTest {
             receive("image", sender = "self")
             // A redelivery replaces the row; scheduling again would vault the media twice.
             receive("image", alreadyStored = true)
-            verify(exactly = 0) { scheduler.schedule(any()) }
+            coVerify(exactly = 0) { scheduler.schedule(any()) }
         }
 
     @Test

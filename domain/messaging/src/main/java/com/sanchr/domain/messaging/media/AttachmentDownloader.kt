@@ -106,7 +106,8 @@ class AttachmentDownloader
                     .getExtensionFromMimeType(mimeType)
                     ?.let { ".$it" }
                     .orEmpty()
-            return File(File(context.cacheDir, CACHE_DIR), "$messageId$ext")
+            // The id is the sender's string; see [AttachmentCacheNames].
+            return File(File(context.cacheDir, CACHE_DIR), AttachmentCacheNames.fileName(messageId) + ext)
         }
 
         private suspend fun fetch(attachment: MediaAttachment): ByteArray {
