@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.signal.libsignal.protocol.InvalidKeyIdException
+import org.signal.libsignal.protocol.ReusedBaseKeyException
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
 import org.signal.libsignal.protocol.state.KyberPreKeyStore
@@ -30,6 +31,14 @@ class SanchrKyberPreKeyStore
         }
 
         private val cache = ConcurrentHashMap<Int, KyberPreKeyRecord>()
+
+        /**
+         * First messages already accepted against a Kyber pre-key. Beside the
+         * key directory, not in it: every file in there is read as a key.
+         */
+        private val seenBaseKeys: SeenBaseKeys by lazy {
+            SeenBaseKeys(File(context.filesDir, "signal/kyber_base_keys_seen.txt"))
+        }
 
         override fun loadKyberPreKey(kyberPreKeyId: Int): KyberPreKeyRecord {
             cache[kyberPreKeyId]?.let { return it }
@@ -63,14 +72,24 @@ class SanchrKyberPreKeyStore
         override fun containsKyberPreKey(kyberPreKeyId: Int): Boolean =
             cache.containsKey(kyberPreKeyId) || kyberPreKeyFile(kyberPreKeyId).exists()
 
+        /**
+         * Refuses a base key this key has already been used with.
+         *
+         * The Kyber pre-key itself stays until rotation replaces it; what is
+         * spent is the one base key. This did nothing at all, so a first
+         * message sent without a one-time pre-key could be replayed as new
+         * once the session it started was no longer held.
+         */
         override fun markKyberPreKeyUsed(
             kyberPreKeyId: Int,
             signedPreKeyId: Int,
             baseKey: ECPublicKey?,
         ) {
-            // In the one-time model, mark as used by removing it.
-            // If using last-resort keys, keep it.
-            // For now, we keep last-resort Kyber keys (do not remove).
+            // Nothing to tell one message from another by.
+            val key = baseKey?.serialize() ?: return
+            if (!seenBaseKeys.insert(kyberPreKeyId, signedPreKeyId, key)) {
+                throw ReusedBaseKeyException()
+            }
         }
 
         /**
@@ -79,6 +98,7 @@ class SanchrKyberPreKeyStore
         fun wipeAll() {
             cache.clear()
             kyberPreKeyDir.listFiles()?.forEach { it.delete() }
+            seenBaseKeys.clear()
         }
 
         private fun kyberPreKeyFile(kyberPreKeyId: Int): File = File(kyberPreKeyDir, "$kyberPreKeyId.bin")

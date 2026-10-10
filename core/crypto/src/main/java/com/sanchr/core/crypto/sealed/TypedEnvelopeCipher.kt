@@ -7,8 +7,6 @@ import com.sanchr.core.crypto.store.SanchrSessionStore
 import com.sanchr.core.crypto.store.SanchrSignalProtocolStore
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.TimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -202,7 +200,6 @@ class TypedEnvelopeCipher
         ): Boolean {
             val known = withContext(dispatchers.signalDispatcher) { identityStore.isKnownIdentityOf(sender.userId, identity) }
             if (known) return true
-            if (!spendLookup()) return false
             // A stranger, or a contact whose key has changed. Asked more than
             // once because the message cannot be opened a second time: giving
             // up on a dropped connection would lose it for good.
@@ -219,26 +216,6 @@ class TypedEnvelopeCipher
             return false
         }
 
-        /**
-         * Takes one from the window's budget; false when it is spent.
-         *
-         * Each question to the server is triggered by an envelope from
-         * someone not yet identified, so without a ceiling the sender chooses
-         * how many are asked.
-         */
-        private fun spendLookup(): Boolean =
-            synchronized(lookupLock) {
-                if (lookupWindow.elapsedNow() >= LOOKUP_WINDOW) {
-                    lookupWindow = TimeSource.Monotonic.markNow()
-                    lookupsInWindow = 0
-                }
-                (lookupsInWindow < LOOKUP_BUDGET).also { if (it) lookupsInWindow++ }
-            }
-
-        private val lookupLock = Any()
-        private var lookupWindow = TimeSource.Monotonic.markNow()
-        private var lookupsInWindow = 0
-
         private companion object {
             const val TAG = "TypedEnvelopeCipher"
 
@@ -246,8 +223,6 @@ class TypedEnvelopeCipher
             val REHEARSAL_ADDRESS = SignalProtocolAddress("rehearsal", 1)
             const val VOUCH_ATTEMPTS = 3
             const val VOUCH_RETRY_DELAY_MS = 400L
-            const val LOOKUP_BUDGET = 60
-            val LOOKUP_WINDOW = 5.minutes
         }
     }
 

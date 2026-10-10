@@ -32,6 +32,7 @@ import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.InvalidMessageException
+import org.signal.libsignal.protocol.ReusedBaseKeyException
 import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
@@ -569,19 +570,38 @@ class TypedEnvelopeCipherTest {
         }
 
     @Test
-    fun `the server is not asked without limit`() =
+    fun `a burst of forged first messages does not get a genuine stranger refused`() =
         runTest {
-            var asked = 0
-            // Each names a different person, so no answer is remembered.
-            repeat(70) { index ->
-                val stranger = Peer("stranger-$index")
-                stranger.startSession()
-                publishedLookups = 0
-                assertFailsWith<UntrustedIdentityException> { cipher.decryptSealed(stranger.send("hi"), declaredSender, nobody) }
-                asked += publishedLookups
+            // A ceiling on questions to the server, shared by everyone, was a
+            // lever: spend it with forgeries and the next real newcomer is
+            // turned away. Each question is answered on its own merits.
+            repeat(100) { index ->
+                val forger = Peer("forger-$index")
+                forger.startSession()
+                assertFailsWith<UntrustedIdentityException> { cipher.decryptSealed(forger.send("hi"), declaredSender, nobody) }
             }
+            val newcomer = Peer("newcomer")
+            newcomer.startSession()
 
-            assertEquals(60, asked)
+            val opened = cipher.decryptSealed(newcomer.send("hello"), declaredSender, publishing(newcomer))
+
+            assertEquals("newcomer", opened.senderUserId)
+        }
+
+    @Test
+    fun `a replayed first message is refused even after its session is gone`() =
+        runTest {
+            // Once the session a first message started is gone there is
+            // nothing to recognise its replay against except the record of
+            // its base key.
+            val alice = Peer("alice")
+            alice.startSession(withOneTimePreKey = false)
+            val first = alice.send("one")
+            cipher.decryptSealed(first, declaredSender, publishing(alice))
+            store.deleteSession(alice.address)
+
+            assertFailsWith<ReusedBaseKeyException> { cipher.decryptSealed(first, declaredSender, publishing(alice)) }
+            assertFalse(store.containsSession(alice.address))
         }
 
     // ------------------------------------------------------------------
