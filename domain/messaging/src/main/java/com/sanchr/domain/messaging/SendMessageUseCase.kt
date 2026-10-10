@@ -15,6 +15,8 @@ import com.sanchr.core.model.MessageStatus
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.SealedDeviceMessage
 import com.sanchr.proto.messaging.SendSealedMessageRequest
+import com.sanchr.proto.messaging.SendSealedMessageResponse
+import com.sanchr.proto.messaging.StaleDevice
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -150,30 +152,24 @@ class SendMessageUseCase
             guardZeroRecipients(entity, recipients, deviceMessages)
             guardFanOutSize(entity, deviceMessages)
 
-            // Everything up to and including this RPC is the send itself: a
-            // failure here means the server never accepted the message, so
-            // it is safe (and correct) to requeue or terminally fail below.
-            val response =
-                try {
-                    val token = deliveryTokenStore.acquire()
-                    messagingClient.sendSealedMessage(
-                        SendSealedMessageRequest(
-                            deliveryToken = token,
-                            deviceMessages = deviceMessages,
-                        ),
-                    )
-                } catch (error: Exception) {
-                    if (attempts >= MAX_ATTEMPTS) {
-                        messageRepository.markSendFailed(
-                            messageId = entity.id,
-                            failureReason = error.message ?: error::class.java.simpleName,
-                            failureClass = FailureClass.CRYPTO_OTHER,
-                        )
-                    } else {
-                        messageRepository.requeueAfterFailure(entity.id)
+            var response = submitOrRecordFailure(entity, attempts, deviceMessages)
+            if (response.staleDevices.isNotEmpty()) {
+                // The server delivered nothing: a device this was encrypted
+                // for has been set up again and no longer holds the session.
+                // Start over with those devices and send once more. The
+                // encryption is deliberately outside submitOrRecordFailure:
+                // encryptFanOut records its own failures (a changed safety
+                // number is terminal), and that must not be overwritten with
+                // a requeue.
+                dropStaleSessions(response.staleDevices)
+                val reencrypted = encryptFanOut(entity, recipients, selfUserId)
+                guardZeroRecipients(entity, recipients, reencrypted)
+                guardFanOutSize(entity, reencrypted)
+                response =
+                    submitOrRecordFailure(entity, attempts, reencrypted) {
+                        if (it.staleDevices.isNotEmpty()) throw StaleSessionsException(it.staleDevices.size)
                     }
-                    throw error
-                }
+            }
 
             // The RPC above succeeded: the server has accepted and delivered
             // the message. Everything from here on is post-send bookkeeping;
@@ -195,6 +191,86 @@ class SendMessageUseCase
                 status = MessageStatus.SENT,
                 timestamp = Instant.fromEpochMilliseconds(response.serverTimestamp),
             )
+        }
+
+        /**
+         * Hands the encrypted message to the server.
+         *
+         * Everything up to and including this RPC is the send itself: a
+         * failure here means the server never accepted the message, so it is
+         * safe (and correct) to requeue, or to fail the row once its attempts
+         * are spent. [check] runs on the answer inside the same handling, for
+         * an answer that is itself a failure.
+         */
+        private suspend fun submitOrRecordFailure(
+            entity: MessageEntity,
+            attempts: Int,
+            deviceMessages: List<SealedDeviceMessage>,
+            check: (SendSealedMessageResponse) -> Unit = {},
+        ): SendSealedMessageResponse =
+            try {
+                submit(deviceMessages).also(check)
+            } catch (error: Exception) {
+                if (attempts >= MAX_ATTEMPTS) {
+                    messageRepository.markSendFailed(
+                        messageId = entity.id,
+                        failureReason = error.message ?: error::class.java.simpleName,
+                        failureClass = FailureClass.CRYPTO_OTHER,
+                    )
+                } else {
+                    messageRepository.requeueAfterFailure(entity.id)
+                }
+                throw error
+            }
+
+        private suspend fun submit(deviceMessages: List<SealedDeviceMessage>): SendSealedMessageResponse =
+            messagingClient.sendSealedMessage(
+                SendSealedMessageRequest(
+                    deliveryToken = deliveryTokenStore.acquire(),
+                    deviceMessages = deviceMessages,
+                ),
+            )
+
+        /**
+         * Forgets the sessions the server says are out of date, so the next
+         * encryption starts new ones from the devices' current keys.
+         *
+         * Only what the server names, and only because it named them in
+         * answer to a send of ours: it holds the registration each device
+         * published, and is the one party that can know a device was set up
+         * again. If the device came back with a different identity key, the
+         * new session is not made silently — that is the safety-number
+         * change, and it is surfaced as one.
+         */
+        private suspend fun dropStaleSessions(staleDevices: List<StaleDevice>) {
+            for (device in staleDevices) {
+                Log.i(TAG, "session with ${device.recipientId}:${device.deviceId} is out of date (registered=${device.registered})")
+                signalSessionManager.resetSession(device.recipientId, device.deviceId)
+            }
+        }
+
+        /**
+         * Sends something that is not a message a person wrote — a receipt,
+         * presence — and, if the server answers that a session is out of
+         * date, starts over with that device and sends it once more.
+         *
+         * [encrypt] is called again for the second attempt, after the stale
+         * sessions are gone. A second refusal is left there: nothing here is
+         * worth more than one retry, and the next message to that contact
+         * goes through the same repair.
+         */
+        internal suspend fun sendControl(
+            deviceMessages: List<SealedDeviceMessage>,
+            encrypt: suspend () -> List<SealedDeviceMessage>,
+        ) {
+            val staleDevices = submit(deviceMessages).staleDevices
+            if (staleDevices.isEmpty()) return
+            dropStaleSessions(staleDevices)
+            val reencrypted = encrypt()
+            if (reencrypted.isEmpty()) return
+            if (submit(reencrypted).staleDevices.isNotEmpty()) {
+                Log.w(TAG, "control send still refused after starting new sessions")
+            }
         }
 
         /**
@@ -381,6 +457,7 @@ class SendMessageUseCase
                             sealedEnvelope = encrypted.ciphertext,
                             conversationId = conversationId,
                             silent = kind.isSilent,
+                            recipientRegistrationId = encrypted.remoteRegistrationId,
                         )
                     }
             }
@@ -480,6 +557,17 @@ class SendMessageUseCase
 
 /** Server limit from `sealed_handler.rs`: max device messages per `SendSealedMessage` call. */
 private const val MAX_DEVICE_MESSAGES = 100
+
+/**
+ * Thrown by [SendMessageUseCase.attemptSend] when the server refused a send
+ * as encrypted for out-of-date sessions, new sessions were started, and it
+ * refused the second one too. Nothing was delivered. Transient: the row has
+ * been requeued, or failed if its attempts are spent, like any other send the
+ * server did not accept.
+ */
+class StaleSessionsException(
+    val deviceCount: Int,
+) : RuntimeException("The server still reports $deviceCount out-of-date session(s) after starting new ones")
 
 /**
  * Thrown by [SendMessageUseCase.attemptSend] when the fan-out produced no

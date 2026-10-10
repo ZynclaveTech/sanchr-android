@@ -319,6 +319,7 @@ private fun SealedDeviceMessage.toProto(): Messaging.SealedDeviceMessage =
         .setSealedEnvelope(ByteString.copyFrom(sealedEnvelope))
         .setConversationId(conversationId)
         .setSilent(silent)
+        .setRecipientRegistrationId(recipientRegistrationId)
         .build()
 
 private fun SendSealedMessageRequest.toProto(): Messaging.SendSealedMessageRequest =
@@ -331,7 +332,13 @@ private fun SendSealedMessageRequest.toProto(): Messaging.SendSealedMessageReque
 private fun Messaging.SendSealedMessageResponse.toManual(): SendSealedMessageResponse =
     SendSealedMessageResponse(
         serverTimestamp = serverTimestamp,
+        staleDevices =
+            staleDevicesList.map {
+                StaleDevice(recipientId = it.recipientId, deviceId = it.deviceId, registered = it.registered)
+            },
     )
+
+internal fun Messaging.SendSealedMessageResponse.toManualForTest(): SendSealedMessageResponse = toManual()
 
 internal fun SealedDeviceMessage.toProtoForTest(): Messaging.SealedDeviceMessage = toProto()
 

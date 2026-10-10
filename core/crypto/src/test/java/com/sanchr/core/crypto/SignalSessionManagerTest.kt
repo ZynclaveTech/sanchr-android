@@ -314,6 +314,12 @@ class SignalSessionManagerTest {
             assertEquals(2, results.size)
             assertEquals(setOf(1, 2), results.map { it.deviceId }.toSet())
             results.forEach { assertTrue(it.ciphertext.isNotEmpty()) }
+            // Each carries the registration of the device its session is with,
+            // which is what lets the server say when that device has changed.
+            assertEquals(
+                mapOf(1 to bobRegistrationId + 1, 2 to bobRegistrationId + 2),
+                results.associate { it.deviceId to it.remoteRegistrationId },
+            )
         }
 
     @Test

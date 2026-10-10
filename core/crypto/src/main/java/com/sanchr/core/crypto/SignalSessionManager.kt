@@ -154,6 +154,27 @@ class SignalSessionManager
         }
 
         /**
+         * The registration id of the device the session at [address] is with,
+         * or zero if it cannot be read.
+         *
+         * Sent alongside the ciphertext so the server can tell the sender
+         * when that device has been set up again and no longer holds the
+         * session. Zero states nothing and is not checked, so a failure to
+         * read it costs the check, never the send.
+         */
+        private suspend fun remoteRegistrationId(address: SignalProtocolAddress): Int =
+            withContext(dispatchers.signalDispatcher) {
+                try {
+                    store.loadSession(address).remoteRegistrationId.coerceAtLeast(0)
+                } catch (e: Exception) {
+                    // Whatever libsignal makes of a record with no current
+                    // session. Nothing suspends in here to be cancelled.
+                    Log.w(TAG, "no registration id for the session with ${address.name}:${address.deviceId}", e)
+                    0
+                }
+            }
+
+        /**
          * Returns true if an active session exists with the specified device.
          */
         suspend fun hasSession(
@@ -288,6 +309,7 @@ class SignalSessionManager
                             // type 0 signals "not a plain CiphertextMessage".
                             messageType = 0,
                             registrationId = registrationId,
+                            remoteRegistrationId = remoteRegistrationId(address),
                         ),
                     )
                 } catch (t: InvalidKeyException) {
@@ -537,6 +559,8 @@ data class DeviceEncryptedMessage(
     val messageType: Int,
     /** Local registration ID for the sender. */
     val registrationId: Int,
+    /** Registration ID of the device this was encrypted for; zero if unknown. */
+    val remoteRegistrationId: Int = 0,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
