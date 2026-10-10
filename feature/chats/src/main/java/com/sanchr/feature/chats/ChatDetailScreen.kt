@@ -588,20 +588,25 @@ private fun TranscriptList(
                                     Modifier
                                 },
                         ) {
-                            MessageRow(
-                                message = row.message,
-                                viewModel = viewModel,
-                                actions = actions,
-                                // One timestamp per run, as iOS shows it:
-                                // repeating it under every bubble of a burst is
-                                // most of why a busy chat read differently from
-                                // the same chat on an iPhone.
-                                showTimestamp = !row.groupedWithNext,
-                                onOpenViewOnce = onOpenViewOnce,
-                                onOpenMedia = onOpenMedia,
-                                onPreviewDocument = onPreviewDocument,
-                                loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
-                            )
+                            // Drag sideways to reply, as iOS does. Applied
+                            // here so every bubble gets it rather than only the
+                            // text one.
+                            SwipeToReply(onReply = { actions.onReply(row.message) }) {
+                                MessageRow(
+                                    message = row.message,
+                                    viewModel = viewModel,
+                                    actions = actions,
+                                    // One timestamp per run, as iOS shows it:
+                                    // repeating it under every bubble of a burst is
+                                    // most of why a busy chat read differently from
+                                    // the same chat on an iPhone.
+                                    showTimestamp = !row.groupedWithNext,
+                                    onOpenViewOnce = onOpenViewOnce,
+                                    onOpenMedia = onOpenMedia,
+                                    onPreviewDocument = onPreviewDocument,
+                                    loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
+                                )
+                            }
                         }
                 }
             }
