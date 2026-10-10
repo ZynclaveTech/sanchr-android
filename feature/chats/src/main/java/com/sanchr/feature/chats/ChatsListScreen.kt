@@ -116,6 +116,7 @@ fun ChatsListScreen(
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
     val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
     // The camera writes into a file we name up front; TakePicture reports only
     // success, so the URI has to be held across the launch.
     var pendingCapture by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -123,6 +124,7 @@ fun ChatsListScreen(
     val takePicture =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
             captureToSend = if (saved) pendingCapture else null
+            if (!saved) CapturedPhotos.discard(context, pendingCapture)
             pendingCapture = null
         }
 
@@ -130,7 +132,6 @@ fun ChatsListScreen(
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
     val hiddenChats by viewModel.hidden.collectAsStateWithLifecycle()
     var deleting by remember { mutableStateOf<Conversation?>(null) }
-    val context = LocalContext.current
     actionError?.let { error ->
         LaunchedEffect(error) {
             Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
@@ -152,7 +153,12 @@ fun ChatsListScreen(
         val ready = (uiState as? ChatsListUiState.Success)?.conversations.orEmpty()
         CaptureDestinationPicker(
             conversations = ready,
-            onDismiss = { captureToSend = null },
+            // Dismissed without choosing a chat: the photo was taken and not
+            // sent, so it should stop existing rather than sit in the cache.
+            onDismiss = {
+                captureToSend = null
+                CapturedPhotos.discard(context, uri)
+            },
             onPicked = { conversationId ->
                 captureToSend = null
                 viewModel.sendCapturedPhoto(context, uri, conversationId)

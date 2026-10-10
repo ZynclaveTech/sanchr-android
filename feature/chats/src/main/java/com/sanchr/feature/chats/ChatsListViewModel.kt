@@ -13,6 +13,7 @@ import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ObserveConversationsUseCase
 import com.sanchr.domain.messaging.SendAttachmentUseCase
 import com.sanchr.feature.chats.media.AttachmentPreparer
+import com.sanchr.feature.chats.media.CapturedPhotos
 import com.sanchr.sync.SyncState
 import com.sanchr.sync.SyncWorker
 import com.sanchr.sync.realtime.RealtimeManager
@@ -366,6 +367,11 @@ class ChatsListViewModel
                     withContext(Dispatchers.IO) {
                         AttachmentPreparer.prepare(context, uri)
                     }
+                // The capture is the full-resolution original in the clear,
+                // EXIF and all, and it used to stay in the cache for good.
+                // What gets sent is a re-encoded copy, so the original has no
+                // use once preparation is done — success or not.
+                withContext(Dispatchers.IO) { CapturedPhotos.discard(context, uri) }
                 if (prepared == null) {
                     _events.emit(NewChatEvent.Failed("Could not read that photo"))
                     return@launch

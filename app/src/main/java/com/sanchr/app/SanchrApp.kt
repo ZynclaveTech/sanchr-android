@@ -7,6 +7,7 @@ import androidx.work.WorkManager
 import com.sanchr.app.diagnostics.CrashReporter
 import com.sanchr.core.notifications.NewMessageNotifier
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.feature.chats.media.CapturedPhotos
 import com.sanchr.sync.SendRetryWorker
 import com.sanchr.sync.SyncWorker
 import com.sanchr.sync.realtime.RealtimeManager
@@ -51,6 +52,12 @@ class SanchrApp :
         // Before anything else that could throw, so a crash during startup
         // is still covered once the user has opted in.
         crashReporter.start()
+        // Captures left by a crash, or by the process dying between the camera
+        // returning and the send completing, are full-resolution photos in the
+        // clear. `cacheDir` is disposable, but "eventually, under storage
+        // pressure" is not when a photo the user decided not to send should
+        // stop existing.
+        CapturedPhotos.sweep(this)
         notificationHandler.createNotificationChannels()
         realtimeManager.initialize()
         // The notifier runs on the Hilt-provided @ApplicationScope — no ad-hoc

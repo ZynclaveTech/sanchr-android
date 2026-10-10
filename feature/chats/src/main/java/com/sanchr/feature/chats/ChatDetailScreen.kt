@@ -249,22 +249,7 @@ fun ChatDetailScreen(
     val context = LocalContext.current
     val shareLocation = rememberLocationSharer(onShare = viewModel::sendLocation)
     val scope = rememberCoroutineScope()
-    // Taking a photo inside the chat, which iOS has had and Android only
-    // offered from the chat list. TakePicture reports success alone, so the
-    // destination has to be held across the launch.
-    var pendingCapture by remember { mutableStateOf<Uri?>(null) }
-    val takePicture =
-        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-            val captured = pendingCapture
-            pendingCapture = null
-            if (saved && captured != null) {
-                scope.launch {
-                    val prepared = withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, captured) }
-                    if (prepared != null) viewModel.sendAttachment(prepared)
-                }
-            }
-        }
-
+    val capture = rememberChatCameraCapture(onCaptured = viewModel::sendAttachment)
     val listState = rememberLazyListState()
     val focusedResultId = uiState.search?.currentId
     LaunchedEffect(focusedResultId, uiState.messages.size) {
@@ -374,15 +359,7 @@ fun ChatDetailScreen(
                     onSend = viewModel::sendMessage,
                     onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
                     onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
-                    onCapturePhoto = {
-                        val uri = CapturedPhotos.newUri(context)
-                        if (uri == null) {
-                            Toast.makeText(context, "Could not open the camera", Toast.LENGTH_SHORT).show()
-                        } else {
-                            pendingCapture = uri
-                            takePicture.launch(uri)
-                        }
-                    },
+                    onCapturePhoto = capture.launch,
                     onAttachLocation = shareLocation,
                     onAttachViewOnce = {
                         viewOnceNext = true
@@ -1950,6 +1927,55 @@ private fun addToContacts(
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, "No contacts app available", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Taking a photo inside the chat, which iOS has had and Android offered only
+ * from the chat list.
+ *
+ * `TakePicture` reports success alone, so the destination has to be named up
+ * front and held across the launch. Whatever happens, the capture is deleted
+ * once preparation is over: it is the full-resolution original in the clear,
+ * EXIF and all, while what gets sent is a re-encoded copy.
+ */
+private class ChatCameraCapture(
+    val launch: () -> Unit,
+)
+
+@Composable
+private fun rememberChatCameraCapture(onCaptured: (AttachmentUploader.Prepared) -> Unit): ChatCameraCapture {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<Uri?>(null) }
+    val takePicture =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+            val captured = pending
+            pending = null
+            if (captured == null) return@rememberLauncherForActivityResult
+            scope.launch {
+                val prepared =
+                    if (saved) withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, captured) } else null
+                withContext(Dispatchers.IO) { CapturedPhotos.discard(context, captured) }
+                when {
+                    prepared != null -> onCaptured(prepared)
+                    saved -> Toast.makeText(context, "That photo couldn't be read.", Toast.LENGTH_SHORT).show()
+                    else -> Unit
+                }
+            }
+        }
+    return remember(takePicture) {
+        ChatCameraCapture(
+            launch = {
+                val uri = CapturedPhotos.newUri(context)
+                if (uri == null) {
+                    Toast.makeText(context, "Could not open the camera", Toast.LENGTH_SHORT).show()
+                } else {
+                    pending = uri
+                    takePicture.launch(uri)
+                }
+            },
+        )
     }
 }
 
