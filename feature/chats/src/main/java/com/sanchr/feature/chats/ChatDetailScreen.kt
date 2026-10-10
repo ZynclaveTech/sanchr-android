@@ -74,6 +74,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Videocam
@@ -237,6 +238,7 @@ fun ChatDetailScreen(
                 onForward = { forwarding = it },
                 onCopy = { clipboard.setText(AnnotatedString(it.text)) },
                 onDelete = { deleting = it },
+                onRetry = viewModel::retryMessage,
             )
         }
     val noticeContext = LocalContext.current
@@ -1126,6 +1128,8 @@ private class MessageActions(
     val onForward: (MessageUiModel) -> Unit,
     val onCopy: (MessageUiModel) -> Unit,
     val onDelete: (MessageUiModel) -> Unit,
+    /** Tries a failed send again; iOS has had this in the same menu throughout. */
+    val onRetry: (MessageUiModel) -> Unit,
 )
 
 @Composable
@@ -1156,6 +1160,16 @@ private fun ReactionPicker(
                 text = { Text("Copy") },
                 leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
                 onClick = { run(actions.onCopy) },
+            )
+        }
+        if (message.status == MessageStatus.FAILED) {
+            // A send that exhausted its attempts left an error glyph and
+            // nothing to tap: the text was visible, unsent, and unrecoverable
+            // except by retyping it.
+            DropdownMenuItem(
+                text = { Text("Try again") },
+                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                onClick = { run(actions.onRetry) },
             )
         }
         DropdownMenuItem(

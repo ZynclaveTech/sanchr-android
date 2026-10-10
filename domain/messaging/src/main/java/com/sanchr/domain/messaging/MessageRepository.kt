@@ -75,6 +75,15 @@ interface MessageRepository {
     ): Int
 
     /**
+     * The stored row for [messageId], or null when there is none.
+     *
+     * Needed to retry a failed send: the attempt runs from the row, and
+     * nothing could read one back, so a message that failed could not be
+     * resent at all.
+     */
+    suspend fun outboundMessage(messageId: String): MessageEntity?
+
+    /**
      * On successful send, replaces the local client-generated id with the
      * server-assigned id, flips status to SENT, and adopts the server
      * timestamp — all in one UPDATE so observers see a single row

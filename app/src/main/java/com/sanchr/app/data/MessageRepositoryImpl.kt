@@ -202,6 +202,8 @@ class MessageRepositoryImpl
             return entity
         }
 
+        override suspend fun outboundMessage(messageId: String): MessageEntity? = messageDao.getMessageById(messageId)
+
         override suspend fun recordSendAttempt(
             messageId: String,
             newStatus: String,

@@ -43,7 +43,6 @@ import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -477,6 +476,24 @@ class ChatDetailViewModel
         }
 
         /**
+         * Tries a failed message again.
+         *
+         * A send that exhausted its attempts left a FAILED row with an error
+         * glyph and nothing to tap: the text was visible, unsent, and
+         * unrecoverable except by retyping it. The retry runs from the stored
+         * row so the message keeps its id, which the receiver treats as an
+         * idempotent replace rather than a second message.
+         */
+        fun retryMessage(message: MessageUiModel) {
+            viewModelScope.launch {
+                val result = sendMessageUseCase.retry(message.id)
+                if (result is Result.Error) {
+                    _uiState.update { it.copy(error = result.exception.message ?: "Still couldn't send that") }
+                }
+            }
+        }
+
+        /**
          * Re-reads whether the peer's key changed without review. Sends fail
          * closed while it has, so the banner has to reflect the store rather
          * than a cached flag that a review elsewhere would leave stale.
@@ -670,50 +687,26 @@ class ChatDetailViewModel
         }
 
         // ------------------------------------------------------------------
-        // In-chat search (iOS `scheduleSearch`: debounced, newest first, wraps around)
+        // In-chat search — the transitions live in [TranscriptSearch]
         // ------------------------------------------------------------------
 
-        private var searchJob: Job? = null
+        private val search =
+            TranscriptSearch(
+                state = _uiState,
+                scope = viewModelScope,
+                debounceMillis = SEARCH_DEBOUNCE_MS,
+                findMatches = { query -> messageRepository.searchMessages(conversationId, query) },
+            )
 
-        fun openSearch() {
-            _uiState.update { it.copy(search = it.search ?: ChatSearchState()) }
-        }
+        fun openSearch() = search.open()
 
-        fun closeSearch() {
-            searchJob?.cancel()
-            _uiState.update { it.copy(search = null) }
-        }
+        fun closeSearch() = search.close()
 
-        fun onSearchQueryChanged(query: String) {
-            _uiState.update { it.copy(search = (it.search ?: ChatSearchState()).copy(query = query)) }
-            searchJob?.cancel()
-            if (query.isBlank()) {
-                _uiState.update { it.copy(search = it.search?.copy(resultIds = emptyList(), currentIndex = 0)) }
-                return
-            }
-            searchJob =
-                viewModelScope.launch {
-                    delay(SEARCH_DEBOUNCE_MS)
-                    val ids = runCatching { messageRepository.searchMessages(conversationId, query) }.getOrDefault(emptyList())
-                    _uiState.update { state ->
-                        val search = state.search ?: return@update state
-                        if (search.query != query) state else state.copy(search = search.copy(resultIds = ids, currentIndex = 0))
-                    }
-                }
-        }
+        fun onSearchQueryChanged(query: String) = search.onQueryChanged(query)
 
-        fun nextSearchResult() = stepSearch(+1)
+        fun nextSearchResult() = search.next()
 
-        fun previousSearchResult() = stepSearch(-1)
-
-        private fun stepSearch(delta: Int) {
-            _uiState.update { state ->
-                val search = state.search ?: return@update state
-                if (search.resultIds.isEmpty()) return@update state
-                val size = search.resultIds.size
-                state.copy(search = search.copy(currentIndex = ((search.currentIndex + delta) % size + size) % size))
-            }
-        }
+        fun previousSearchResult() = search.previous()
 
         fun dismissNotice() {
             _uiState.update { it.copy(notice = null) }
