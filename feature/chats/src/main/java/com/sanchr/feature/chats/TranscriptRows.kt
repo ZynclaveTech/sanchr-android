@@ -23,6 +23,17 @@ sealed interface TranscriptRow {
         override val key: String,
     ) : TranscriptRow
 
+    /**
+     * "Unread messages", above the first message the user has not seen.
+     *
+     * iOS draws one from `firstUnreadMessageId`; Android had nothing, so
+     * returning to a chat with forty new messages gave no indication of where
+     * to start reading.
+     */
+    data object Unread : TranscriptRow {
+        override val key: String get() = "unread-divider"
+    }
+
     data class Msg(
         val message: MessageUiModel,
     ) : TranscriptRow {
@@ -30,16 +41,36 @@ sealed interface TranscriptRow {
     }
 }
 
-/** Rows newest-first, which is the order a `reverseLayout` list wants. */
+/**
+ * Rows newest-first, which is the order a `reverseLayout` list wants.
+ *
+ * @param unreadCount how many of the newest inbound messages the user has not
+ *   read; the divider goes above the first of them. Zero draws none.
+ */
 fun transcriptRows(
     messages: List<MessageUiModel>,
     now: Long = System.currentTimeMillis(),
     locale: Locale = Locale.getDefault(),
+    unreadCount: Int = 0,
 ): List<TranscriptRow> {
     if (messages.isEmpty()) return emptyList()
     val rows = ArrayList<TranscriptRow>(messages.size + EXPECTED_DAYS)
     var lastDay: Int? = null
     var lastYear: Int? = null
+    // The id of the first unread message: the oldest of the newest
+    // `unreadCount` inbound ones. Counted over inbound messages only, because
+    // our own messages are never unread.
+    val firstUnreadId =
+        if (unreadCount <= 0) {
+            null
+        } else {
+            messages
+                .sortedBy { it.timestamp }
+                .filterNot { it.isFromMe }
+                .takeLast(unreadCount)
+                .firstOrNull()
+                ?.id
+        }
     // Oldest first while grouping, then reversed in one pass: a reverseLayout
     // list draws index 0 at the bottom, so a separator has to sit *after* the
     // day it labels to appear above it.
@@ -56,6 +87,7 @@ fun transcriptRows(
             lastDay = day
             lastYear = year
         }
+        if (message.id == firstUnreadId) rows += TranscriptRow.Unread
         rows += TranscriptRow.Msg(message)
     }
     return rows.asReversed()

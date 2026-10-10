@@ -88,6 +88,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -96,6 +97,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -106,6 +108,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -151,6 +154,7 @@ import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
 import com.sanchr.core.designsystem.theme.SanchrGray400
+import com.sanchr.core.designsystem.theme.SanchrGray500
 import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
@@ -481,7 +485,14 @@ private fun TranscriptList(
     // inside `items`, allocating a copy of the whole transcript on every
     // recomposition of the busiest screen in the app. Day separators come from
     // the same pass.
-    val rows = remember(uiState.messages) { transcriptRows(uiState.messages) }
+    // The unread count is read once, when the window first arrives: the chat
+    // marks itself read on open, so reading it live would erase the divider
+    // from under the user as they look at it.
+    val unreadOnEntry = remember(uiState.conversation?.id) { uiState.conversation?.unreadCount ?: 0 }
+    val rows =
+        remember(uiState.messages, unreadOnEntry) {
+            transcriptRows(uiState.messages, unreadCount = unreadOnEntry)
+        }
 
     // Older messages, as the user reaches the end of what is loaded.
     //
@@ -502,56 +513,102 @@ private fun TranscriptList(
             }
     }
 
-    LazyColumn(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                // Null means the chat keeps the ordinary theme background, so
-                // an unknown stored name degrades to plain rather than to some
-                // arbitrary colour.
-                .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
-                .padding(horizontal = IosSpacing.screenHorizontal),
-        state = listState,
-        reverseLayout = true,
-        verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
-    ) {
-        if (uiState.isLoadingMore) {
-            // After the items, which is above them in a reverseLayout list.
-            item(key = "loading-older") {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.md),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+    val scope = rememberCoroutineScope()
+    // Scrolled away from the newest message. Index 0 is the bottom of a
+    // reverseLayout list, so anything past the first few rows means the user
+    // has scrolled back.
+    val showJumpToLatest by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > JUMP_VISIBLE_AFTER_ROWS }
+    }
+
+    Box(modifier = modifier) {
+        if (rows.isEmpty() && !uiState.isLoading) {
+            // iOS says this. Android drew an empty rectangle, which reads as a
+            // chat that failed to load rather than one with nothing in it yet.
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(text = "No messages yet", style = IosType.bodyBold, color = SanchrGray500)
+                Spacer(modifier = Modifier.height(SanchrTheme.spacing.xs))
+                Text(
+                    text = "Send a message to start the conversation.",
+                    style = IosType.caption,
+                    color = SanchrGray400,
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    // Null means the chat keeps the ordinary theme background,
+                    // so an unknown stored name degrades to plain rather than
+                    // to some arbitrary colour.
+                    .then(if (wallpaper != null) Modifier.background(wallpaper) else Modifier)
+                    .padding(horizontal = IosSpacing.screenHorizontal),
+            state = listState,
+            reverseLayout = true,
+            verticalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.xs),
+        ) {
+            if (uiState.isLoadingMore) {
+                // After the items, which is above them in a reverseLayout list.
+                item(key = "loading-older") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(SanchrTheme.spacing.md),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    }
+                }
+            }
+            items(
+                items = rows,
+                key = { it.key },
+                contentType = { it is TranscriptRow.Day },
+            ) { row ->
+                when (row) {
+                    is TranscriptRow.Day -> DaySeparator(row.label)
+                    is TranscriptRow.Unread -> UnreadDivider()
+                    is TranscriptRow.Msg ->
+                        Box(
+                            modifier =
+                                if (row.message.id == focusedResultId) {
+                                    Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
+                                } else {
+                                    Modifier
+                                },
+                        ) {
+                            MessageRow(
+                                message = row.message,
+                                viewModel = viewModel,
+                                actions = actions,
+                                onOpenViewOnce = onOpenViewOnce,
+                                onOpenMedia = onOpenMedia,
+                                onPreviewDocument = onPreviewDocument,
+                                loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
+                            )
+                        }
                 }
             }
         }
-        items(
-            items = rows,
-            key = { it.key },
-            contentType = { it is TranscriptRow.Day },
-        ) { row ->
-            when (row) {
-                is TranscriptRow.Day -> DaySeparator(row.label)
-                is TranscriptRow.Msg ->
-                    Box(
-                        modifier =
-                            if (row.message.id == focusedResultId) {
-                                Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
-                            } else {
-                                Modifier
-                            },
-                    ) {
-                        MessageRow(
-                            message = row.message,
-                            viewModel = viewModel,
-                            actions = actions,
-                            onOpenViewOnce = onOpenViewOnce,
-                            onOpenMedia = onOpenMedia,
-                            onPreviewDocument = onPreviewDocument,
-                            loadLinkPreview = if (uiState.linkPreviewsEnabled) viewModel::linkPreview else null,
-                        )
-                    }
+
+        // Back to the newest message, as iOS's chevron does. Scrolling back
+        // through a long chat left no way to return except scrolling all the
+        // way down again.
+        if (showJumpToLatest) {
+            SmallFloatingActionButton(
+                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(SanchrTheme.spacing.default),
+            ) {
+                Icon(imageVector = Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to the newest message")
             }
         }
     }
@@ -759,6 +816,32 @@ private fun ComposerSheets(
     }
     if (stickerOpen) {
         StickerPickerSheet(onDismiss = onStickerDismiss, onSelect = onStickerSelect)
+    }
+}
+
+/**
+ * "Unread messages", above the first message the user has not seen.
+ *
+ * iOS draws one from `firstUnreadMessageId`; Android had nothing, so returning
+ * to a chat with forty new messages gave no indication of where to start.
+ */
+@Composable
+private fun UnreadDivider() {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = SanchrTheme.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = SanchrIndigo500.copy(alpha = 0.4f))
+        Text(
+            text = "Unread messages",
+            style = IosType.captionSmall,
+            color = SanchrIndigo500,
+            modifier = Modifier.padding(horizontal = SanchrTheme.spacing.sm),
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = SanchrIndigo500.copy(alpha = 0.4f))
     }
 }
 
@@ -2527,3 +2610,6 @@ private const val BANNER_TINT = 0.12f
 
 /** How close to the oldest loaded row triggers the next page. */
 private const val LOAD_MORE_THRESHOLD = 5
+
+/** Rows scrolled past before the jump-to-latest control appears. */
+private const val JUMP_VISIBLE_AFTER_ROWS = 3

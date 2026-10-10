@@ -111,4 +111,83 @@ class TranscriptRowsTest {
         // Elapsed time would call this "Today"; the separator is about dates.
         assertEquals("Yesterday", dayLabel(at(2026, 10, 9, hour = 23), at(2026, 10, 10, hour = 0), locale))
     }
+
+    @Test
+    fun `the unread divider sits above the first message the user has not read`() {
+        val rows =
+            transcriptRows(
+                listOf(
+                    message("read-1", at(2026, 10, 10, hour = 9)),
+                    message("unread-1", at(2026, 10, 10, hour = 10)),
+                    message("unread-2", at(2026, 10, 10, hour = 11)),
+                ),
+                now = now,
+                locale = locale,
+                unreadCount = 2,
+            )
+
+        // Bottom-to-top list order: the divider follows the two unread
+        // messages, so it renders above them.
+        assertEquals(
+            listOf("unread-2", "unread-1", "unread-divider", "read-1", "Today"),
+            rows.map {
+                when (it) {
+                    is TranscriptRow.Day -> it.label
+                    is TranscriptRow.Unread -> it.key
+                    is TranscriptRow.Msg -> it.message.id
+                }
+            },
+        )
+    }
+
+    @Test
+    fun `no unread messages means no divider`() {
+        val rows = transcriptRows(listOf(message("a", at(2026, 10, 10))), now = now, locale = locale, unreadCount = 0)
+
+        assertTrue(rows.none { it is TranscriptRow.Unread })
+    }
+
+    @Test
+    fun `our own messages are never counted as unread`() {
+        val mine =
+            MessageUiModel(
+                id = "mine",
+                text = "mine",
+                timestamp = at(2026, 10, 10, hour = 12),
+                isFromMe = true,
+                status = MessageStatus.DELIVERED,
+                contentType = "text",
+            )
+        val rows =
+            transcriptRows(
+                listOf(message("theirs", at(2026, 10, 10, hour = 11)), mine),
+                now = now,
+                locale = locale,
+                unreadCount = 1,
+            )
+
+        val ids =
+            rows.map {
+                when (it) {
+                    is TranscriptRow.Day -> it.label
+                    is TranscriptRow.Unread -> it.key
+                    is TranscriptRow.Msg -> it.message.id
+                }
+            }
+        // The divider belongs above "theirs", not above our own last message.
+        assertEquals(listOf("mine", "theirs", "unread-divider", "Today"), ids)
+    }
+
+    @Test
+    fun `an unread count larger than the window still places one divider`() {
+        val rows =
+            transcriptRows(
+                listOf(message("a", at(2026, 10, 10, hour = 9)), message("b", at(2026, 10, 10, hour = 10))),
+                now = now,
+                locale = locale,
+                unreadCount = 99,
+            )
+
+        assertEquals(1, rows.count { it is TranscriptRow.Unread })
+    }
 }
