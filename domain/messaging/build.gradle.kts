@@ -41,6 +41,9 @@ dependencies {
     // The proto module's own protobuf-lite runtime dep is `implementation`,
     // so it does not leak here transitively; core/network needs the same
     // two lines for the same reason (see its build.gradle.kts).
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
+    implementation(libs.media3.common)
     implementation(libs.grpc.protobuf.lite)
     implementation(libs.protobuf.kotlin.lite)
 

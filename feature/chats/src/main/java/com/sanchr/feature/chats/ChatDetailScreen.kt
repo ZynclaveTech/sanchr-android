@@ -211,6 +211,7 @@ fun ChatDetailScreen(
     var viewOnceNext by remember { mutableStateOf(false) }
     val pickAttachment =
         rememberAttachmentPicker(
+            prepare = viewModel::prepareAttachment,
             onPicked = { prepared ->
                 val once = viewOnceNext
                 viewOnceNext = false
@@ -257,7 +258,11 @@ fun ChatDetailScreen(
     val context = LocalContext.current
     val shareLocation = rememberLocationSharer(onShare = viewModel::sendLocation)
     val scope = rememberCoroutineScope()
-    val capture = rememberChatCameraCapture(onCaptured = viewModel::sendAttachment)
+    val capture =
+        rememberChatCameraCapture(
+            prepare = viewModel::prepareAttachment,
+            onCaptured = viewModel::sendAttachment,
+        )
     val listState = rememberLazyListState()
     val focusedResultId = uiState.search?.currentId
     LaunchedEffect(focusedResultId, uiState.messages.size) {
@@ -2087,7 +2092,10 @@ private class ChatCameraCapture(
 )
 
 @Composable
-private fun rememberChatCameraCapture(onCaptured: (AttachmentUploader.Prepared) -> Unit): ChatCameraCapture {
+private fun rememberChatCameraCapture(
+    prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
+    onCaptured: (AttachmentUploader.Prepared) -> Unit,
+): ChatCameraCapture {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<Uri?>(null) }
@@ -2098,7 +2106,7 @@ private fun rememberChatCameraCapture(onCaptured: (AttachmentUploader.Prepared) 
             if (captured == null) return@rememberLauncherForActivityResult
             scope.launch {
                 val prepared =
-                    if (saved) withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, captured) } else null
+                    if (saved) prepare(captured) else null
                 withContext(Dispatchers.IO) { CapturedPhotos.discard(context, captured) }
                 when {
                     prepared != null -> onCaptured(prepared)
@@ -2124,7 +2132,10 @@ private fun rememberChatCameraCapture(onCaptured: (AttachmentUploader.Prepared) 
 
 /** The system document picker; reads the file off the main thread and measures images. */
 @Composable
-private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> Unit): ManagedActivityResultLauncher<Array<String>, Uri?> {
+private fun rememberAttachmentPicker(
+    prepare: suspend (Uri) -> AttachmentUploader.Prepared?,
+    onPicked: (AttachmentUploader.Prepared) -> Unit,
+): ManagedActivityResultLauncher<Array<String>, Uri?> {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -2140,7 +2151,7 @@ private fun rememberAttachmentPicker(onPicked: (AttachmentUploader.Prepared) -> 
                 Toast.makeText(context, "That file is too large to send (100 MB maximum).", Toast.LENGTH_LONG).show()
                 return@launch
             }
-            val prepared = withContext(Dispatchers.IO) { AttachmentPreparer.prepare(context, uri) }
+            val prepared = prepare(uri)
             if (prepared != null) {
                 onPicked(prepared)
             } else {

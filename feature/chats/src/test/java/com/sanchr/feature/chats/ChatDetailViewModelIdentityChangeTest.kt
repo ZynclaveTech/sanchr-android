@@ -58,6 +58,7 @@ class ChatDetailViewModelIdentityChangeTest {
             sendAttachmentUseCase = mockk(relaxed = true),
             sendAlbumUseCase = mockk(relaxed = true),
             attachmentDownloader = mockk(relaxed = true),
+            videoCompressor = mockk(relaxed = true),
             sendReadReceiptUseCase = mockk(relaxed = true),
             toggleReactionUseCase = mockk(relaxed = true),
             consumeViewOnceUseCase = mockk(relaxed = true),

@@ -43,10 +43,18 @@ object AttachmentPreparer {
                 ?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null }
         }.getOrNull()
 
-    /** The file at [uri], or null when it cannot be read or is too large to send. */
+    /**
+     * The file at [uri], or null when it cannot be read or is too large to
+     * send.
+     *
+     * @param readFrom where the bytes actually come from, when a step before
+     *   this one produced a replacement — a re-encoded video. The name, type
+     *   and reported size still come from [uri], which is what the user picked.
+     */
     fun prepare(
         context: Context,
         uri: Uri,
+        readFrom: Uri = uri,
     ): AttachmentUploader.Prepared? {
         val resolver = context.contentResolver
         val reported = reportedSize(context, uri)
@@ -58,13 +66,13 @@ object AttachmentPreparer {
         // iOS has always sent them.
         val reencoded =
             if (ImageSendEncoder.handles(sourceMime)) {
-                runCatching { ImageSendEncoder.encode(resolver, uri) }.getOrNull()
+                runCatching { ImageSendEncoder.encode(resolver, readFrom) }.getOrNull()
             } else {
                 null
             }
         val bytes =
             reencoded?.bytes
-                ?: runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                ?: runCatching { resolver.openInputStream(readFrom)?.use { it.readBytes() } }.getOrNull()
                 ?: return null
         val mime = reencoded?.mimeType ?: sourceMime
         val name =

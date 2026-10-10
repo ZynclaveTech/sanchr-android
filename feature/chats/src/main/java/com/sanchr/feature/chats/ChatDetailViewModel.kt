@@ -1,6 +1,7 @@
 package com.sanchr.feature.chats
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -34,7 +35,9 @@ import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.domain.messaging.media.GallerySaver
 import com.sanchr.domain.messaging.media.MediaAutoDownloadPolicy
 import com.sanchr.domain.messaging.media.MediaAutoSavePolicy
+import com.sanchr.domain.messaging.media.VideoCompressor
 import com.sanchr.feature.chats.location.LocationPayload
+import com.sanchr.feature.chats.media.AttachmentPreparer
 import com.sanchr.feature.chats.stickers.StickerRenderer
 import com.sanchr.sync.realtime.RealtimeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -70,6 +73,7 @@ class ChatDetailViewModel
         private val sendAttachmentUseCase: SendAttachmentUseCase,
         private val sendAlbumUseCase: SendAlbumUseCase,
         private val attachmentDownloader: AttachmentDownloader,
+        private val videoCompressor: VideoCompressor,
         private val sendReadReceiptUseCase: SendReadReceiptUseCase,
         private val toggleReactionUseCase: ToggleReactionUseCase,
         private val consumeViewOnceUseCase: ConsumeViewOnceUseCase,
@@ -502,6 +506,39 @@ class ChatDetailViewModel
                 }
             }
         }
+
+        /**
+         * Reads a picked file into the shape the uploader wants, re-encoding a
+         * video first.
+         *
+         * Here rather than at each picker, because the Low Data Mode switch
+         * lives in preferences and the compression has to happen *before* the
+         * bytes are read: the send path holds the whole file in memory, so
+         * re-encoding afterwards would mean reading the original in first —
+         * which is the cost this avoids.
+         */
+        suspend fun prepareAttachment(uri: Uri): AttachmentUploader.Prepared? =
+            withContext(Dispatchers.IO) {
+                val mimeType = runCatching { appContext.contentResolver.getType(uri) }.getOrNull().orEmpty()
+                if (!mimeType.startsWith("video/")) {
+                    return@withContext AttachmentPreparer.prepare(appContext, uri)
+                }
+                val sourceBytes = AttachmentPreparer.reportedSize(appContext, uri) ?: 0L
+                val lowData = runCatching { userPreferences.lowDataMode.first() }.getOrDefault(false)
+                val compressed =
+                    runCatching { videoCompressor.compressedForSending(uri, sourceBytes, lowData) }.getOrNull()
+                try {
+                    AttachmentPreparer.prepare(
+                        context = appContext,
+                        uri = uri,
+                        readFrom = compressed?.let(Uri::fromFile) ?: uri,
+                    )
+                } finally {
+                    // The re-encoded copy has served its purpose once the bytes
+                    // are in hand, and it is a plaintext video in the cache.
+                    compressed?.delete()
+                }
+            }
 
         /**
          * Tries a failed message again.
