@@ -1,5 +1,6 @@
 package com.sanchr.core.crypto
 
+import android.os.SystemClock
 import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
@@ -11,6 +12,8 @@ import com.sanchr.proto.messaging.EncryptedEnvelope
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.InvalidKeyException
@@ -52,6 +55,9 @@ class SignalSessionManager
     ) {
         private companion object {
             const val TAG = "SignalSessionManager"
+            const val PUBLISHED_IDENTITY_TTL_MS = 5 * 60 * 1000L
+            const val PUBLISHED_IDENTITY_ENTRIES = 128
+            const val LOAD_FACTOR = 0.75f
         }
         // ------------------------------------------------------------------
         // Sealed-sender (delegates to SealedSenderCipher — see that class for
@@ -84,7 +90,39 @@ class SignalSessionManager
         suspend fun publishedIdentityKey(
             userId: String,
             deviceId: Int,
-        ): IdentityKey? = keyManager.fetchPreKeyBundle(userId, deviceId).identityKey
+        ): IdentityKey? {
+            val key = "$userId.$deviceId"
+            val now = SystemClock.elapsedRealtime()
+            publishedIdentityLock.withLock {
+                publishedIdentities[key]?.takeIf { now - it.askedAt < PUBLISHED_IDENTITY_TTL_MS }?.let { return it.identity }
+            }
+            val identity = keyManager.fetchPreKeyBundle(userId, deviceId).identityKey
+            publishedIdentityLock.withLock {
+                publishedIdentities[key] = PublishedIdentity(identity, now)
+            }
+            return identity
+        }
+
+        /**
+         * Recent answers, kept briefly.
+         *
+         * The question is triggered by an envelope from someone not yet
+         * identified, and each answer costs the named user a one-time pre-key.
+         * Unremembered, a flood of first messages all claiming to be the same
+         * person would have this device drain that person's pre-keys on the
+         * sender's behalf. Bounded in size as well as in time.
+         */
+        private val publishedIdentities =
+            object : LinkedHashMap<String, PublishedIdentity>(PUBLISHED_IDENTITY_ENTRIES, LOAD_FACTOR, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PublishedIdentity>?): Boolean =
+                    size > PUBLISHED_IDENTITY_ENTRIES
+            }
+        private val publishedIdentityLock = Mutex()
+
+        private class PublishedIdentity(
+            val identity: IdentityKey,
+            val askedAt: Long,
+        )
 
         // ------------------------------------------------------------------
         // Session Establishment

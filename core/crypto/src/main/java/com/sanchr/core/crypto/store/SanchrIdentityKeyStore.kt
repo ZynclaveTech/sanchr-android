@@ -342,7 +342,13 @@ class SanchrIdentityKeyStore
             identityKey: IdentityKey,
         ): Boolean {
             val wanted = identityKey.serialize()
-            return identityDao.getForUserBlocking(userId.likePrefix()).any { it.identityKey.contentEquals(wanted) }
+            // A key adopted on receive after a change sits in the same column
+            // as one that was vouched for, and is marked only by the pending
+            // flag beside it. Counting it would let a changed key vouch for
+            // itself the second time it was seen.
+            return identityDao
+                .getForUserBlocking(userId.likePrefix())
+                .any { it.pendingIdentityKey == null && it.identityKey.contentEquals(wanted) }
         }
 
         /** Removes every identity whose address name starts with [namePrefix]. */

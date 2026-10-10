@@ -383,6 +383,26 @@ class TypedEnvelopeCipherTest {
         }
 
     @Test
+    fun `a changed key that is still awaiting review does not vouch for itself`() =
+        runTest {
+            val before = Peer("alice")
+            befriend(before)
+            val after = Peer("alice")
+            after.startSession()
+            // Adopted on receive, flagged for review.
+            cipher.decryptSealed(after.send("new phone"), declaredSender, publishing(after))
+            assertTrue(identityStore.hasPendingIdentityChange("alice"))
+            publishedLookups = 0
+
+            // Seen again: it is on record, but only as a pending change, so
+            // the server is asked again rather than the record being trusted.
+            after.startSession()
+            cipher.decryptSealed(after.send("again"), declaredSender, publishing(after))
+
+            assertEquals(1, publishedLookups)
+        }
+
+    @Test
     fun `when the server cannot be asked, the claim is not believed`() =
         runTest {
             val alice = Peer("alice")
