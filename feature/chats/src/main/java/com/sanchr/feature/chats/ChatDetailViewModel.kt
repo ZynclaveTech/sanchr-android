@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -86,6 +87,7 @@ class ChatDetailViewModel
             const val TAG = "ChatDetailViewModel"
             const val PRESENCE_REFRESH_MS = 15_000L
             const val SEARCH_DEBOUNCE_MS = 300L
+            const val DRAFT_SAVE_DEBOUNCE_MS = 400L
         }
 
         private val conversationId: String = checkNotNull(savedStateHandle["conversationId"])
@@ -103,7 +105,38 @@ class ChatDetailViewModel
         /** The loaded transcript as domain rows, keyed by id, for actions that need more than the UI model. */
         private var domainMessages: Map<String, Message> = emptyMap()
 
+        /**
+         * The composer's text, saved so leaving a chat mid-sentence does not
+         * destroy it — a process killed behind the photo picker did the same.
+         * iOS has saved and restored this all along.
+         *
+         * Debounced rather than written per keystroke: it is a convenience,
+         * not a message, and it is not worth a DataStore write per character.
+         */
+        private val draftText = MutableStateFlow("")
+
+        private fun restoreDraft() {
+            viewModelScope.launch {
+                val saved = runCatching { userPreferences.draft(conversationId) }.getOrDefault("")
+                if (saved.isNotEmpty() && _uiState.value.inputText.isEmpty()) {
+                    _uiState.update { it.copy(inputText = saved) }
+                    draftText.value = saved
+                }
+            }
+        }
+
+        private fun persistDraft() {
+            viewModelScope.launch {
+                draftText
+                    .debounce(DRAFT_SAVE_DEBOUNCE_MS)
+                    .distinctUntilChanged()
+                    .collect { text -> runCatching { userPreferences.setDraft(conversationId, text) } }
+            }
+        }
+
         init {
+            restoreDraft()
+            persistDraft()
             observeConversation()
             observeMessages()
             observeForwardTargets()
@@ -291,6 +324,7 @@ class ChatDetailViewModel
 
         fun onInputTextChanged(text: String) {
             _uiState.update { it.copy(inputText = text) }
+            draftText.value = text
             viewModelScope.launch {
                 // Read per keystroke rather than cached: the toggle is in
                 // Settings, and a chat left open must stop broadcasting the
@@ -305,6 +339,8 @@ class ChatDetailViewModel
             if (content.isBlank()) return
             val replyToId = takePendingReply()
             _uiState.update { it.copy(inputText = "") }
+            draftText.value = ""
+            viewModelScope.launch { runCatching { userPreferences.setDraft(conversationId, "") } }
             dispatchSend(content, contentType = "text", replyToId = replyToId)
         }
 

@@ -10,6 +10,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.userPreferencesDataStore by preferencesDataStore(name = "user_preferences")
@@ -127,6 +128,34 @@ class UserPreferences
         }
 
         private fun mediaVisibilityKey(conversationId: String) = booleanPreferencesKey("sanchr.chatMediaVisibility.$conversationId")
+
+        /**
+         * Unsent composer text for one conversation.
+         *
+         * Android kept it in view-model state alone, so leaving a chat
+         * mid-sentence — or having the process killed behind a photo picker —
+         * destroyed what had been typed. iOS has saved and restored it all
+         * along.
+         *
+         * Per device, not per account: a draft is by definition something the
+         * user has not sent, so it never travels.
+         */
+        suspend fun draft(conversationId: String): String =
+            dataStore.data
+                .map { it[draftKey(conversationId)] }
+                .first()
+                .orEmpty()
+
+        suspend fun setDraft(
+            conversationId: String,
+            text: String,
+        ) {
+            dataStore.edit {
+                if (text.isBlank()) it.remove(draftKey(conversationId)) else it[draftKey(conversationId)] = text
+            }
+        }
+
+        private fun draftKey(conversationId: String) = stringPreferencesKey("sanchr.draft.$conversationId")
 
         /** The chosen bubble shape; "modern" is iOS's default too. */
         val chatBubbleStyle: Flow<String> = dataStore.data.map { it[Keys.CHAT_BUBBLE_STYLE] ?: "modern" }
