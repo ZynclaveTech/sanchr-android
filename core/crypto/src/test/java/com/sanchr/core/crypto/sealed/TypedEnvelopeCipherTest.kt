@@ -604,6 +604,28 @@ class TypedEnvelopeCipherTest {
             assertFalse(store.containsSession(alice.address))
         }
 
+    @Test
+    fun `a replay refused by its base key leaves the current session untouched`() =
+        runTest {
+            // Refused before anything is stored: the contact's current
+            // session and key stay exactly as they were.
+            val alice = Peer("alice")
+            alice.startSession(withOneTimePreKey = false)
+            val first = alice.send("one")
+            cipher.decryptSealed(first, declaredSender, publishing(alice))
+            // That session is lost, and she starts another, which is now current.
+            store.deleteSession(alice.address)
+            alice.startSession()
+            cipher.decryptSealed(alice.send("a new start"), declaredSender, nobody)
+            val current = store.loadSession(alice.address).serialize()
+
+            assertFailsWith<ReusedBaseKeyException> { cipher.decryptSealed(first, declaredSender, nobody) }
+
+            assertContentEquals(current, store.loadSession(alice.address).serialize())
+            assertEquals(alice.identity.publicKey, store.getIdentity(alice.address))
+            assertFalse(identityStore.hasPendingIdentityChange("alice"))
+        }
+
     // ------------------------------------------------------------------
     // With a sender the server named
     // ------------------------------------------------------------------

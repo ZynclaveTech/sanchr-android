@@ -87,7 +87,7 @@ class SanchrKyberPreKeyStore
         ) {
             // Nothing to tell one message from another by.
             val key = baseKey?.serialize() ?: return
-            if (!seenBaseKeys.insert(kyberPreKeyId, signedPreKeyId, key)) {
+            if (!seenBaseKeys.insert(kyberPreKeyId, signedPreKeyId, key, ::containsKyberPreKey)) {
                 throw ReusedBaseKeyException()
             }
         }
