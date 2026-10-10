@@ -4,7 +4,10 @@ import android.util.Log
 import com.sanchr.core.common.DispatcherProvider
 import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.profile.ProfileCrypto
+import com.sanchr.core.crypto.sealed.DeclaredSender
 import com.sanchr.core.crypto.sealed.SealedSenderCipher
+import com.sanchr.core.crypto.sealed.TypedEnvelope
+import com.sanchr.core.crypto.sealed.TypedEnvelopeCipher
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.domain.messaging.media.AttachmentCacheNames
@@ -94,6 +97,7 @@ class ReceiveMessageUseCase
     @Inject
     constructor(
         private val sealedSenderCipher: SealedSenderCipher,
+        private val typedEnvelopeCipher: TypedEnvelopeCipher,
         private val signalSessionManager: SignalSessionManager,
         private val quarantineUseCase: QuarantineEnvelopeUseCase,
         private val messageRepository: Lazy<MessageRepository>,
@@ -204,7 +208,20 @@ class ReceiveMessageUseCase
         ): EnvelopeDecryptResult.Success =
             when (kind) {
                 EnvelopeKind.SEALED -> {
-                    val decrypted = sealedSenderCipher.sealedDecrypt(envelopeBytes, serverTimestamp)
+                    // Two senders, two envelopes: this app's sealed-sender
+                    // one, and the typed Signal message iOS sends. Until both
+                    // were read here the two apps could not decrypt each
+                    // other at all. The first byte tells them apart.
+                    val decrypted =
+                        if (TypedEnvelope.isTyped(envelopeBytes)) {
+                            typedEnvelopeCipher.decryptSealed(
+                                envelope = envelopeBytes,
+                                declaredSender = ::declaredSenderOf,
+                                publishedIdentity = signalSessionManager::publishedIdentityKey,
+                            )
+                        } else {
+                            sealedSenderCipher.sealedDecrypt(envelopeBytes, serverTimestamp)
+                        }
                     EnvelopeDecryptResult.Success(
                         senderUserId = decrypted.senderUserId,
                         senderDeviceId = decrypted.senderDeviceId,
@@ -218,11 +235,15 @@ class ReceiveMessageUseCase
                             "non-sealed envelopes require a server-provided sender hint"
                         }
                     val plaintext =
-                        signalSessionManager.decrypt(
-                            ciphertext = envelopeBytes,
-                            senderId = sender.senderUserId,
-                            senderDevice = sender.senderDeviceId,
-                        )
+                        if (TypedEnvelope.isTyped(envelopeBytes)) {
+                            typedEnvelopeCipher.decryptFrom(envelopeBytes, sender.senderUserId, sender.senderDeviceId)
+                        } else {
+                            signalSessionManager.decrypt(
+                                ciphertext = envelopeBytes,
+                                senderId = sender.senderUserId,
+                                senderDevice = sender.senderDeviceId,
+                            )
+                        }
                     EnvelopeDecryptResult.Success(
                         senderUserId = sender.senderUserId,
                         senderDeviceId = sender.senderDeviceId,
@@ -231,6 +252,14 @@ class ReceiveMessageUseCase
                     )
                 }
             }
+
+        /** The sender a decrypted payload names, when it names one in full. */
+        private fun declaredSenderOf(plaintext: ByteArray): DeclaredSender? {
+            val payload = InnerPayload.decode(plaintext) ?: return null
+            val userId = payload.senderUserId?.takeIf { it.isNotBlank() } ?: return null
+            val deviceId = payload.senderDeviceId?.takeIf { it > 0 } ?: return null
+            return DeclaredSender(userId, deviceId)
+        }
 
         /**
          * Routes a successfully decrypted plaintext via [SealedEnvelopeRouter]

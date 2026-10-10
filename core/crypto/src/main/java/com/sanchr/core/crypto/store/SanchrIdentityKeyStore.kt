@@ -331,6 +331,26 @@ class SanchrIdentityKeyStore
             return IdentityKey(existing.identityKey, 0)
         }
 
+        /**
+         * Whether [identityKey] is the key already on record for any of
+         * [userId]'s devices — a key this device accepted earlier, from a
+         * bundle the server vouched for or a message that was itself checked.
+         * A key that is only *pending review* does not count.
+         */
+        fun isKnownIdentityOf(
+            userId: String,
+            identityKey: IdentityKey,
+        ): Boolean {
+            val wanted = identityKey.serialize()
+            return identityDao.getForUserBlocking(userId.likePrefix()).any { it.identityKey.contentEquals(wanted) }
+        }
+
+        /** Removes every identity whose address name starts with [namePrefix]. */
+        fun forgetNamesStartingWith(namePrefix: String) {
+            val escaped = namePrefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            identityDao.deleteByPrefixBlocking("$escaped%")
+        }
+
         /** Wipes all identity material. Called on account deletion. */
         fun wipeAll() {
             // No ensureHydrated(): we're about to null out staging and wipe

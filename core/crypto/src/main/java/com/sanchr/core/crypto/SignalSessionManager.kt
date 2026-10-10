@@ -12,6 +12,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
+import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.InvalidKeyException
 import org.signal.libsignal.protocol.NoSessionException
 import org.signal.libsignal.protocol.SessionBuilder
@@ -69,6 +70,21 @@ class SignalSessionManager
             envelope: ByteArray,
             timestamp: Long,
         ): SealedSenderCipher.DecryptedEnvelope = sealedSenderCipher.sealedDecrypt(envelope, timestamp)
+
+        /**
+         * The identity key the server publishes for a user's device, or null
+         * when it publishes none.
+         *
+         * Used to check a sender's claim about who they are when nothing else
+         * vouches for it. There is no lighter question to ask the server than
+         * for a whole pre-key bundle, so this spends one of the peer's
+         * one-time pre-keys; it is asked only for a sender whose key is not
+         * already on record.
+         */
+        suspend fun publishedIdentityKey(
+            userId: String,
+            deviceId: Int,
+        ): IdentityKey? = keyManager.fetchPreKeyBundle(userId, deviceId).identityKey
 
         // ------------------------------------------------------------------
         // Session Establishment

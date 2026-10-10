@@ -46,6 +46,9 @@ interface SignalIdentityDao {
         pendingKey: ByteArray?,
     )
 
+    @Query("DELETE FROM signal_identities WHERE address LIKE :prefix ESCAPE '\\'")
+    fun deleteByPrefixBlocking(prefix: String)
+
     /** Every address for [userId] across their devices, to answer per-contact questions. */
     @Query("SELECT * FROM signal_identities WHERE address LIKE :userIdPrefix ESCAPE '\\'")
     fun getForUserBlocking(userIdPrefix: String): List<SignalIdentityEntity>

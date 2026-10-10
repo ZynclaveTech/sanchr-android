@@ -65,6 +65,16 @@ class SanchrSessionStore
             sessionDao.deleteByPrefixBlocking("$name.%")
         }
 
+        /** Every address a session is held for. */
+        fun allAddresses(): List<SignalProtocolAddress> =
+            sessionDao.listAddressesBlocking("%").mapNotNull { runCatching { it.parseSignalAddress() }.getOrNull() }
+
+        /** Removes every session whose address name starts with [namePrefix], which must hold no LIKE wildcard. */
+        fun forgetNamesStartingWith(namePrefix: String) {
+            require('%' !in namePrefix && '_' !in namePrefix) { "prefix must not contain LIKE wildcards" }
+            sessionDao.deleteByPrefixBlocking("$namePrefix%")
+        }
+
         /** Wipes all session data. Called on account deletion. */
         fun wipeAll() {
             sessionDao.deleteAllBlocking()
