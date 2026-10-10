@@ -181,4 +181,15 @@ class SealedEnvelopeRouterTest {
             (SealedEnvelopeRouter.route(blank.encode(), fallbackContentType = "text") as RoutedPayload.UserMessage).replyToMessageId,
         )
     }
+
+    @Test
+    fun a_payload_cannot_be_stored_as_one_of_the_apps_own_notices() {
+        // `system` rows are written locally only; off the wire it is text.
+        assertEquals("text", SealedEnvelopeRouter.storableContentType("system"))
+        assertEquals("image", SealedEnvelopeRouter.storableContentType("image"))
+        assertEquals("text", SealedEnvelopeRouter.storableContentType("text"))
+
+        val legacy = SealedEnvelopeRouter.route("Your safety number changed".toByteArray(), fallbackContentType = "system")
+        assertEquals("text", (legacy as RoutedPayload.UserMessage).contentType)
+    }
 }

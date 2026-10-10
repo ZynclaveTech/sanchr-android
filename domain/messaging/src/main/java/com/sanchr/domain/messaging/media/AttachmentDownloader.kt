@@ -5,6 +5,7 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import com.sanchr.core.crypto.MediaEncryptor
 import com.sanchr.core.model.MediaAttachment
+import com.sanchr.core.network.link.LinkDetector
 import com.sanchr.core.network.media.BlobStore
 import com.sanchr.core.network.media.BlobStoreException
 import com.sanchr.proto.media.GetDownloadUrlRequest
@@ -111,14 +112,7 @@ class AttachmentDownloader
         }
 
         private suspend fun fetch(attachment: MediaAttachment): ByteArray {
-            val url =
-                attachment.mediaId?.let { mediaId ->
-                    try {
-                        mediaClient.getDownloadUrl(GetDownloadUrlRequest(mediaId)).url
-                    } catch (e: Exception) {
-                        throw AttachmentException("no download URL for media $mediaId", e)
-                    }
-                } ?: attachment.url
+            val url = downloadUrl(attachment)
             return try {
                 blobStore.get(url)
             } catch (e: BlobStoreException) {
@@ -127,9 +121,37 @@ class AttachmentDownloader
             }
         }
 
-        private companion object {
-            const val TAG = "AttachmentDownloader"
-            const val CACHE_DIR = "attachments"
-            val GONE_STATUSES = setOf(403, 404, 410)
+        /** Where the bytes are: a signed URL for uploaded media, or the link the message carries. */
+        private suspend fun downloadUrl(attachment: MediaAttachment): String {
+            val mediaId = attachment.mediaId
+            if (mediaId != null) {
+                return try {
+                    mediaClient.getDownloadUrl(GetDownloadUrlRequest(mediaId)).url
+                } catch (e: Exception) {
+                    throw AttachmentException("no download URL for media $mediaId", e)
+                }
+            }
+            // Not uploaded media but a URL the sender wrote, and this can run
+            // on auto-download with nobody tapping anything.
+            if (!isFetchableLink(attachment.url)) throw AttachmentException("attachment link is not one this device will fetch")
+            return attachment.url
+        }
+
+        companion object {
+            /**
+             * Whether a plain-URL attachment may be requested: an `https`
+             * address of a site on the internet, by the same reading of the
+             * host that link previews use. Not the device, not its network,
+             * and not over a connection anyone on the path can rewrite.
+             */
+            fun isFetchableLink(url: String): Boolean {
+                if (!url.startsWith("https://", ignoreCase = true)) return false
+                val host = LinkDetector.hostOf(url) ?: return false
+                return host.contains('.') && !LinkDetector.isPrivateHost(host)
+            }
+
+            private const val TAG = "AttachmentDownloader"
+            private const val CACHE_DIR = "attachments"
+            private val GONE_STATUSES = setOf(403, 404, 410)
         }
     }
