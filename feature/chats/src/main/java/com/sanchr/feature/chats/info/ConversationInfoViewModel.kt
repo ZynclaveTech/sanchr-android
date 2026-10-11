@@ -9,12 +9,16 @@ import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.ClearChatUseCase
+import com.sanchr.domain.messaging.ExportChatUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
@@ -70,6 +74,7 @@ class ConversationInfoViewModel
         savedStateHandle: SavedStateHandle,
         private val contactRepository: ContactRepository,
         private val clearChat: ClearChatUseCase,
+        private val exportChat: ExportChatUseCase,
     ) : ViewModel() {
         private val conversationId: String = savedStateHandle["conversationId"] ?: ""
 
@@ -153,6 +158,18 @@ class ConversationInfoViewModel
          */
         fun clearMessages() = action { clearChat(conversationId) }
 
+        private val _exported = MutableSharedFlow<File>()
+
+        /** A finished export, for the screen to hand to the share sheet. */
+        val exported = _exported.asSharedFlow()
+
+        /** Writes this chat's text to a file and offers it; says so when there is nothing to export. */
+        fun exportMessages() =
+            action {
+                val file = exportChat(conversationId, _uiState.value.title)
+                if (file == null) _uiState.update { it.copy(error = NOTHING_TO_EXPORT) } else _exported.emit(file)
+            }
+
         private var blockedLoadedFor: String? = null
 
         /** Asked once per peer, when the conversation first says who that is. */
@@ -194,3 +211,5 @@ class ConversationInfoViewModel
 
 /** How the conversation mapper names the local user among a chat's participants. */
 private const val SELF_DISPLAY_NAME = "You"
+
+internal const val NOTHING_TO_EXPORT = "There are no messages to export."
