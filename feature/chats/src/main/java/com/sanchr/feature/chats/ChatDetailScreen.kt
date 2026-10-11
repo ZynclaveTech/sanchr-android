@@ -129,6 +129,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -161,6 +163,7 @@ import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import com.sanchr.core.designsystem.theme.SanchrIndigo900
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
+import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
@@ -172,6 +175,7 @@ import com.sanchr.core.model.MediaAttachment
 import com.sanchr.core.network.link.LinkDetector
 import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
+import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.feature.chats.emoji.EmojiPickerSheet
 import com.sanchr.feature.chats.location.CurrentLocation
@@ -301,6 +305,8 @@ fun ChatDetailScreen(
             } else {
                 ChatDetailTopBar(
                     title = uiState.conversation?.title ?: "Chat",
+                    avatarUrl = uiState.conversation?.avatarUrl,
+                    isOnline = uiState.peerPresence == PresenceStore.ONLINE_LINE,
                     statusText = if (uiState.peerTyping) "Typing..." else uiState.peerPresence,
                     onNavigateBack = onNavigateBack,
                     canCall = uiState.directPeerId != null,
@@ -1067,11 +1073,65 @@ private fun MessageActionHost(
     }
 }
 
+/**
+ * Who the chat is with, at the top of it.
+ *
+ * This drew the first letter of their name and nothing else: the chat list
+ * showed their photo and whether they were online, and opening the chat
+ * took both away. iOS shows both here.
+ */
+@Composable
+private fun HeaderAvatar(
+    title: String,
+    avatarUrl: String?,
+    isOnline: Boolean,
+) {
+    val ringColour = MaterialTheme.colorScheme.surface
+    Box(modifier = Modifier.size(IosSpacing.chatHeaderAvatarSize)) {
+        Box(
+            modifier = Modifier.fillMaxSize().clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            // The initial stays underneath: it is what shows while the photo
+            // loads, and if it never does.
+            Text(
+                text = title.take(1).uppercase(),
+                style = IosType.bodyBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            if (avatarUrl != null) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        if (isOnline) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(HEADER_ONLINE_DOT)
+                        .align(Alignment.BottomEnd)
+                        .clip(CircleShape)
+                        .background(ringColour)
+                        .padding(2.dp)
+                        .clip(CircleShape)
+                        .background(SanchrSuccess)
+                        .semantics { contentDescription = "Online" },
+            )
+        }
+    }
+}
+
 // --- Top app bar ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatDetailTopBar(
     title: String,
+    avatarUrl: String?,
+    isOnline: Boolean,
     statusText: String?,
     onNavigateBack: () -> Unit,
     canCall: Boolean,
@@ -1093,22 +1153,7 @@ private fun ChatDetailTopBar(
         },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Avatar 36dp circle
-                Surface(
-                    modifier =
-                        Modifier
-                            .size(IosSpacing.chatHeaderAvatarSize)
-                            .clip(CircleShape),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = title.take(1).uppercase(),
-                            style = IosType.bodyBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                    }
-                }
+                HeaderAvatar(title = title, avatarUrl = avatarUrl, isOnline = isOnline)
 
                 Spacer(modifier = Modifier.width(SanchrTheme.spacing.md))
 
@@ -1683,6 +1728,7 @@ private fun AlbumMessageBubble(
 }
 
 private const val ALBUM_MAX_TILES = 4
+private val HEADER_ONLINE_DOT = 12.dp
 private val QUOTE_ABOVE_MEDIA_MAX_WIDTH = 260.dp
 private const val ALBUM_COLUMNS = 2
 
