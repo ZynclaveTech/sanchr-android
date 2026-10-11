@@ -190,6 +190,7 @@ class ChatDetailViewModel
         }
 
         override fun onCleared() {
+            notificationHandler.setConversationVisible(conversationId, visible = false)
             typing.stop()
             presencePeer?.let(realtimeManager::untrackPresencePeer)
             super.onCleared()
@@ -265,6 +266,7 @@ class ChatDetailViewModel
         /** Called by the screen as it comes to the front and as it leaves it; see [InboundReadTracker]. */
         fun onScreenVisibilityChanged(visible: Boolean) {
             inboundRead.onVisibilityChanged(visible)
+            notificationHandler.setConversationVisible(conversationId, visible)
             if (!visible) typing.stop()
         }
 

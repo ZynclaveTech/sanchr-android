@@ -122,6 +122,34 @@ class NotificationHandler
             if (!sound) setSound(null, null)
         }
 
+        /**
+         * The chat that is on screen, in front, right now — or null.
+         *
+         * A message for it is not announced: its reader is looking at it.
+         * Every message used to be, so a conversation in full flow had a
+         * heads-up banner drop over the top of it for each reply, and left a
+         * notification behind in the shade for a message already read.
+         */
+        @Volatile
+        var visibleConversationId: String? = null
+            private set
+
+        /**
+         * Called by the chat screen as it comes to the front and as it leaves.
+         * Leaving clears only its own mark: a second chat can be in front
+         * before the first has finished going away.
+         */
+        fun setConversationVisible(
+            conversationId: String,
+            visible: Boolean,
+        ) {
+            if (visible) {
+                visibleConversationId = conversationId
+            } else if (visibleConversationId == conversationId) {
+                visibleConversationId = null
+            }
+        }
+
         // -----------------------------------------------------------------------
         // Message notifications
         // -----------------------------------------------------------------------

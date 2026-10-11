@@ -110,11 +110,13 @@ class NewMessageNotifier
                                 val chatCache = mutableMapOf<String, ChatAlertState>()
                                 var maxTimestamp = 0L
                                 batch.forEach { entity ->
-                                    // A message that is not announced — its chat is muted, or
-                                    // its kind is switched off — is still marked as seen by the
+                                    // A message that is not announced — its chat is open in
+                                    // front of the user, or muted, or its kind is switched
+                                    // off — is still marked as seen by the
                                     // notifier, so it never surfaces later when that changes.
                                     val chat = chatCache.getOrPut(entity.conversationId) { chatAlertState(entity.conversationId) }
-                                    val announce = !chat.muted && MessageAlertPolicy.shouldNotify(alerts, chat.isGroup)
+                                    val beingRead = entity.conversationId == notificationHandler.visibleConversationId
+                                    val announce = !beingRead && !chat.muted && MessageAlertPolicy.shouldNotify(alerts, chat.isGroup)
                                     if (renderedIds.put(entity.id, true) == null && announce) {
                                         val senderName =
                                             nameCache.getOrPut(entity.senderId) {
