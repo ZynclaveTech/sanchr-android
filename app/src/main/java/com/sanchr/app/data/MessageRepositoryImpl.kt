@@ -557,6 +557,7 @@ class MessageRepositoryImpl
                 disappearingMessageDuration = disappearingDurationMs,
                 wallpaper = wallpaper,
                 vaultPolicy = vaultPolicy(),
+                draftText = draftText,
                 updatedAt = Instant.fromEpochMilliseconds(updatedAt),
                 createdAt = Instant.fromEpochMilliseconds(createdAt),
             )

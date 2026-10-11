@@ -41,6 +41,23 @@ class ChatsListPreviewTest {
         createdAt = Instant.fromEpochMilliseconds(1),
     )
 
+    /** A half-written message was invisible in the list until its chat was reopened. */
+    @Test
+    fun `a chat with unsent text shows it as a draft`() {
+        val chat = conversation(MessageContent.Text("earlier")).copy(draftText = "  on my way, 5 min  ")
+
+        assertEquals("on my way, 5 min", chat.draftPreview())
+    }
+
+    @Test
+    fun `no draft, or one that is only spaces, shows nothing`() {
+        val chat = conversation(MessageContent.Text("earlier"))
+
+        assertNull(chat.draftPreview())
+        assertNull(chat.copy(draftText = "").draftPreview())
+        assertNull(chat.copy(draftText = "   \n ").draftPreview())
+    }
+
     @Test
     fun `preview wording matches iOS per content type`() {
         assertEquals("No messages yet", conversation(null).previewText())
