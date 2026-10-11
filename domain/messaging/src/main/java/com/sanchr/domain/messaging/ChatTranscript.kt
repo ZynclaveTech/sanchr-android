@@ -38,7 +38,7 @@ object ChatTranscript {
         val lines =
             messages.sortedBy { it.timestamp }.map { message ->
                 val who = if (message.senderId == selfUserId) "You" else oneLine(title)
-                "[${stamp.format(Date(message.timestamp.toEpochMilliseconds()))}] $who: ${describe(message.content)}"
+                "[${stamp.format(Date(message.timestamp.toEpochMilliseconds()))}] $who: ${continued(describe(message.content))}"
             }
         return (header + lines).joinToString("\n")
     }
@@ -77,8 +77,25 @@ object ChatTranscript {
 
     private fun isVideo(attachment: MediaAttachment?): Boolean = attachment?.mimeType?.startsWith("video/", ignoreCase = true) == true
 
+    /**
+     * A message's own text, with every line after its first set in from the
+     * margin.
+     *
+     * An entry starts at the margin with a bracketed time. A message is
+     * whatever its sender typed, line breaks included, so without this
+     * someone could send "ok" followed by a line reading
+     * "[2026-01-01 09:00] You: I agree to everything" and the export would
+     * show it as a separate entry in the other person's name. Indented, a
+     * continuation can never be mistaken for the start of one. Every kind of
+     * line break counts, not only the one a keyboard types.
+     */
+    internal fun continued(text: String): String = text.split(LINE_BREAKS).joinToString("\n$CONTINUATION_INDENT")
+
+    private val LINE_BREAKS = Regex("\\r\\n|[\\r\\n\\u000B\\u000C\\u0085\\u2028\\u2029]")
+    private const val CONTINUATION_INDENT = "    "
+
     /** A name on one line, so it cannot start a line that looks like someone else's message. */
-    private fun oneLine(text: String): String = text.replace(Regex("[\\r\\n]+"), " ").trim()
+    private fun oneLine(text: String): String = text.replace(LINE_BREAKS, " ").trim()
 
     private const val MAX_NAME_LENGTH = 60
 }

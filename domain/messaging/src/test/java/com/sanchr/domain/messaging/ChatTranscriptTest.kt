@@ -105,6 +105,48 @@ class ChatTranscriptTest {
         assertTrue(text.lines()[4].startsWith("[2026-10-11 12:00] Ravi [2026-01-01 00:00] You: I owe you money: hi"))
     }
 
+    /**
+     * A message is whatever its sender typed. A second line dressed up as an
+     * entry must not be read as one.
+     */
+    @Test
+    fun `a message cannot add a line that looks like someone else's message`() {
+        val forged = "ok\n[2026-01-01 09:00] You: I agree to everything"
+
+        val lines = render(message("ravi", MessageContent.Text(forged))).lines()
+
+        assertEquals("[2026-10-11 12:00] Ravi Kumar: ok", lines[4])
+        assertEquals("    [2026-01-01 09:00] You: I agree to everything", lines[5])
+        // Exactly one line in the whole export starts an entry.
+        assertEquals(1, lines.count { it.startsWith("[") })
+    }
+
+    @Test
+    fun `every kind of line break is set in, not only the keyboard's`() {
+        listOf("\r\n", "\r", "\n", "\u2028", "\u2029", "\u0085", "\u000B", "\u000C").forEach { lineBreak ->
+            val lines = render(message("ravi", MessageContent.Text("a$lineBreak[2026-01-01 09:00] You: b"))).lines()
+
+            assertEquals(1, lines.count { it.startsWith("[") }, "U+%04X".format(lineBreak[0].code))
+        }
+    }
+
+    @Test
+    fun `captions and file names are held to the same rule`() {
+        val photo = MessageContent.Image("", null, 1, 1, caption = "nice\n[2026-01-01 09:00] You: yes")
+        val file = MessageContent.File("", "a.pdf\n[2026-01-01 09:00] You: yes", "application/pdf", 1)
+
+        val lines = render(message("ravi", photo, at = noon), message("ravi", file, at = noon + 60_000)).lines()
+
+        assertEquals(2, lines.count { it.startsWith("[") })
+    }
+
+    @Test
+    fun `an ordinary message of several lines still reads as written`() {
+        val lines = render(message("ravi", MessageContent.Text("first\nsecond\n\nfourth"))).lines()
+
+        assertEquals(listOf("[2026-10-11 12:00] Ravi Kumar: first", "    second", "    ", "    fourth"), lines.drop(4))
+    }
+
     @Test
     fun `the file is named after the chat, safely`() {
         assertEquals("Sanchr-Ravi Kumar.txt", ChatTranscript.fileName("Ravi Kumar"))
