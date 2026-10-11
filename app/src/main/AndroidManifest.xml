@@ -104,6 +104,22 @@
             </intent-filter>
         </service>
 
+        <!--
+            The call screen. Its own activity so it can be shown over the lock
+            screen without anything else in the app coming with it: see
+            CallActivity. Not exported; only this app's own notifications and
+            MainActivity start it.
+        -->
+        <activity
+            android:name=".call.CallActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity="${applicationId}.call"
+            android:theme="@style/Theme.Sanchr" />
+
         <!-- Call Foreground Service -->
         <service
             android:name="com.sanchr.core.callengine.CallService"

@@ -32,8 +32,11 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkManager
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
 import com.sanchr.app.bootstrap.StartDestination
+import com.sanchr.app.call.CallActivity
 import com.sanchr.app.lock.AppLockGate
 import com.sanchr.app.navigation.PendingDestination
+import com.sanchr.core.callengine.CallManager
+import com.sanchr.core.callengine.CallState
 import com.sanchr.core.common.lock.AppLockPolicy
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
@@ -55,6 +58,8 @@ import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
+    @Inject lateinit var callManager: CallManager
+
     @Inject
     lateinit var notificationHandler: NotificationHandler
 
@@ -98,6 +103,7 @@ class MainActivity : FragmentActivity() {
         consumeShareIntent(intent)
         bootstrapSignalKeysWhenAuthenticated()
         observeScreenshotProtectionPreference()
+        openCallScreenWhenACallComesIn()
 
         setContent {
             val themeMode by userPreferences.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
@@ -239,6 +245,7 @@ class MainActivity : FragmentActivity() {
      * already set — so when the global toggle is on, leaving an OTP screen
      * never accidentally drops protection on the rest of the app.
      */
+
     private fun observeScreenshotProtectionPreference() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -255,6 +262,30 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
+
+    /**
+     * Puts the call screen up when a call arrives while the app is open.
+     *
+     * The notification's full-screen intent only fires when the phone is
+     * locked or idle; with the app in front the system shows a heads-up
+     * instead, and the call would otherwise ring as a banner over whatever
+     * screen happened to be showing. Once per call: backing out of the call
+     * screen while it still rings must not throw it straight back up.
+     */
+    private fun openCallScreenWhenACallComesIn() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                callManager.callState.collect { state ->
+                    val incoming = state as? CallState.Incoming ?: return@collect
+                    if (incoming.callId == lastCallScreenOpenedFor) return@collect
+                    lastCallScreenOpenedFor = incoming.callId
+                    CallActivity.open(this@MainActivity, incoming.callId)
+                }
+            }
+        }
+    }
+
+    private var lastCallScreenOpenedFor: String? = null
 
     override fun onResume() {
         super.onResume()
