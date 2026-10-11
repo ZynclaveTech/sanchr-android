@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
+import com.sanchr.core.model.ConversationType
+import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -23,8 +25,25 @@ data class ConversationInfoUiState(
     val error: String? = null,
     /** Whether this chat's media may be auto-saved to the gallery. Visible by default, as on iOS. */
     val mediaVisibleInGallery: Boolean = true,
+    /** Whether the other person in a one-to-one chat is blocked. */
+    val isBlocked: Boolean = false,
 ) {
     val title: String get() = conversation?.title ?: "Chat"
+
+    /**
+     * The other person, in a one-to-one chat; null in a group.
+     *
+     * The screen worked this out for itself as "the first participant who is
+     * not me", which in a group is just whoever comes first — so a group's
+     * info page offered to compare security codes with one arbitrary member.
+     */
+    val peerId: String?
+        get() =
+            conversation
+                ?.takeIf { it.type == ConversationType.DIRECT }
+                ?.participants
+                ?.firstOrNull { it.displayName != SELF_DISPLAY_NAME }
+                ?.id
     val isMuted: Boolean get() = conversation?.isMuted == true
     val isArchived: Boolean get() = conversation?.isArchived == true
 
@@ -48,6 +67,7 @@ class ConversationInfoViewModel
         private val messageRepository: MessageRepository,
         private val userPreferences: UserPreferences,
         savedStateHandle: SavedStateHandle,
+        private val contactRepository: ContactRepository,
     ) : ViewModel() {
         private val conversationId: String = savedStateHandle["conversationId"] ?: ""
 
@@ -59,7 +79,10 @@ class ConversationInfoViewModel
                 messageRepository
                     .observeConversation(conversationId)
                     .catch { /* DB closed during logout */ }
-                    .collect { conversation -> _uiState.update { it.copy(conversation = conversation) } }
+                    .collect { conversation ->
+                        _uiState.update { it.copy(conversation = conversation) }
+                        loadBlockedOnce()
+                    }
             }
             viewModelScope.launch {
                 userPreferences
@@ -121,6 +144,32 @@ class ConversationInfoViewModel
 
         fun dismissError() = _uiState.update { it.copy(error = null) }
 
+        private var blockedLoadedFor: String? = null
+
+        /** Asked once per peer, when the conversation first says who that is. */
+        private suspend fun loadBlockedOnce() {
+            val peerId = _uiState.value.peerId ?: return
+            if (peerId == blockedLoadedFor) return
+            blockedLoadedFor = peerId
+            val blocked = runCatching { contactRepository.isBlocked(peerId) }.getOrDefault(false)
+            _uiState.update { it.copy(isBlocked = blocked) }
+        }
+
+        /**
+         * Blocks or unblocks the other person in this chat.
+         *
+         * Blocking existed, on the contact's profile and in the contact list,
+         * and nowhere in the chat itself — which is where someone is when
+         * they decide they want it. iOS has it on this page.
+         */
+        fun setBlocked(blocked: Boolean) {
+            val peerId = _uiState.value.peerId ?: return
+            action {
+                contactRepository.setBlocked(peerId, blocked)
+                _uiState.update { it.copy(isBlocked = blocked) }
+            }
+        }
+
         private fun action(block: suspend () -> Unit) {
             viewModelScope.launch {
                 try {
@@ -133,3 +182,6 @@ class ConversationInfoViewModel
             }
         }
     }
+
+/** How the conversation mapper names the local user among a chat's participants. */
+private const val SELF_DISPLAY_NAME = "You"

@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
+import com.sanchr.core.model.User
+import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.MessageRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -13,6 +15,10 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
@@ -27,6 +33,7 @@ import kotlinx.datetime.Instant
 class ConversationInfoViewModelTest {
     private val dispatcher = UnconfinedTestDispatcher()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val contactRepository = mockk<ContactRepository>(relaxed = true)
 
     private fun conversation(
         durationMs: Long? = null,
@@ -60,7 +67,78 @@ class ConversationInfoViewModelTest {
             messageRepository,
             mockk { every { mediaVisibleInGallery("c1") } returns flowOf(true) },
             SavedStateHandle(mapOf("conversationId" to "c1")),
+            contactRepository,
         )
+
+    private fun person(
+        id: String,
+        name: String,
+    ) = User(id = id, phoneNumber = "", displayName = name, createdAt = Instant.fromEpochMilliseconds(0))
+
+    private fun chatWith(
+        type: ConversationType,
+        vararg people: User,
+    ) = conversation().copy(type = type, participants = listOf(person("self", "You")) + people)
+
+    /** Blocking lived on the profile and the contact list, and not in the chat. */
+    @Test
+    fun `the other person in a one-to-one chat can be blocked and unblocked from here`() =
+        runTest(dispatcher) {
+            every { messageRepository.observeConversation("c1") } returns
+                flowOf(chatWith(ConversationType.DIRECT, person("ravi", "Ravi Kumar")))
+            coEvery { contactRepository.isBlocked("ravi") } returns false
+            val viewModel = viewModel()
+            assertEquals("ravi", viewModel.uiState.value.peerId)
+            assertFalse(viewModel.uiState.value.isBlocked)
+
+            viewModel.setBlocked(true)
+            assertTrue(viewModel.uiState.value.isBlocked)
+            coVerify { contactRepository.setBlocked("ravi", true) }
+
+            viewModel.setBlocked(false)
+            assertFalse(viewModel.uiState.value.isBlocked)
+            coVerify { contactRepository.setBlocked("ravi", false) }
+        }
+
+    @Test
+    fun `someone already blocked is shown as blocked`() =
+        runTest(dispatcher) {
+            every { messageRepository.observeConversation("c1") } returns
+                flowOf(chatWith(ConversationType.DIRECT, person("ravi", "Ravi Kumar")))
+            coEvery { contactRepository.isBlocked("ravi") } returns true
+
+            assertTrue(viewModel().uiState.value.isBlocked)
+        }
+
+    @Test
+    fun `a block that fails says so and does not pretend`() =
+        runTest(dispatcher) {
+            every { messageRepository.observeConversation("c1") } returns
+                flowOf(chatWith(ConversationType.DIRECT, person("ravi", "Ravi Kumar")))
+            coEvery { contactRepository.isBlocked("ravi") } returns false
+            coEvery { contactRepository.setBlocked("ravi", true) } throws IllegalStateException("offline")
+            val viewModel = viewModel()
+
+            viewModel.setBlocked(true)
+
+            assertFalse(viewModel.uiState.value.isBlocked)
+            assertNotNull(viewModel.uiState.value.error)
+        }
+
+    /** A group has no one person; the page used to pick whoever came first. */
+    @Test
+    fun `a group has nobody to block or compare codes with`() =
+        runTest(dispatcher) {
+            every { messageRepository.observeConversation("c1") } returns
+                flowOf(chatWith(ConversationType.GROUP, person("ravi", "Ravi Kumar"), person("meera", "Meera")))
+            val viewModel = viewModel()
+
+            assertNull(viewModel.uiState.value.peerId)
+            viewModel.setBlocked(true)
+
+            coVerify(exactly = 0) { contactRepository.setBlocked(any(), any()) }
+            coVerify(exactly = 0) { contactRepository.isBlocked(any()) }
+        }
 
     @Test
     fun `the stored timer decides which option is shown`() {
