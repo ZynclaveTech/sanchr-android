@@ -82,6 +82,7 @@ class UserPreferences
             val FONT_SIZE_SCALE = intPreferencesKey("font_size_scale") // percentage: 80, 100, 120
             val MEDIA_AUTO_DOWNLOAD = stringPreferencesKey("media_auto_download") // "wifi", "always", "never"
             val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+            val BLOCK_LIST_RESTORED = booleanPreferencesKey("block_list_restored")
         }
 
         // --- Theme ---
@@ -410,6 +411,17 @@ class UserPreferences
 
         suspend fun setOnboardingCompleted(completed: Boolean) {
             dataStore.edit { it[Keys.HAS_COMPLETED_ONBOARDING] = completed }
+        }
+
+        /**
+         * Whether the server's blocked list has been brought onto this
+         * install. Once, not on every launch: after that the phone's own
+         * record is the truth, and the server's copy can be the older one.
+         */
+        val blockListRestored: Flow<Boolean> = dataStore.data.map { it[Keys.BLOCK_LIST_RESTORED] ?: false }
+
+        suspend fun setBlockListRestored(restored: Boolean) {
+            dataStore.edit { it[Keys.BLOCK_LIST_RESTORED] = restored }
         }
 
         // --- Lifecycle ---

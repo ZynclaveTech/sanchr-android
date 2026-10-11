@@ -16,6 +16,7 @@ import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.domain.contacts.PhoneNumberNormalizer
 import com.sanchr.proto.contacts.BlockContactRequest
+import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.GetBlockedListRequest
 import com.sanchr.proto.contacts.MatchedContact
@@ -175,26 +176,52 @@ class ContactRepositoryImpl
         override suspend fun isBlocked(userId: String): Boolean = blockedUserDao.isBlocked(userId)
 
         override suspend fun blockedContacts(): List<BlockedContact> {
-            val entries = mutableListOf<BlockedContact>()
+            val blocked = blockedUserDao.blockedUserIds()
+            if (blocked.isEmpty()) return emptyList()
+            val serverNumbers = serverNumbersOrNone()
+            return blocked.map { userId ->
+                val local = contactDao.getContactById(userId)
+                val profile = contactProfileDao.getByUserId(userId)
+                val name =
+                    ContactDisplayName
+                        .resolve(
+                            local?.displayName,
+                            local?.phoneNumber?.ifBlank { null } ?: serverNumbers[userId],
+                            profile?.displayName,
+                        ).takeIf { it != ContactDisplayName.UNKNOWN }
+                        ?: shortId(userId)
+                BlockedContact(userId = userId, displayName = name)
+            }
+        }
+
+        override suspend fun restoreBlockedFromServer(): Int {
+            // Every page first: a list that fails half way is not written.
+            val server = serverBlockedList()
+            val now = System.currentTimeMillis()
+            blockedUserDao.blockAll(server.map { BlockedUserEntity(userId = it.userId, blockedAt = now) })
+            return server.size
+        }
+
+        /** The numbers the server holds for blocked people, or nothing at all if it cannot be asked. */
+        private suspend fun serverNumbersOrNone(): Map<String, String> =
+            try {
+                serverBlockedList().filter { it.phoneNumber.isNotBlank() }.associate { it.userId to it.phoneNumber }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Log.w(TAG, "blocked list shown without the server's numbers", error)
+                emptyMap()
+            }
+
+        private suspend fun serverBlockedList(): List<Contact> {
+            val all = mutableListOf<Contact>()
             var pageToken = ""
             do {
                 val page = contactClient.getBlockedList(GetBlockedListRequest(pageToken = pageToken, pageSize = BLOCKED_PAGE_SIZE))
-                page.blockedUsers.forEach { server ->
-                    val local = contactDao.getContactById(server.userId)
-                    val profile = contactProfileDao.getByUserId(server.userId)
-                    val name =
-                        ContactDisplayName
-                            .resolve(
-                                local?.displayName,
-                                local?.phoneNumber?.ifBlank { null } ?: server.phoneNumber.ifBlank { null },
-                                profile?.displayName,
-                            ).takeIf { it != ContactDisplayName.UNKNOWN }
-                            ?: shortId(server.userId)
-                    entries += BlockedContact(userId = server.userId, displayName = name)
-                }
+                all += page.blockedUsers.filter { it.userId.isNotBlank() }
                 pageToken = page.nextPageToken
             } while (pageToken.isNotEmpty())
-            return entries.distinctBy { it.userId }
+            return all.distinctBy { it.userId }
         }
 
         private fun shortId(userId: String): String = if (userId.length > SHORT_ID_LENGTH) userId.take(SHORT_ID_LENGTH) + "..." else userId

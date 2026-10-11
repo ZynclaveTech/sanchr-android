@@ -608,18 +608,22 @@ class ContactRepositoryImplTest {
 
     // ── Blocked list ──────────────────────────────────────────────────────
 
-    @Test
-    fun `blockedContacts pages through the server list and names people the way the app does`() =
-        runTest {
-            val client = mockk<ContactServiceClient>()
-            coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "", pageSize = 50)) } returns
-                GetBlockedListResponse(blockedUsers = listOf(Contact(userId = "u-known", phoneNumber = "+15550100")), nextPageToken = "p2")
-            coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "p2", pageSize = 50)) } returns
-                GetBlockedListResponse(
-                    blockedUsers = listOf(Contact(userId = "u-stranger-with-a-long-id", phoneNumber = "")),
-                    nextPageToken = "",
-                )
-            val dao = mockk<ContactDao>(relaxed = true)
+    private fun twoPages(client: ContactServiceClient) {
+        coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "", pageSize = 50)) } returns
+            GetBlockedListResponse(blockedUsers = listOf(Contact(userId = "u-known", phoneNumber = "+15550100")), nextPageToken = "p2")
+        coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "p2", pageSize = 50)) } returns
+            GetBlockedListResponse(
+                blockedUsers = listOf(Contact(userId = "u-stranger-with-a-long-id", phoneNumber = "")),
+                nextPageToken = "",
+            )
+    }
+
+    private suspend fun blocking(vararg userIds: String) =
+        FakeBlockedUserDao().also { dao -> userIds.forEach { dao.block(BlockedUserEntity(userId = it, blockedAt = 1)) } }
+
+    private fun adaIsAContact() =
+        mockk<ContactDao>(relaxed = true).also { dao ->
+            coEvery { dao.getContactById(any()) } returns null
             coEvery { dao.getContactById("u-known") } returns
                 ContactEntity(
                     id = "u-known",
@@ -628,12 +632,122 @@ class ContactRepositoryImplTest {
                     displayName = "Ada Lovelace",
                     isRegistered = true,
                 )
-            coEvery { dao.getContactById("u-stranger-with-a-long-id") } returns null
-            val profiles = mockk<ContactProfileDao>(relaxed = true) { coEvery { getByUserId(any()) } returns null }
+        }
 
-            val blocked = repo(client = client, dao = dao, profiles = profiles).blockedContacts()
+    private val noProfiles = mockk<ContactProfileDao>(relaxed = true) { coEvery { getByUserId(any()) } returns null }
+
+    @Test
+    fun `the blocked list is this phone's, named the way the app names people`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            twoPages(client)
+
+            val blocked =
+                repo(
+                    client = client,
+                    dao = adaIsAContact(),
+                    profiles = noProfiles,
+                    blocks = blocking("u-known", "u-stranger-with-a-long-id"),
+                ).blockedContacts()
 
             assertEquals(listOf("Ada Lovelace", "u-stranger-w..."), blocked.map { it.displayName })
             assertEquals(listOf("u-known", "u-stranger-with-a-long-id"), blocked.map { it.userId })
+        }
+
+    /** What is enforced is what is shown: the server listing someone does not make them blocked here. */
+    @Test
+    fun `someone only the server lists is not shown as blocked`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            twoPages(client)
+
+            val blocked =
+                repo(
+                    client = client,
+                    dao = adaIsAContact(),
+                    profiles = noProfiles,
+                    blocks = blocking("u-known"),
+                ).blockedContacts()
+
+            assertEquals(listOf("u-known"), blocked.map { it.userId })
+        }
+
+    @Test
+    fun `a stranger is named by the number the server holds for them`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            coEvery { client.getBlockedList(any()) } returns
+                GetBlockedListResponse(blockedUsers = listOf(Contact(userId = "stranger", phoneNumber = "+15550199")), nextPageToken = "")
+
+            val blocked =
+                repo(
+                    client = client,
+                    dao = adaIsAContact(),
+                    profiles = noProfiles,
+                    blocks = blocking("stranger"),
+                ).blockedContacts()
+
+            assertEquals(listOf("+15550199"), blocked.map { it.displayName })
+        }
+
+    /** The list is how someone gets unblocked; it must open without a connection. */
+    @Test
+    fun `offline, the blocked list is still shown`() =
+        runTest {
+            val blocked =
+                repo(
+                    client = BlockRejectingClient(),
+                    dao = adaIsAContact(),
+                    profiles = noProfiles,
+                    blocks = blocking("u-known", "stranger"),
+                ).blockedContacts()
+
+            assertEquals(listOf("Ada Lovelace", "stranger"), blocked.map { it.displayName })
+        }
+
+    @Test
+    fun `restoring takes every page of the server's list onto the phone`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            twoPages(client)
+            val blocks = FakeBlockedUserDao()
+            val repo = repo(client = client, dao = adaIsAContact(), profiles = noProfiles, blocks = blocks)
+
+            assertEquals(2, repo.restoreBlockedFromServer())
+
+            assertTrue(repo.isBlocked("u-known"))
+            assertTrue(repo.isBlocked("u-stranger-with-a-long-id"))
+        }
+
+    @Test
+    fun `restoring adds to who is blocked here and unblocks nobody`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            twoPages(client)
+            val repo = repo(client = client, dao = adaIsAContact(), profiles = noProfiles, blocks = blocking("only-here"))
+
+            repo.restoreBlockedFromServer()
+
+            assertTrue(repo.isBlocked("only-here"))
+            assertTrue(repo.isBlocked("u-known"))
+        }
+
+    @Test
+    fun `a list that fails part way is not written at all`() =
+        runTest {
+            val client = mockk<ContactServiceClient>()
+            coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "", pageSize = 50)) } returns
+                GetBlockedListResponse(blockedUsers = listOf(Contact(userId = "u-known", phoneNumber = "")), nextPageToken = "p2")
+            coEvery { client.getBlockedList(GetBlockedListRequest(pageToken = "p2", pageSize = 50)) } throws RuntimeException("offline")
+            val repo = repo(client = client, dao = adaIsAContact(), profiles = noProfiles)
+
+            try {
+                repo.restoreBlockedFromServer()
+                fail("expected the failure to reach the caller")
+            } catch (e: RuntimeException) {
+                assertEquals("offline", e.message)
+            }
+
+            assertFalse(repo.isBlocked("u-known"))
         }
 }
