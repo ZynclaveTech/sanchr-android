@@ -700,43 +700,46 @@ private fun LocationMessageBubble(
     val context = LocalContext.current
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        Card(
-            modifier =
-                Modifier.widthIn(max = 260.dp).clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(LocationPayload.geoUri(pin)))
-                    // A device with no map app should say so, not crash.
-                    runCatching { context.startActivity(intent) }
-                        .onFailure { Toast.makeText(context, "No map app available", Toast.LENGTH_SHORT).show() }
-                },
-            shape = SanchrShapeTokens.CornerLarge,
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
-                ),
-        ) {
-            Row(
-                modifier = Modifier.padding(SanchrTheme.spacing.default),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
+        Column(horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
+            Card(
+                modifier =
+                    Modifier.widthIn(max = 260.dp).clickable {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(LocationPayload.geoUri(pin)))
+                        // A device with no map app should say so, not crash.
+                        runCatching { context.startActivity(intent) }
+                            .onFailure { Toast.makeText(context, "No map app available", Toast.LENGTH_SHORT).show() }
+                    },
+                shape = SanchrShapeTokens.CornerLarge,
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
+                    ),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Place,
-                    contentDescription = null,
-                    tint = if (message.isFromMe) SanchrWhite else SanchrIndigo500,
-                )
-                Column {
-                    Text(
-                        text = "Location",
-                        style = IosType.bodyLarge,
-                        color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                Row(
+                    modifier = Modifier.padding(SanchrTheme.spacing.default),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SanchrTheme.spacing.sm),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Place,
+                        contentDescription = null,
+                        tint = if (message.isFromMe) SanchrWhite else SanchrIndigo500,
                     )
-                    Text(
-                        text = "%.5f, %.5f".format(pin.latitude, pin.longitude),
-                        style = IosType.caption,
-                        color = if (message.isFromMe) SanchrWhite.copy(alpha = 0.8f) else SanchrGray400,
-                    )
+                    Column {
+                        Text(
+                            text = "Location",
+                            style = IosType.bodyLarge,
+                            color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                        )
+                        Text(
+                            text = "%.5f, %.5f".format(pin.latitude, pin.longitude),
+                            style = IosType.caption,
+                            color = if (message.isFromMe) SanchrWhite.copy(alpha = 0.8f) else SanchrGray400,
+                        )
+                    }
                 }
             }
+            MessageMetaRow(message)
         }
     }
 }
@@ -1539,6 +1542,38 @@ private fun MessageStatusIcon(message: MessageUiModel) {
 }
 
 /**
+ * The line under a bubble: when it was sent and, for one of ours, how far it
+ * has got.
+ *
+ * Text bubbles drew this. The others each had their own idea: a photo drew
+ * two ticks whatever its state — so one that had failed, or had not left the
+ * phone, looked delivered — an album and a location drew nothing at all, and
+ * view-once drew the time alone. "Try again" was in the long-press menu the
+ * whole time, with nothing on the bubble to say it was needed. One row, drawn
+ * the same under all of them, as iOS does.
+ */
+@Composable
+private fun MessageMetaRow(
+    message: MessageUiModel,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
+    ) {
+        Text(
+            text = formatTimestamp(message.timestamp),
+            style = IosType.captionSmall,
+            color = SanchrGray400,
+        )
+        if (message.isFromMe) {
+            Spacer(modifier = Modifier.width(4.dp))
+            MessageStatusIcon(message)
+        }
+    }
+}
+
+/**
  * Several photos or videos sent as one message, drawn as a collage.
  *
  * Each tile is its own row — `<messageId>#<n>` — so it decrypts and caches
@@ -1564,63 +1599,69 @@ private fun AlbumMessageBubble(
 
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = alignment) {
         Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth(IosSpacing.MESSAGE_MAX_WIDTH_FRACTION)
-                    .clip(SanchrShapeTokens.CornerLarge),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.fillMaxWidth(IosSpacing.MESSAGE_MAX_WIDTH_FRACTION),
+            horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start,
         ) {
-            shown.chunked(ALBUM_COLUMNS).forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    row.forEach { tile ->
-                        val isLastShown = tile === shown.last()
-                        Box(
-                            modifier =
-                                Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f)
-                                    .clickable { onOpenTile(tile) },
-                        ) {
-                            AttachmentImage(
-                                message = tile,
-                                openAttachment = openAttachment,
-                                autoDownload = autoDownload,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                            if (hidden > 0 && isLastShown) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = "+" + hidden,
-                                        style = IosType.cardTitle,
-                                        color = SanchrWhite,
-                                    )
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(SanchrShapeTokens.CornerLarge),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                shown.chunked(ALBUM_COLUMNS).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        row.forEach { tile ->
+                            val isLastShown = tile === shown.last()
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .clickable { onOpenTile(tile) },
+                            ) {
+                                AttachmentImage(
+                                    message = tile,
+                                    openAttachment = openAttachment,
+                                    autoDownload = autoDownload,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (hidden > 0 && isLastShown) {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = "+" + hidden,
+                                            style = IosType.cardTitle,
+                                            color = SanchrWhite,
+                                        )
+                                    }
                                 }
                             }
                         }
+                        // A trailing odd tile keeps its square rather than
+                        // stretching across the row.
+                        if (row.size < ALBUM_COLUMNS) Spacer(modifier = Modifier.weight((ALBUM_COLUMNS - row.size).toFloat()))
                     }
-                    // A trailing odd tile keeps its square rather than
-                    // stretching across the row.
-                    if (row.size < ALBUM_COLUMNS) Spacer(modifier = Modifier.weight((ALBUM_COLUMNS - row.size).toFloat()))
+                }
+                message.text.takeIf { it.isNotBlank() && !it.startsWith("[") }?.let { caption ->
+                    Text(
+                        text = caption,
+                        style = IosType.messageBubbleText,
+                        color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                        modifier =
+                            Modifier
+                                .background(if (message.isFromMe) SanchrIndigo500 else SanchrGray100)
+                                .fillMaxWidth()
+                                .padding(horizontal = IosSpacing.bubbleHPadding, vertical = IosSpacing.bubbleVPadding),
+                    )
                 }
             }
-            message.text.takeIf { it.isNotBlank() && !it.startsWith("[") }?.let { caption ->
-                Text(
-                    text = caption,
-                    style = IosType.messageBubbleText,
-                    color = if (message.isFromMe) SanchrWhite else SanchrGray900,
-                    modifier =
-                        Modifier
-                            .background(if (message.isFromMe) SanchrIndigo500 else SanchrGray100)
-                            .fillMaxWidth()
-                            .padding(horizontal = IosSpacing.bubbleHPadding, vertical = IosSpacing.bubbleVPadding),
-                )
-            }
+            MessageMetaRow(message)
         }
     }
 }
@@ -1674,26 +1715,7 @@ private fun ImageMessageBubble(
                 }
             }
 
-            // Timestamp + read receipt
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
-            ) {
-                Text(
-                    text = formatTimestamp(message.timestamp),
-                    style = IosType.captionSmall,
-                    color = SanchrGray400,
-                )
-                if (message.isFromMe) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Filled.DoneAll,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = if (message.status == MessageStatus.READ) SanchrIndigo500 else SanchrGray400,
-                    )
-                }
-            }
+            MessageMetaRow(message)
         }
     }
 }
@@ -2303,12 +2325,7 @@ private fun ViewOnceBubble(
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = SanchrGray400)
                 }
             }
-            Text(
-                text = formatTimestamp(message.timestamp),
-                style = IosType.captionSmall,
-                color = SanchrGray400,
-                modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
-            )
+            MessageMetaRow(message)
         }
     }
 }
