@@ -101,6 +101,23 @@ data class MessageUiModel(
     val isAlbum: Boolean get() = albumAttachments.size > 1
 
     /**
+     * Whether Save and Share are offered for this message from its long-press
+     * menu: one photo or video, that is meant to stay.
+     *
+     * Not view-once and not on a disappearing timer — offering to copy
+     * either out of the chat defeats what it was sent as. Not an album: the
+     * menu belongs to the whole message, and each picture in it can be saved
+     * from the viewer.
+     */
+    val isSaveableMedia: Boolean
+        get() =
+            attachment != null &&
+                !isViewOnce &&
+                !isEphemeral &&
+                !isAlbum &&
+                (contentType == "image" || isVideoAttachment)
+
+    /**
      * One tile of an album as a row of its own.
      *
      * The id carries the index (`<messageId>#<n>`), which is how iOS keys an
