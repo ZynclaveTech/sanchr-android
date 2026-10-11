@@ -12,6 +12,7 @@ import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
+import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.MessageEntity
@@ -290,6 +291,7 @@ class ChatBackupManager
         }
 
         private suspend fun exportSnapshot(): BackupArchiveSnapshot {
+            val blocked = database.blockedUserDao().blockedUserIds().toSet()
             val contacts =
                 contactDao.getAllContacts().map { contact ->
                     BackupArchiveContactFrame(
@@ -299,7 +301,7 @@ class ChatBackupManager
                         displayName = contact.displayName,
                         avatarURL = contact.avatarUrl,
                         isRegistered = contact.isRegistered,
-                        isBlocked = contact.isBlocked,
+                        isBlocked = (contact.userId ?: contact.id) in blocked,
                         isFavorite = contact.isFavorite,
                         lastSyncedAtMs = contact.lastSyncedAt,
                     )
@@ -386,7 +388,6 @@ class ChatBackupManager
                             displayName = contact.displayName,
                             avatarUrl = contact.avatarURL,
                             isRegistered = contact.isRegistered || contact.isVerified,
-                            isBlocked = contact.isBlocked,
                             isFavorite = contact.isFavorite,
                             lastSyncedAt = contact.lastSyncedAtMs,
                         )
@@ -394,6 +395,14 @@ class ChatBackupManager
                 if (restoredContacts.isNotEmpty()) {
                     contactDao.insertContacts(restoredContacts)
                 }
+                // Added to whoever is blocked now, never instead of them:
+                // restoring an old backup must not quietly unblock anyone.
+                val now = System.currentTimeMillis()
+                database.blockedUserDao().blockAll(
+                    snapshot.contacts
+                        .filter { it.isBlocked }
+                        .map { BlockedUserEntity(userId = it.userId ?: it.id, blockedAt = now) },
+                )
 
                 snapshot.conversations.forEach { conversation ->
                     conversationDao.insertConversation(
