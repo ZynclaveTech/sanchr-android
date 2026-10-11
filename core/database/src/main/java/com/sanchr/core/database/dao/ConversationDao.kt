@@ -1,11 +1,10 @@
 package com.sanchr.core.database.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import com.sanchr.core.database.entity.ConversationEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -52,10 +51,20 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY updated_at DESC")
     suspend fun getAllConversations(): List<ConversationEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * Saves a conversation, overwriting every column of one already here.
+     *
+     * An upsert, never `REPLACE`. `REPLACE` deletes the old row to make way
+     * for the new one, and `messages` hangs off this table with
+     * `ON DELETE CASCADE` — so saving a conversation that already existed
+     * deleted every message in it. Each periodic sync, and each chat opened
+     * from Contacts, did exactly that.
+     */
+    @Upsert
     suspend fun insertConversation(conversation: ConversationEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /** As [insertConversation], for several. */
+    @Upsert
     suspend fun insertConversations(conversations: List<ConversationEntity>)
 
     @Update
@@ -66,7 +75,7 @@ interface ConversationDao {
      * discarding what only this device knows. `is_archived`, `is_hidden`,
      * `wallpaper`, `draft_text`, the three `vault_*` policy flags,
      * `disappearing_duration_ms` and `last_message_id` are not on the wire;
-     * a plain REPLACE (see [insertConversations]) resets them to defaults,
+     * a plain overwrite (see [insertConversations]) resets them to defaults,
      * which un-archives every chat, unhides every hidden one, and clears
      * every disappearing timer on each periodic sync. Server-owned columns are taken from [conversations]
      * as given.
