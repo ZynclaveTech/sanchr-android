@@ -177,6 +177,7 @@ import com.sanchr.core.network.link.LinkPreview
 import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.media.AttachmentUploader
+import com.sanchr.domain.messaging.media.GallerySaver
 import com.sanchr.feature.chats.emoji.EmojiPickerSheet
 import com.sanchr.feature.chats.location.CurrentLocation
 import com.sanchr.feature.chats.location.LocationPayload
@@ -247,14 +248,18 @@ fun ChatDetailScreen(
     var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
     var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
     val clipboard = LocalClipboardManager.current
+    val menuContext = LocalContext.current
+    val menuScope = rememberCoroutineScope()
     val actions =
-        remember(viewModel, clipboard) {
+        remember(viewModel, clipboard, menuContext) {
             MessageActions(
                 onReply = viewModel::setReply,
                 onForward = { forwarding = it },
                 onCopy = { clipboard.setText(AnnotatedString(it.text)) },
                 onDelete = { deleting = it },
                 onRetry = viewModel::retryMessage,
+                onSave = { message -> menuScope.launch { saveMediaToGallery(menuContext, message, viewModel::openAttachment) } },
+                onShare = { message -> menuScope.launch { shareMediaOutside(menuContext, message, viewModel::openAttachment) } },
             )
         }
     val noticeContext = LocalContext.current
@@ -1351,7 +1356,57 @@ private class MessageActions(
     val onDelete: (MessageUiModel) -> Unit,
     /** Tries a failed send again; iOS has had this in the same menu throughout. */
     val onRetry: (MessageUiModel) -> Unit,
+    /** Copies a photo or video to the phone's gallery. */
+    val onSave: (MessageUiModel) -> Unit,
+    /** Hands a photo or video to another app. */
+    val onShare: (MessageUiModel) -> Unit,
 )
+
+/**
+ * Save, from the long-press menu. A photo could be saved only from inside the
+ * full-screen viewer, and a video not from anywhere but there either; the
+ * menu on the bubble offered Reply, Forward and Delete and nothing for the
+ * picture itself.
+ */
+private suspend fun saveMediaToGallery(
+    context: Context,
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+) {
+    val file = openAttachment(message)
+    val saved =
+        file != null &&
+            withContext(Dispatchers.IO) { GallerySaver.save(context, file, message.attachment?.mimeType ?: "image/jpeg") }
+    Toast.makeText(context, if (saved) "Saved to your gallery" else "Couldn't save this file", Toast.LENGTH_SHORT).show()
+}
+
+/**
+ * Share, from the long-press menu: the decrypted file, lent to the app the
+ * user picks through this app's own file provider, readable by that app and
+ * only for that hand-over.
+ */
+private suspend fun shareMediaOutside(
+    context: Context,
+    message: MessageUiModel,
+    openAttachment: suspend (MessageUiModel) -> File?,
+) {
+    val file = openAttachment(message)
+    if (file == null) {
+        Toast.makeText(context, "Couldn't load this file", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val send =
+        Intent(Intent.ACTION_SEND)
+            .setType(message.attachment?.mimeType ?: "image/jpeg")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No app can share this", Toast.LENGTH_SHORT).show()
+    }
+}
 
 @Composable
 private fun ReactionPicker(
@@ -1376,6 +1431,10 @@ private fun ReactionPicker(
             leadingIcon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
             onClick = { run(actions.onForward) },
         )
+        if (message.isSaveableMedia) {
+            DropdownMenuItem(text = { Text("Save") }, onClick = { run(actions.onSave) })
+            DropdownMenuItem(text = { Text("Share") }, onClick = { run(actions.onShare) })
+        }
         if (message.contentType == "text") {
             DropdownMenuItem(
                 text = { Text("Copy") },
