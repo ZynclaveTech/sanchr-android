@@ -102,7 +102,9 @@ data class CallLogEntry(
     val direction: String,
     /** "completed", "missed", "declined" or "busy". */
     val status: String,
+    /** Seconds since the epoch — not milliseconds. Zero when unknown. */
     val startedAt: Long,
+    /** Seconds since the epoch — not milliseconds. Zero while the call has not ended. */
     val endedAt: Long,
     val durationSecs: Int,
 )

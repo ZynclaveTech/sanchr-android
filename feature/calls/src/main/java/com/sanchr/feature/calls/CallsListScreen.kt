@@ -48,9 +48,6 @@ import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrError
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -259,7 +256,7 @@ private fun CallEntryRow(
 
                 // Timestamp
                 Text(
-                    text = formatTimestamp(entry.startedAt),
+                    text = CallTimeFormat.listLabel(entry.startedAt),
                     style = IosType.conversationPreview,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -283,29 +280,6 @@ private fun CallEntryRow(
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
-    }
-}
-
-private fun formatTimestamp(epochMillis: Long): String {
-    if (epochMillis == 0L) return ""
-    return try {
-        val now = System.currentTimeMillis()
-        val diff = now - epochMillis
-        val oneDay = 24 * 60 * 60 * 1000L
-
-        when {
-            diff < oneDay -> {
-                SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(epochMillis))
-            }
-            diff < 7 * oneDay -> {
-                SimpleDateFormat("EEE", Locale.getDefault()).format(Date(epochMillis))
-            }
-            else -> {
-                SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(epochMillis))
-            }
-        }
-    } catch (_: Exception) {
-        ""
     }
 }
 
