@@ -110,6 +110,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -132,6 +133,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -1952,12 +1954,18 @@ private fun AttachmentImage(
     // Held back rather than failed: the picture is there, the user just has
     // not agreed to spend data on it yet, so tapping fetches it.
     var deferred by remember(message.id) { mutableStateOf(false) }
-    LaunchedEffect(message.id, autoDownload) {
-        if (!autoDownload && file == null) {
+    // Counted up by a tap on a picture that failed to load. A failure used to
+    // be final: "Image unavailable", remembered for as long as the bubble
+    // lived, with nothing that would try again — a moment without signal as
+    // the photo scrolled into view cost the photo until the chat was reopened.
+    var attempt by remember(message.id) { mutableIntStateOf(0) }
+    LaunchedEffect(message.id, autoDownload, attempt) {
+        if (!autoDownload && file == null && attempt == 0) {
             deferred = true
             return@LaunchedEffect
         }
         deferred = false
+        failed = false
         val f = openAttachment(message)
         if (f == null) failed = true else file = f
     }
@@ -1968,7 +1976,10 @@ private fun AttachmentImage(
                 ?.let(BlurHashImages::placeholder)
                 ?.asImageBitmap()
         }
-    Box(modifier = modifier.background(SanchrGray100), contentAlignment = Alignment.Center) {
+    // While it has failed the tile's own tap retries, ahead of the caller's
+    // tap, which would open a viewer on a picture that is not there.
+    val retryOnTap = if (failed && file == null) Modifier.clickable(onClickLabel = "Try again") { attempt++ } else Modifier
+    Box(modifier = modifier.background(SanchrGray100).then(retryOnTap), contentAlignment = Alignment.Center) {
         when {
             file != null ->
                 AsyncImage(
@@ -1983,7 +1994,13 @@ private fun AttachmentImage(
                     style = IosType.caption,
                     color = SanchrGray400,
                 )
-            failed -> Text(text = "Image unavailable", style = IosType.caption, color = SanchrGray400)
+            failed ->
+                Text(
+                    text = "Couldn't load\nTap to retry",
+                    style = IosType.caption,
+                    color = SanchrGray400,
+                    textAlign = TextAlign.Center,
+                )
             else -> {
                 // The BlurHash placeholder shows the picture's shape and colours
                 // while the blob downloads and decrypts, as on iOS.
