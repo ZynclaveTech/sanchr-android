@@ -145,6 +145,15 @@ class MessageRepositoryImpl
             conversationDao.setMuted(conversationId, muted)
         }
 
+        override suspend fun messageIds(conversationId: String): List<String> = messageDao.messageIdsInConversation(conversationId)
+
+        override suspend fun clearMessages(conversationId: String) {
+            messageDao.deleteAllMessagesInConversation(conversationId)
+            // An unsent draft is not a message, but "clear this chat" that
+            // leaves a half-written one behind has not cleared it.
+            conversationDao.setDraftText(conversationId, null)
+        }
+
         override suspend fun deleteConversation(conversationId: String) {
             try {
                 messagingClient.deleteConversation(DeleteConversationRequest(conversationId))

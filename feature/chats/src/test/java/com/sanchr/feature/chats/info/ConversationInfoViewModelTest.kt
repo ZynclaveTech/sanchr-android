@@ -6,6 +6,7 @@ import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.messaging.ClearChatUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -34,6 +35,7 @@ class ConversationInfoViewModelTest {
     private val dispatcher = UnconfinedTestDispatcher()
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
     private val contactRepository = mockk<ContactRepository>(relaxed = true)
+    private val clearChat = mockk<ClearChatUseCase>(relaxed = true)
 
     private fun conversation(
         durationMs: Long? = null,
@@ -68,6 +70,7 @@ class ConversationInfoViewModelTest {
             mockk { every { mediaVisibleInGallery("c1") } returns flowOf(true) },
             SavedStateHandle(mapOf("conversationId" to "c1")),
             contactRepository,
+            clearChat,
         )
 
     private fun person(
@@ -79,6 +82,27 @@ class ConversationInfoViewModelTest {
         type: ConversationType,
         vararg people: User,
     ) = conversation().copy(type = type, participants = listOf(person("self", "You")) + people)
+
+    @Test
+    fun `clearing the chat clears this chat`() =
+        runTest(dispatcher) {
+            coEvery { clearChat("c1") } returns 3
+
+            viewModel().clearMessages()
+
+            coVerify(exactly = 1) { clearChat("c1") }
+        }
+
+    @Test
+    fun `a clear that fails says so`() =
+        runTest(dispatcher) {
+            coEvery { clearChat("c1") } throws IllegalStateException("db")
+            val viewModel = viewModel()
+
+            viewModel.clearMessages()
+
+            assertNotNull(viewModel.uiState.value.error)
+        }
 
     /** Blocking lived on the profile and the contact list, and not in the chat. */
     @Test
