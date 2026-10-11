@@ -162,6 +162,7 @@ import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.SanchrWarning
 import com.sanchr.core.designsystem.theme.SanchrWhite
+import com.sanchr.core.designsystem.theme.messageBodyTextStyle
 import com.sanchr.core.mediaviewer.DocumentPreviewScreen
 import com.sanchr.core.model.ContactCard
 import com.sanchr.core.model.Conversation
@@ -1238,7 +1239,7 @@ private fun MessageBubble(
                             }
                             Text(
                                 text = message.text,
-                                style = IosType.messageBubbleText,
+                                style = messageBodyTextStyle,
                                 color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                                 modifier =
                                     Modifier.padding(
@@ -1651,7 +1652,7 @@ private fun AlbumMessageBubble(
                 message.text.takeIf { it.isNotBlank() && !it.startsWith("[") }?.let { caption ->
                     Text(
                         text = caption,
-                        style = IosType.messageBubbleText,
+                        style = messageBodyTextStyle,
                         color = if (message.isFromMe) SanchrWhite else SanchrGray900,
                         modifier =
                             Modifier

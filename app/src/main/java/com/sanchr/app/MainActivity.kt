@@ -42,7 +42,9 @@ import com.sanchr.core.common.lock.AppLockPolicy
 import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
+import com.sanchr.core.designsystem.theme.ChatFontSize
 import com.sanchr.core.designsystem.theme.LocalBubbleStyle
+import com.sanchr.core.designsystem.theme.LocalChatFontSize
 import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
@@ -115,6 +117,7 @@ class MainActivity : FragmentActivity() {
             val dynamicColor by userPreferences.dynamicColorEnabled.collectAsStateWithLifecycle(initialValue = false)
             val bubbleStyle = userPreferences.chatBubbleStyle.collectAsStateWithLifecycle(initialValue = "modern")
             val enterSendsMessage = userPreferences.enterSendsMessage.collectAsStateWithLifecycle(initialValue = true)
+            val chatFontSize = userPreferences.chatFontSize.collectAsStateWithLifecycle(initialValue = ChatFontSize.DEFAULT)
             SanchrTheme(
                 darkTheme = ThemeMode.resolveDarkTheme(themeMode, isSystemInDarkTheme()),
                 dynamicColor = dynamicColor,
@@ -122,6 +125,7 @@ class MainActivity : FragmentActivity() {
                 CompositionLocalProvider(
                     LocalBubbleStyle provides bubbleStyle,
                     LocalEnterSendsMessage provides enterSendsMessage,
+                    LocalChatFontSize provides chatFontSize,
                 ) {
                     Surface(modifier = Modifier.fillMaxSize()) {
                         val screenLockEnabled by userPreferences.screenLockEnabled.collectAsStateWithLifecycle(initialValue = false)

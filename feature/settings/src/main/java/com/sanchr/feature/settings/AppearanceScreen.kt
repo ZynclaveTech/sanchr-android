@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrTopBar
+import com.sanchr.core.designsystem.theme.ChatFontSize
 import com.sanchr.core.designsystem.theme.ChatWallpapers
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -151,9 +152,11 @@ fun AppearanceScreen(
 
             Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
 
-            val fontSizeOptions = listOf("small", "medium", "large", "extra_large")
+            val fontSizeOptions = ChatFontSize.options
             val fontSizeLabels = listOf("Small", "Medium", "Large", "Extra Large")
-            val currentIndex = fontSizeOptions.indexOf(uiState.fontSize).coerceAtLeast(0)
+            val fontSize by viewModel.chatFontSize.collectAsStateWithLifecycle()
+            // An unknown stored value sits at Medium, which is how it is drawn.
+            val currentIndex = fontSizeOptions.indexOf(fontSize).takeIf { it >= 0 } ?: fontSizeOptions.indexOf(ChatFontSize.DEFAULT)
 
             Column {
                 Slider(

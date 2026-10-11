@@ -56,6 +56,7 @@ class UserPreferences
              * so the same account rendered differently on each phone.
              */
             val CHAT_BUBBLE_STYLE = stringPreferencesKey("chat_bubble_style")
+            val CHAT_FONT_SIZE = stringPreferencesKey("chat_font_size")
 
             /** Enter sends rather than inserting a newline. True on iOS too. */
             val ENTER_SENDS_MESSAGE = booleanPreferencesKey("enter_sends_message")
@@ -131,6 +132,18 @@ class UserPreferences
 
         /** The chosen bubble shape; "modern" is iOS's default too. */
         val chatBubbleStyle: Flow<String> = dataStore.data.map { it[Keys.CHAT_BUBBLE_STYLE] ?: "modern" }
+
+        /**
+         * The Font Size slider: "small", "medium", "large" or "extra_large".
+         * Kept here because it is applied here, to the text of messages; it
+         * used to live only in the copy of the server's settings, which
+         * nothing that draws text ever saw.
+         */
+        val chatFontSize: Flow<String> = dataStore.data.map { it[Keys.CHAT_FONT_SIZE] ?: "medium" }
+
+        suspend fun setChatFontSize(size: String) {
+            dataStore.edit { it[Keys.CHAT_FONT_SIZE] = size }
+        }
 
         suspend fun setChatBubbleStyle(style: String) {
             dataStore.edit { it[Keys.CHAT_BUBBLE_STYLE] = style }
