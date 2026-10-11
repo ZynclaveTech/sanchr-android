@@ -45,13 +45,16 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.signal.libsignal.protocol.IdentityKeyPair
+import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.kem.KEMKeyPair
 import org.signal.libsignal.protocol.kem.KEMKeyType
+import org.signal.libsignal.protocol.message.CiphertextMessage
 import org.signal.libsignal.protocol.message.PreKeySignalMessage
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
+import org.signal.libsignal.protocol.state.PreKeyBundle
 import org.signal.libsignal.protocol.state.PreKeyRecord
 import org.signal.libsignal.protocol.state.SignedPreKeyRecord
 
@@ -321,6 +324,59 @@ class SignalSessionManagerTest {
                 results.associate { it.deviceId to it.remoteRegistrationId },
             )
         }
+
+    /**
+     * The other way a session comes to exist: the peer wrote first. The id
+     * stated to the server then comes from their first message, which carries
+     * their own registration id — and it has to be the one they published, or
+     * the server refuses everything sent back to them.
+     */
+    @Test
+    fun `a session the peer started carries the registration id their first message brought`() =
+        runTest {
+            val bobIdentity = requireBobIdentity()
+            val aliceAddress = SignalProtocolAddress(aliceUserId, aliceDeviceId)
+            SessionBuilder(bobStore, aliceAddress).process(aliceBundleFromHerOwnStore())
+            val first = SessionCipher(bobStore, aliceAddress).encrypt(MessagePadding.pad("hi".toByteArray()))
+            assertEquals(CiphertextMessage.PREKEY_TYPE, first.type)
+
+            val plaintext = aliceSessionManager.decrypt(first.serialize(), bobUserId, bobDeviceId)
+            assertTrue("hi".toByteArray().contentEquals(plaintext))
+
+            // Alice now answers on the session Bob started; no bundle is fetched.
+            aliceFakeClient.userDevicesResponse =
+                GetUserDevicesResponse(devices = listOf(DeviceInfo(deviceId = bobDeviceId, platform = "android", keyCapable = true)))
+            val reply = aliceSessionManager.encryptForAllDevices("hello".toByteArray(), bobUserId).single()
+
+            assertEquals(bobRegistrationId, reply.remoteRegistrationId)
+            assertEquals(bobIdentity.publicKey, aliceStore.getIdentity(SignalProtocolAddress(bobUserId, bobDeviceId)))
+        }
+
+    /** Alice's keys, held in her real store, as Bob would fetch them. */
+    private fun aliceBundleFromHerOwnStore(): PreKeyBundle {
+        val identity = aliceStore.identityKeyPair
+        val signed = ECKeyPair.generate()
+        val signedSignature = identity.privateKey.calculateSignature(signed.publicKey.serialize())
+        aliceStore.storeSignedPreKey(51, SignedPreKeyRecord(51, System.currentTimeMillis(), signed, signedSignature))
+        val oneTime = ECKeyPair.generate()
+        aliceStore.storePreKey(52, PreKeyRecord(52, oneTime))
+        val kyber = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
+        val kyberSignature = identity.privateKey.calculateSignature(kyber.publicKey.serialize())
+        aliceStore.storeKyberPreKey(53, KyberPreKeyRecord(53, System.currentTimeMillis(), kyber, kyberSignature))
+        return PreKeyBundle(
+            aliceStore.localRegistrationId,
+            aliceDeviceId,
+            52,
+            oneTime.publicKey,
+            51,
+            signed.publicKey,
+            signedSignature,
+            identity.publicKey,
+            53,
+            kyber.publicKey,
+            kyberSignature,
+        )
+    }
 
     @Test
     fun `encryptForAllDevices propagates sender certificate failure instead of returning empty`() =
