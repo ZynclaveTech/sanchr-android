@@ -48,7 +48,6 @@ data class SettingsUiState(
     val bio: String = "",
     val themeMode: String = "system",
     val dynamicColorEnabled: Boolean = false,
-    val fontSize: String = "medium",
     val notificationsEnabled: Boolean = true,
     val notificationPreview: String = "always",
     val messageNotificationsEnabled: Boolean = true,
@@ -278,7 +277,6 @@ class SettingsViewModel
                     bio = extras.profile.bio,
                     themeMode = prefs.themeMode,
                     dynamicColorEnabled = prefs.dynamicColorEnabled,
-                    fontSize = remote?.fontSize ?: "medium",
                     notificationsEnabled = prefs.notificationsEnabled,
                     notificationPreview = notifications.preview,
                     messageNotificationsEnabled = notifications.messages,
@@ -451,7 +449,11 @@ class SettingsViewModel
             viewModelScope.launch { userPreferences.setDynamicColor(enabled) }
         }
 
+        /** Shown from the store the chat reads, so the slider and the text cannot disagree. */
+        val chatFontSize = userPreferences.chatFontSize.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "medium")
+
         fun setFontSize(size: String) {
+            viewModelScope.launch { userPreferences.setChatFontSize(size) }
             _remoteSettings.update { it?.copy(fontSize = size) }
             triggerDebouncedSync()
         }

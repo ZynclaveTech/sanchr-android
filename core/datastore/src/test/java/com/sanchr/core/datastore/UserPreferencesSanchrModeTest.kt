@@ -92,4 +92,15 @@ class UserPreferencesSanchrModeTest {
 
             assertFalse(prefs.sanchrModeEnabled.first())
         }
+
+    /** The Font Size slider had nowhere on the phone to keep its value. */
+    @Test
+    fun `the chosen font size is kept, and is medium until one is chosen`() =
+        runBlocking {
+            assertEquals("medium", prefs.chatFontSize.first())
+
+            prefs.setChatFontSize("extra_large")
+
+            assertEquals("extra_large", prefs.chatFontSize.first())
+        }
 }
