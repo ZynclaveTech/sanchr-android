@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -75,6 +76,8 @@ fun ContactsScreen(
     onSyncContacts: () -> Unit,
     /** Opens the by-number search, for reaching someone not in the address book. */
     onFindByNumber: () -> Unit,
+    /** Opens the camera on someone's profile code, to start a chat with them. */
+    onScanCode: () -> Unit,
     /** Starts a voice call with a contact. The row's Call action used to be an empty lambda. */
     onStartCall: (peerId: String, peerName: String, isVideo: Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -110,6 +113,12 @@ fun ContactsScreen(
             SanchrTopBar(
                 title = "Contacts",
                 actions = {
+                    IconButton(onClick = onScanCode) {
+                        Icon(
+                            imageVector = Icons.Filled.QrCodeScanner,
+                            contentDescription = "Scan a contact's code",
+                        )
+                    }
                     IconButton(onClick = onFindByNumber) {
                         Icon(
                             imageVector = Icons.Filled.Search,

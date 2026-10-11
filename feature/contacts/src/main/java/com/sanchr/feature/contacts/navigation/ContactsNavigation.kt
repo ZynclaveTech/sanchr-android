@@ -7,11 +7,13 @@ import androidx.navigation.compose.navigation
 import com.sanchr.feature.contacts.ContactSyncScreen
 import com.sanchr.feature.contacts.ContactsScreen
 import com.sanchr.feature.contacts.lookup.PhoneLookupScreen
+import com.sanchr.feature.contacts.scan.ScanContactScreen
 
 const val CONTACTS_TAB_ROUTE = "contacts_tab"
 const val CONTACTS_LIST_ROUTE = "contacts/list"
 const val CONTACT_SYNC_ROUTE = "contacts/sync"
 const val PHONE_LOOKUP_ROUTE = "contacts/lookup"
+const val SCAN_CONTACT_ROUTE = "contacts/scan"
 
 fun NavGraphBuilder.contactsGraph(
     navController: NavController,
@@ -28,7 +30,21 @@ fun NavGraphBuilder.contactsGraph(
                     navController.navigate(CONTACT_SYNC_ROUTE)
                 },
                 onFindByNumber = { navController.navigate(PHONE_LOOKUP_ROUTE) },
+                onScanCode = { navController.navigate(SCAN_CONTACT_ROUTE) },
                 onStartCall = onStartCall,
+            )
+        }
+
+        composable(SCAN_CONTACT_ROUTE) {
+            ScanContactScreen(
+                onClose = { navController.popBackStack() },
+                onOpenConversation = { conversationId ->
+                    // The scanner is done with: Back from the chat goes to
+                    // Contacts, not to a camera.
+                    navController.navigate("chats/detail/$conversationId") {
+                        popUpTo(SCAN_CONTACT_ROUTE) { inclusive = true }
+                    }
+                },
             )
         }
 
