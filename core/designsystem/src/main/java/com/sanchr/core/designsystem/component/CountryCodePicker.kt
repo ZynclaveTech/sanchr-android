@@ -44,66 +44,7 @@ import com.sanchr.core.designsystem.theme.LocalSanchrSurfaces
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
 import kotlinx.coroutines.launch
 
-/**
- * Static record for a selectable country entry in the picker.
- *
- * [dialCode] is in E.164 leading form (e.g. "+91"); [iso] is the uppercase
- * ISO-3166 alpha-2 code used to match against [TelephonyManager] lookups.
- * [flagEmoji] is the regional-indicator flag glyph — rendered as-is since
- * emoji fonts on Android 8+ cover the full block. Keep this file alphabetical
- * by [name] for reviewability.
- */
-data class Country(
-    val name: String,
-    val dialCode: String,
-    val flagEmoji: String,
-    val iso: String,
-)
-
-/**
- * Curated short list of the ~30 most common countries Sanchr users will be
- * dialing from. Not exhaustive — if a user's SIM ISO is not present, we
- * fall back to US and they can still search / scroll. Expand deliberately
- * rather than pulling libphonenumber (adds ~500KB per ABI).
- *
- * Ordered alphabetically by display name.
- */
-val SanchrCountries: List<Country> =
-    listOf(
-        Country("Argentina", "+54", "\uD83C\uDDE6\uD83C\uDDF7", "AR"),
-        Country("Australia", "+61", "\uD83C\uDDE6\uD83C\uDDFA", "AU"),
-        Country("Bangladesh", "+880", "\uD83C\uDDE7\uD83C\uDDE9", "BD"),
-        Country("Brazil", "+55", "\uD83C\uDDE7\uD83C\uDDF7", "BR"),
-        Country("Canada", "+1", "\uD83C\uDDE8\uD83C\uDDE6", "CA"),
-        Country("China", "+86", "\uD83C\uDDE8\uD83C\uDDF3", "CN"),
-        Country("Egypt", "+20", "\uD83C\uDDEA\uD83C\uDDEC", "EG"),
-        Country("France", "+33", "\uD83C\uDDEB\uD83C\uDDF7", "FR"),
-        Country("Germany", "+49", "\uD83C\uDDE9\uD83C\uDDEA", "DE"),
-        Country("Indonesia", "+62", "\uD83C\uDDEE\uD83C\uDDE9", "ID"),
-        Country("India", "+91", "\uD83C\uDDEE\uD83C\uDDF3", "IN"),
-        Country("Israel", "+972", "\uD83C\uDDEE\uD83C\uDDF1", "IL"),
-        Country("Italy", "+39", "\uD83C\uDDEE\uD83C\uDDF9", "IT"),
-        Country("Japan", "+81", "\uD83C\uDDEF\uD83C\uDDF5", "JP"),
-        Country("Kenya", "+254", "\uD83C\uDDF0\uD83C\uDDEA", "KE"),
-        Country("Mexico", "+52", "\uD83C\uDDF2\uD83C\uDDFD", "MX"),
-        Country("Netherlands", "+31", "\uD83C\uDDF3\uD83C\uDDF1", "NL"),
-        Country("Nigeria", "+234", "\uD83C\uDDF3\uD83C\uDDEC", "NG"),
-        Country("Pakistan", "+92", "\uD83C\uDDF5\uD83C\uDDF0", "PK"),
-        Country("Philippines", "+63", "\uD83C\uDDF5\uD83C\uDDED", "PH"),
-        Country("Russia", "+7", "\uD83C\uDDF7\uD83C\uDDFA", "RU"),
-        Country("Saudi Arabia", "+966", "\uD83C\uDDF8\uD83C\uDDE6", "SA"),
-        Country("Singapore", "+65", "\uD83C\uDDF8\uD83C\uDDEC", "SG"),
-        Country("South Africa", "+27", "\uD83C\uDDFF\uD83C\uDDE6", "ZA"),
-        Country("South Korea", "+82", "\uD83C\uDDF0\uD83C\uDDF7", "KR"),
-        Country("Spain", "+34", "\uD83C\uDDEA\uD83C\uDDF8", "ES"),
-        Country("Turkey", "+90", "\uD83C\uDDF9\uD83C\uDDF7", "TR"),
-        Country("United Arab Emirates", "+971", "\uD83C\uDDE6\uD83C\uDDEA", "AE"),
-        Country("United Kingdom", "+44", "\uD83C\uDDEC\uD83C\uDDE7", "GB"),
-        Country("United States", "+1", "\uD83C\uDDFA\uD83C\uDDF8", "US"),
-        Country("Vietnam", "+84", "\uD83C\uDDFB\uD83C\uDDF3", "VN"),
-    )
-
-private val DefaultCountry: Country = SanchrCountries.first { it.iso == "US" }
+private val DefaultCountry: Country by lazy { SanchrCountries.first { it.iso == "US" } }
 
 /**
  * Resolve the initial country for the picker using only permission-free

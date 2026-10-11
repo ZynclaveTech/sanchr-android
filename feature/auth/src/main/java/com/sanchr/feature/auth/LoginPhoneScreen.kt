@@ -132,7 +132,8 @@ fun LoginPhoneScreen(
             ?: deviceDefault
 
     val errorMessage = (state as? AuthState.Error)?.message
-    val isPhoneValid = loginPhone.phone.length >= MIN_CONTINUE_DIGITS
+    // The country's own rule, so Continue lights up for a real number and not before.
+    val isPhoneValid = selectedCountry.e164(loginPhone.phone) != null
     val darkTheme = isSystemInDarkTheme()
     val surfaces = LocalSanchrSurfaces.current
 
@@ -323,8 +324,6 @@ fun LoginPhoneScreen(
         }
     }
 }
-
-private const val MIN_CONTINUE_DIGITS = 7
 
 /**
  * The consent line, with both documents openable. It used to be flat text

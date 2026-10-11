@@ -9,6 +9,7 @@ import com.sanchr.core.crypto.SignalKeyManager
 import com.sanchr.core.crypto.sealed.SenderCertificateManager
 import com.sanchr.core.crypto.store.SanchrIdentityKeyStore
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.designsystem.component.findCountryByDialCode
 import com.sanchr.core.notifications.PushTokenManager
 import com.sanchr.proto.auth.AuthServiceClient
 import com.sanchr.proto.auth.DeviceInfo
@@ -100,11 +101,11 @@ class AuthViewModel
          */
         fun submitLoginPhone() {
             val current = _state.value as? AuthState.LoginPhone ?: return
-            if (!isValidCountryCode(current.countryCode) || !isValidSubscriber(current.phone)) {
-                _state.value = AuthState.Error(current, "Please enter a valid phone number")
-                return
-            }
-            val phoneE164 = current.countryCode + current.phone
+            val phoneE164 =
+                e164For(current) ?: run {
+                    _state.value = AuthState.Error(current, "Please enter a valid phone number")
+                    return
+                }
             lastPhoneEntry = current.copy(isSubmitting = false)
             _state.value = current.copy(isSubmitting = true)
             viewModelScope.launch {
@@ -445,6 +446,24 @@ class AuthViewModel
                 installationId = sessionManager.getOrCreateInstallationId(),
                 supportsDeliveryAck = true,
             )
+
+        /**
+         * The number to register, or null if what was typed is not one.
+         *
+         * Checked against the chosen country's own numbering plan, and
+         * without the leading 0 people dial at home. It used to be "7 to 15
+         * digits, as typed, after the calling code": a UK number entered the
+         * way it is written, 07700 900123, went to the server as
+         * +4407700900123, which is nobody's number.
+         *
+         * A calling code this app has no country for falls back to that old,
+         * looser check rather than turning the person away.
+         */
+        private fun e164For(entry: AuthState.LoginPhone): String? {
+            val country = findCountryByDialCode(entry.countryCode, entry.countryIso.ifEmpty { null })
+            if (country != null) return country.e164(entry.phone)
+            return (entry.countryCode + entry.phone).takeIf { isValidCountryCode(entry.countryCode) && isValidSubscriber(entry.phone) }
+        }
 
         private fun isValidCountryCode(countryCode: String): Boolean = Regex("^\\+\\d{1,3}$").matches(countryCode)
 

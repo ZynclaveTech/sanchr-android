@@ -176,4 +176,39 @@ class AuthViewModelAfterErrorTest {
             assertEquals("+919876500000", assertIs<AuthState.OtpEntry>(vm.state.value).phoneE164)
             coVerify(exactly = 2) { authServiceClient.requestOtp(any()) }
         }
+
+    /** A UK number typed the way it is written went to the server with its 0 still on. */
+    @Test
+    fun `the number registered leaves off the zero dialled at home`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            vm.onLoginPhoneChanged("+44", "07700900123", "GB")
+            vm.submitLoginPhone()
+            advanceUntilIdle()
+
+            assertEquals("+447700900123", assertIs<AuthState.OtpEntry>(vm.state.value).phoneE164)
+        }
+
+    @Test
+    fun `a country outside the old short list can sign in`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            vm.onLoginPhoneChanged("+977", "9841234567", "NP")
+            vm.submitLoginPhone()
+            advanceUntilIdle()
+
+            assertEquals("+9779841234567", assertIs<AuthState.OtpEntry>(vm.state.value).phoneE164)
+        }
+
+    @Test
+    fun `a number too short for its country is refused before anything is sent`() =
+        runTest(testDispatcher) {
+            val vm = viewModel()
+            vm.onLoginPhoneChanged("+91", "98765", "IN")
+            vm.submitLoginPhone()
+            advanceUntilIdle()
+
+            assertIs<AuthState.Error>(vm.state.value)
+            coVerify(exactly = 0) { authServiceClient.requestOtp(any()) }
+        }
 }
