@@ -143,7 +143,27 @@ class CallManager internal constructor(
 
     companion object {
         private const val TAG = "CallManager"
-        private const val CALL_TIMEOUT_MS = 60_000L
+
+        /**
+         * How long the server lets a call ring before it ends it as missed
+         * and tells both sides (`RINGING_TIMEOUT_SECS` in the call service).
+         */
+        internal const val SERVER_RING_TIMEOUT_MS = 120_000L
+
+        /**
+         * How long this device waits before giving up on a ringing call by
+         * itself, in either direction.
+         *
+         * The server decides when a call was missed. This is only for when
+         * its word does not arrive, so it has to be longer than the server's
+         * own limit — by more than the few seconds the server takes to
+         * notice. It was 60 s, half the server's: an Android phone stopped
+         * ringing, or an Android caller was told there was no answer, a full
+         * minute before the other side — an iPhone has no timer of its own
+         * and rings for as long as the server says — and then reported the
+         * call as missed while it was still ringing there.
+         */
+        internal const val CALL_TIMEOUT_MS = SERVER_RING_TIMEOUT_MS + 15_000L
         private const val ENDED_LINGER_MS = 2_000L
         private const val OFFER_MAX_AGE_SECS = 30.0
 
