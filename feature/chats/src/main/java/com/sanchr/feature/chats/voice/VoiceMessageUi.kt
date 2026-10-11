@@ -3,9 +3,12 @@ package com.sanchr.feature.chats.voice
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -39,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -70,7 +74,13 @@ fun VoiceRecordButton(
     var pending by remember { mutableStateOf<VoiceClip?>(null) }
     val askPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted && recorder.start()) recording = true
+            if (granted) {
+                if (recorder.start()) recording = true
+            } else {
+                // Refusing used to be met with nothing: the button simply did
+                // not record, with no word as to why.
+                Toast.makeText(context, "Microphone access is needed to record a voice message", Toast.LENGTH_SHORT).show()
+            }
         }
     LaunchedEffect(recording) {
         while (recording) {
@@ -126,6 +136,8 @@ fun VoiceRecordButton(
                     recording = false
                     elapsedMs = 0
                     pending = recorder.stop()
+                    // A tap too short to be a recording was dropped in silence.
+                    if (pending == null) Toast.makeText(context, "Hold on a little longer to record", Toast.LENGTH_SHORT).show()
                 } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                     PackageManager.PERMISSION_GRANTED
                 ) {
@@ -201,6 +213,14 @@ fun VoicePlayback(
     var positionMs by remember { mutableIntStateOf(0) }
     var totalMs by remember { mutableIntStateOf(durationMs) }
     var wantPlay by remember { mutableStateOf(false) }
+    // The clip could not be fetched. Shown, and cleared by trying again: this
+    // used to reset the play button and say nothing, so a note that would not
+    // load looked like a button that did not work.
+    var failed by remember { mutableStateOf(false) }
+    // Where to start from, when the waveform is touched before anything has
+    // been loaded to seek in.
+    var seekWhenReady by remember { mutableStateOf<Int?>(null) }
+    val turn = remember { Any() }
     // Read out of the file when the sender attached none — an older build, or
     // one that failed to sample. Without this the bubble drew forty identical
     // bars, a flat line presented as the shape of the audio.
@@ -215,22 +235,19 @@ fun VoicePlayback(
         if (!wantPlay) return@LaunchedEffect
         if (player == null) {
             loading = true
+            failed = false
             val file = openFile()
             loading = false
             if (file == null) {
+                failed = true
                 wantPlay = false
                 return@LaunchedEffect
             }
             player =
-                MediaPlayer().apply {
-                    setDataSource(file.absolutePath)
-                    prepare()
-                    if (duration > 0) totalMs = duration
-                    setOnCompletionListener {
-                        playing = false
-                        wantPlay = false
-                        positionMs = 0
-                    }
+                preparedPlayer(file, onDuration = { totalMs = it }) {
+                    playing = false
+                    wantPlay = false
+                    positionMs = 0
                 }
             // Alongside playback, not before it: the decode is bounded but it
             // is still work, and the clip should start playing the moment the
@@ -242,6 +259,16 @@ fun VoicePlayback(
                 scope.launch { decoded = VoiceWaveformDecoder.decode(file) }
             }
         }
+        seekWhenReady?.let { target ->
+            player?.seekTo(target)
+            seekWhenReady = null
+        }
+        // One note at a time: whoever was playing is paused.
+        VoicePlaybackTurn.take(turn) {
+            player?.takeIf { it.isPlaying }?.pause()
+            playing = false
+            wantPlay = false
+        }
         player?.start()
         playing = true
         while (playing) {
@@ -251,6 +278,7 @@ fun VoicePlayback(
     }
     DisposableEffect(Unit) {
         onDispose {
+            VoicePlaybackTurn.release(turn)
             player?.release()
             player = null
         }
@@ -286,12 +314,60 @@ fun VoicePlayback(
             modifier =
                 Modifier
                     .width(WAVEFORM_WIDTH_DP.dp)
-                    .height(28.dp),
+                    .height(28.dp)
+                    .seekOnTouch(totalMs) { target ->
+                        positionMs = target
+                        player?.seekTo(target) ?: run { seekWhenReady = target }
+                    },
         )
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text = formatClock(if (playing) positionMs else totalMs), style = IosType.captionSmall, color = tint)
+        PlaybackStatus(failed = failed, shownMs = if (playing || positionMs > 0) positionMs else totalMs, tint = tint)
     }
 }
+
+/** A player loaded and ready to start, reporting its real length and when it has finished. */
+private fun preparedPlayer(
+    file: File,
+    onDuration: (Int) -> Unit,
+    onCompleted: () -> Unit,
+): MediaPlayer =
+    MediaPlayer().apply {
+        setDataSource(file.absolutePath)
+        prepare()
+        if (duration > 0) onDuration(duration)
+        setOnCompletionListener { onCompleted() }
+    }
+
+/** The time, or — when the clip could not be fetched — that it could not. */
+@Composable
+private fun PlaybackStatus(
+    failed: Boolean,
+    shownMs: Int,
+    tint: Color,
+) {
+    Text(
+        text = if (failed) "Couldn't load" else formatClock(shownMs),
+        style = IosType.captionSmall,
+        color = if (failed) MaterialTheme.colorScheme.error else tint,
+    )
+}
+
+/**
+ * Touch or drag along the waveform to move through the clip. It was a picture
+ * of the audio and nothing more: a two-minute note could only be heard from
+ * the start.
+ */
+private fun Modifier.seekOnTouch(
+    durationMs: Int,
+    onSeek: (positionMs: Int) -> Unit,
+): Modifier =
+    pointerInput(durationMs) {
+        detectTapGestures { onSeek(VoicePlaybackTurn.positionFor(it.x, size.width.toFloat(), durationMs)) }
+    }.pointerInput(durationMs) {
+        detectHorizontalDragGestures { change, _ ->
+            onSeek(VoicePlaybackTurn.positionFor(change.position.x, size.width.toFloat(), durationMs))
+        }
+    }
 
 @Composable
 private fun WaveformBars(
