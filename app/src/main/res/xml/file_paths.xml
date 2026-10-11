@@ -12,4 +12,6 @@
     <cache-path name="edited" path="edited/" />
     <!-- Photos taken from the chats list, before a destination is chosen. -->
     <cache-path name="captures" path="captures/" />
+    <!-- A chat exported as text, lent to the app the user picks to send it with. -->
+    <cache-path name="exports" path="exports/" />
 </paths>

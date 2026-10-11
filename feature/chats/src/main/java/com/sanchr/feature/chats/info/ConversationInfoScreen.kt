@@ -1,5 +1,9 @@
 package com.sanchr.feature.chats.info
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -31,6 +36,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,14 +44,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sanchr.core.designsystem.component.SanchrCard
 import com.sanchr.core.designsystem.component.SanchrTopBar
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.SanchrTheme
+import java.io.File
 
 /**
  * One conversation's own page: what it is, how it is secured, and the
@@ -72,6 +81,8 @@ fun ConversationInfoScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val peerId = uiState.peerId
     var confirmingBlock by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(viewModel) { viewModel.exported.collect { file -> shareTranscript(context, file) } }
     var confirmingClear by remember { mutableStateOf(false) }
     if (confirmingClear) {
         AlertDialog(
@@ -214,6 +225,12 @@ fun ConversationInfoScreen(
                         onClick = { viewModel.setArchived(!uiState.isArchived) },
                     )
                     InfoRow(
+                        icon = Icons.Filled.IosShare,
+                        title = "Export chat",
+                        subtitle = "Send this chat's text somewhere; media is left out",
+                        onClick = viewModel::exportMessages,
+                    )
+                    InfoRow(
                         icon = Icons.Filled.DeleteSweep,
                         title = "Clear chat",
                         subtitle = "Delete every message here; the chat stays",
@@ -231,6 +248,24 @@ fun ConversationInfoScreen(
                 }
             }
         }
+    }
+}
+
+/** Lends the exported file to whichever app the user picks, readable by that app for that hand-over only. */
+private fun shareTranscript(
+    context: Context,
+    file: File,
+) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val send =
+        Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        context.startActivity(Intent.createChooser(send, "Export chat").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No app here can take this file", Toast.LENGTH_SHORT).show()
     }
 }
 

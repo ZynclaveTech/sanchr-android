@@ -7,6 +7,7 @@ import com.sanchr.core.model.ConversationType
 import com.sanchr.core.model.User
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.messaging.ClearChatUseCase
+import com.sanchr.domain.messaging.ExportChatUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -24,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -36,6 +38,7 @@ class ConversationInfoViewModelTest {
     private val messageRepository = mockk<MessageRepository>(relaxed = true)
     private val contactRepository = mockk<ContactRepository>(relaxed = true)
     private val clearChat = mockk<ClearChatUseCase>(relaxed = true)
+    private val exportChat = mockk<ExportChatUseCase>(relaxed = true)
 
     private fun conversation(
         durationMs: Long? = null,
@@ -71,6 +74,7 @@ class ConversationInfoViewModelTest {
             SavedStateHandle(mapOf("conversationId" to "c1")),
             contactRepository,
             clearChat,
+            exportChat,
         )
 
     private fun person(
@@ -82,6 +86,32 @@ class ConversationInfoViewModelTest {
         type: ConversationType,
         vararg people: User,
     ) = conversation().copy(type = type, participants = listOf(person("self", "You")) + people)
+
+    @Test
+    fun `exporting hands the finished file to the screen`() =
+        runTest(dispatcher) {
+            val file = java.io.File("Sanchr-Ravi Kumar.txt")
+            coEvery { exportChat("c1", "Ravi Kumar") } returns file
+            val viewModel = viewModel()
+            val exported = mutableListOf<java.io.File>()
+            val collecting = launch { viewModel.exported.collect(exported::add) }
+
+            viewModel.exportMessages()
+
+            assertEquals(listOf(file), exported)
+            collecting.cancel()
+        }
+
+    @Test
+    fun `an empty chat says there is nothing to export`() =
+        runTest(dispatcher) {
+            coEvery { exportChat("c1", any()) } returns null
+            val viewModel = viewModel()
+
+            viewModel.exportMessages()
+
+            assertEquals(NOTHING_TO_EXPORT, viewModel.uiState.value.error)
+        }
 
     @Test
     fun `clearing the chat clears this chat`() =
