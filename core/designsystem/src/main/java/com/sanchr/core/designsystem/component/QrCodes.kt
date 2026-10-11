@@ -106,6 +106,27 @@ object QrCodes {
     /** The link a profile's QR carries; iOS encodes exactly this, so either app can read the other's. */
     fun profileLink(userId: String): String = "https://sanchr.com/u/$userId"
 
+    /**
+     * The user a scanned profile link names, or null if what was scanned is
+     * not one.
+     *
+     * Strict on purpose, because the answer starts a conversation: it must be
+     * `https`, on `sanchr.com` itself (not a host that merely ends in those
+     * letters), at `/u/<id>` and nothing more, and the id must be the shape a
+     * user id has. Anything else is some other QR code.
+     */
+    fun userIdFromProfileLink(scanned: String): String? {
+        val uri = runCatching { java.net.URI(scanned.trim()) }.getOrNull() ?: return null
+        val host = uri.host?.lowercase()
+        if (!uri.scheme.equals("https", ignoreCase = true) || host !in PROFILE_LINK_HOSTS) return null
+        if (uri.userInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
+        val id = uri.rawPath?.removePrefix("/u/")?.takeIf { uri.rawPath.startsWith("/u/") } ?: return null
+        return id.lowercase().takeIf(USER_ID::matches)
+    }
+
+    private val PROFILE_LINK_HOSTS = setOf("sanchr.com", "www.sanchr.com")
+    private val USER_ID = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
     /** Modules of quiet zone around the code; the spec's minimum is 4. */
     private const val QUIET_ZONE_MODULES = 1
 }
