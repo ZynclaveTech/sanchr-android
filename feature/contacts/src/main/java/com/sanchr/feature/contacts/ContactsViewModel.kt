@@ -1,12 +1,11 @@
 package com.sanchr.feature.contacts
 
 import android.content.ContentResolver
-import android.provider.ContactsContract
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.domain.contacts.ContactRepository
-import com.sanchr.domain.contacts.DeviceContact
+import com.sanchr.domain.contacts.DeviceAddressBook
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
@@ -282,7 +281,7 @@ class ContactsViewModel
             viewModelScope.launch {
                 _syncState.value = ContactSyncUiState(isSyncing = true, progress = 0.1f)
                 try {
-                    val deviceContacts = readDeviceContacts(contentResolver)
+                    val deviceContacts = DeviceAddressBook.read(contentResolver)
                     _syncState.update { it.copy(progress = 0.5f) }
 
                     // Privacy-preserving discovery: the repository blinds
@@ -311,37 +310,6 @@ class ContactsViewModel
                         )
                 }
             }
-        }
-
-        /**
-         * Raw address-book numbers as stored, with the name of the entry each
-         * belongs to. Normalisation and hashing happen in the repository,
-         * after discovery; the name never leaves the device.
-         */
-        private fun readDeviceContacts(contentResolver: ContentResolver): List<DeviceContact> {
-            val seen = mutableSetOf<String>()
-            val contacts = mutableListOf<DeviceContact>()
-            val cursor =
-                contentResolver.query(
-                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    arrayOf(
-                        ContactsContract.CommonDataKinds.Phone.NUMBER,
-                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    ),
-                    null,
-                    null,
-                    null,
-                )
-            cursor?.use {
-                val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                while (it.moveToNext()) {
-                    val number = it.getString(numberIndex)
-                    if (number.isNullOrBlank() || !seen.add(number)) continue
-                    contacts += DeviceContact(rawNumber = number, name = it.getString(nameIndex)?.takeIf { n -> n.isNotBlank() })
-                }
-            }
-            return contacts
         }
     }
 

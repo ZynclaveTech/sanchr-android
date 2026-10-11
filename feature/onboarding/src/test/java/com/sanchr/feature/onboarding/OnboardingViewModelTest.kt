@@ -8,6 +8,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.mediaviewer.ImageSendEncoder
 import com.sanchr.core.network.media.AvatarUploader
+import com.sanchr.domain.contacts.DiscoverDeviceContactsUseCase
 import com.sanchr.proto.settings.ProfileResponse
 import io.mockk.Runs
 import io.mockk.coEvery
@@ -29,7 +30,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -72,6 +75,7 @@ class OnboardingViewModelTest {
     private val userPreferences = mockk<UserPreferences>(relaxed = true)
     private val profileUpdater = mockk<EncryptedProfileUpdater>()
     private val avatarUploader = mockk<AvatarUploader>()
+    private val discoverDeviceContacts = mockk<DiscoverDeviceContactsUseCase>(relaxed = true)
     private val contentResolver = mockk<ContentResolver>(relaxed = true)
     private val appContext =
         mockk<Context>(relaxed = true) { every { contentResolver } returns this@OnboardingViewModelTest.contentResolver }
@@ -84,7 +88,105 @@ class OnboardingViewModelTest {
             avatarUploader = avatarUploader,
             appContext = appContext,
             dispatchers = TestDispatcherProvider(testDispatcher),
+            discoverDeviceContacts = discoverDeviceContacts,
         )
+
+    private fun atContactSync(): OnboardingViewModel =
+        newViewModel().also { vm ->
+            vm.onNameChanged("Grace")
+            vm.submitName()
+            vm.skipAvatar()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertIs<OnboardingState.ContactSync>(vm.state.value)
+        }
+
+    /** The step asked for the permission and then found nobody, whatever the answer. */
+    @Test
+    fun `granting contacts access finds who is here before moving on`() =
+        runTest(testDispatcher) {
+            coEvery { discoverDeviceContacts() } returns 3
+            val vm = atContactSync()
+
+            vm.onContactsPermissionResult(granted = true)
+            assertTrue(assertIs<OnboardingState.ContactSync>(vm.state.value).isSubmitting, "working, and showing it")
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { discoverDeviceContacts() }
+            assertIs<OnboardingState.WelcomeConfirm>(vm.state.value)
+        }
+
+    @Test
+    fun `refusing contacts access moves on without looking`() =
+        runTest(testDispatcher) {
+            val vm = atContactSync()
+
+            vm.onContactsPermissionResult(granted = false)
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { discoverDeviceContacts() }
+            assertIs<OnboardingState.WelcomeConfirm>(vm.state.value)
+        }
+
+    @Test
+    fun `a search that fails does not strand the new user`() =
+        runTest(testDispatcher) {
+            coEvery { discoverDeviceContacts() } throws IllegalStateException("offline")
+            val vm = atContactSync()
+
+            vm.onContactsPermissionResult(granted = true)
+            advanceUntilIdle()
+
+            assertIs<OnboardingState.WelcomeConfirm>(vm.state.value)
+        }
+
+    @Test
+    fun `a search that never finishes is given up on`() =
+        runTest(testDispatcher) {
+            coEvery { discoverDeviceContacts() } coAnswers { awaitCancellation() }
+            val vm = atContactSync()
+
+            vm.onContactsPermissionResult(granted = true)
+            advanceTimeBy(OnboardingViewModel.CONTACT_DISCOVERY_TIMEOUT_MS - 1)
+            assertIs<OnboardingState.ContactSync>(vm.state.value)
+            advanceTimeBy(2)
+            advanceUntilIdle()
+
+            assertIs<OnboardingState.WelcomeConfirm>(vm.state.value)
+        }
+
+    @Test
+    fun `skipping while the search runs is honoured, and its finishing changes nothing`() =
+        runTest(testDispatcher) {
+            val gate = CompletableDeferred<Int>()
+            coEvery { discoverDeviceContacts() } coAnswers { gate.await() }
+            val vm = atContactSync()
+            vm.onContactsPermissionResult(granted = true)
+            advanceUntilIdle()
+
+            vm.onContactSyncFinish()
+            val afterSkip = vm.state.value
+            assertIs<OnboardingState.WelcomeConfirm>(afterSkip)
+            gate.complete(5)
+            advanceUntilIdle()
+
+            assertEquals(afterSkip, vm.state.value)
+        }
+
+    @Test
+    fun `a second answer while the search runs does not start another`() =
+        runTest(testDispatcher) {
+            val gate = CompletableDeferred<Int>()
+            coEvery { discoverDeviceContacts() } coAnswers { gate.await() }
+            val vm = atContactSync()
+
+            vm.onContactsPermissionResult(granted = true)
+            advanceUntilIdle()
+            vm.onContactsPermissionResult(granted = true)
+            gate.complete(1)
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { discoverDeviceContacts() }
+        }
 
     @BeforeTest
     fun setUp() {

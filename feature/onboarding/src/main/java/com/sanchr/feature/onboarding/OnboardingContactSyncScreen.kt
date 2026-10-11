@@ -63,11 +63,10 @@ import com.sanchr.core.designsystem.theme.SanchrIndigo500
  * `ContactSyncView` requests Contacts only and notifications are requested
  * separately on the post-ContactSync welcome step.
  *
- * Sync UI (in-flight progress, "Syncing\u2026" label, sync-result list) is
- * deferred per spec §1 non-goals; will land with the actual contact-discovery
- * RPC. The [OnboardingState.ContactSync.isSubmitting] field is retained so
- * the VM's `back()` no-op-while-submitting guard remains a meaningful
- * contract for that future flow.
+ * Granting the permission runs contact discovery before the flow moves on
+ * (see [OnboardingViewModel.onContactsPermissionResult]); the button shows it
+ * is working via [OnboardingState.ContactSync.isSubmitting]. There is no
+ * results list here, as there is on iOS: the count is not shown.
  *
  * iOS-bug-compat: per-card `tint` argument is accepted by `permissionCard`
  * but the icon foreground is hardcoded to `.sanchrPrimary` (see
@@ -95,12 +94,9 @@ fun OnboardingContactSyncScreen(
     val contactsPermissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
-            onResult = { _ ->
-                // iOS-deviation: iOS runs an in-app sync flow with progress + results UI
-                // after permission grant (`ContactSyncView.syncContacts`). Android defers
-                // that — for now grant-or-deny we always advance, matching the iOS UX
-                // where "Sync All Contacts" requests the permission then advances.
-                viewModel.onContactSyncFinish()
+            onResult = { grants ->
+                // Granted: find who is here, then move on. Refused: move on.
+                viewModel.onContactsPermissionResult(granted = grants[Manifest.permission.READ_CONTACTS] == true)
             },
         )
 
@@ -218,7 +214,8 @@ fun OnboardingContactSyncScreen(
                 onClick = {
                     contactsPermissionLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS))
                 },
-                isLoading = false,
+                // Finding contacts can take a few seconds; Skip stays live meanwhile.
+                isLoading = syncState.isSubmitting,
                 trailingIcon = null,
             )
 
