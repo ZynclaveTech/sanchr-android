@@ -43,6 +43,8 @@ dependencies {
     implementation(projects.core.crypto)
     implementation(projects.core.notifications)
     implementation(projects.proto)
+    // For io.grpc.Status, to tell a wrong code from no network when wording an error.
+    implementation(libs.grpc.stub)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
