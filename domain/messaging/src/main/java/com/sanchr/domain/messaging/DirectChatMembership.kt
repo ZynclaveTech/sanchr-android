@@ -24,7 +24,9 @@ object DirectChatMembership {
         senderId: String,
         selfId: String?,
     ): Boolean {
-        if (conversationType != DIRECT) return true
+        // Not always upper case in the database: a restored backup keeps
+        // whatever spelling the archive had.
+        if (!conversationType.equals(DIRECT, ignoreCase = true)) return true
         // Our own message, echoed from another of our devices.
         if (!selfId.isNullOrBlank() && senderId == selfId) return true
         val others = participantIds.filter { it.isNotBlank() && it != selfId }

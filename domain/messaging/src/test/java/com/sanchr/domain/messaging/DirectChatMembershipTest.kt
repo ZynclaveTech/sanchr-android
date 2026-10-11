@@ -45,6 +45,14 @@ class DirectChatMembershipTest {
         assertTrue(allows("mallory", participants = listOf("", "me")))
     }
 
+    /** A restored backup keeps the archive's spelling of the type. */
+    @Test
+    fun `a one-to-one chat is one however its type is spelled`() {
+        assertFalse(allows("mallory", type = "direct"))
+        assertFalse(allows("mallory", type = "Direct"))
+        assertTrue(allows("alice", type = "direct"))
+    }
+
     @Test
     fun `a group is not judged here`() {
         assertTrue(allows("mallory", type = "GROUP"))
