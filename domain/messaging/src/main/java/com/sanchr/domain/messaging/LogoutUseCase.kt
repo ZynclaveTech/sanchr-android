@@ -41,6 +41,10 @@ import kotlinx.coroutines.withContext
  * The record of recent session rebuilds ([SessionRebuildThrottle]) is kept
  * in its own preferences file rather than the database, so it is cleared
  * here by name.
+ *
+ * What the account left on disk outside the database — decrypted media, key
+ * files, the profile keys — is removed by [AccountLeftovers]. None of it was:
+ * "Delete Account" promised everything was gone and left the photos.
  */
 @Singleton
 class LogoutUseCase
@@ -54,9 +58,10 @@ class LogoutUseCase
         private val databasePassphraseProvider: DatabasePassphraseProvider,
         private val deliveryTokenStore: DeliveryTokenStore,
         private val sessionRebuilds: SessionRebuildThrottle,
+        private val leftovers: AccountLeftovers,
         private val dispatchers: DispatcherProvider,
     ) {
-        suspend operator fun invoke() =
+        suspend operator fun invoke(): Unit =
             withContext(dispatchers.io) {
                 // 1. Flip sessionActive → false first so the UI navigates away and
                 //    cancels any ViewModel coroutines that are collecting DAO Flows.
@@ -85,6 +90,9 @@ class LogoutUseCase
                 //    lives outside the database, and says something about who
                 //    this account was talking to.
                 runCatching { sessionRebuilds.clear() }
+                // 9. Everything else the account wrote outside the database.
+                //    Its own guard per item, like the steps above.
+                leftovers.wipe()
             }
 
         private companion object {

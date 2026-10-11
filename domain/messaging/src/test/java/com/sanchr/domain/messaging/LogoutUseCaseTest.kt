@@ -35,6 +35,7 @@ class LogoutUseCaseTest {
     private val deliveryTokenStore = mockk<DeliveryTokenStore>(relaxed = true)
     private val sessionRebuildLog = InMemorySessionRebuildLog()
     private val sessionRebuilds = SessionRebuildThrottle(sessionRebuildLog)
+    private val leftovers = mockk<AccountLeftovers>(relaxed = true)
 
     private val dispatchers =
         object : DispatcherProvider {
@@ -55,6 +56,7 @@ class LogoutUseCaseTest {
             databasePassphraseProvider = databasePassphraseProvider,
             deliveryTokenStore = deliveryTokenStore,
             sessionRebuilds = sessionRebuilds,
+            leftovers = leftovers,
             dispatchers = dispatchers,
         )
 
@@ -68,6 +70,26 @@ class LogoutUseCaseTest {
             assertNull(sessionRebuildLog.lastStarted("alice.1"))
             // Nor does a rebuild that was under way hold the next account's off.
             assertTrue(sessionRebuilds.tryStart("alice", 1))
+        }
+
+    /** "Delete Account" said everything was gone, and left the decrypted photos. */
+    @Test
+    fun `what the account left outside the database is removed too`() =
+        runTest {
+            useCase()
+
+            coVerify(exactly = 1) { leftovers.wipe() }
+        }
+
+    @Test
+    fun `and still is when an earlier step fails`() =
+        runTest {
+            every { sessionManager.clearSession() } throws RuntimeException("prefs error")
+            every { database.close() } throws RuntimeException("db error")
+
+            useCase()
+
+            coVerify(exactly = 1) { leftovers.wipe() }
         }
 
     @Test
