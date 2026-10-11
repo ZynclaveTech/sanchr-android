@@ -1027,6 +1027,18 @@ private fun MessageActionHost(
         horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start,
         modifier = Modifier.fillMaxWidth(),
     ) {
+        // What this message answers. Only the text bubble drew it, so a
+        // photo, voice note or location sent in reply showed nothing of what
+        // it was a reply to — the link was kept and sent, and then not shown.
+        // These bubbles have no shared background to sit inside, so the
+        // quote goes directly above, on the same side.
+        if (message.replyToId != null) {
+            QuoteCard(
+                quote = message.quote,
+                textColor = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.widthIn(max = QUOTE_ABOVE_MEDIA_MAX_WIDTH).padding(bottom = 4.dp),
+            )
+        }
         Box(
             modifier =
                 Modifier.combinedClickable(
@@ -1364,10 +1376,11 @@ private fun ReactionPicker(
 private fun QuoteCard(
     quote: ReplyQuote?,
     textColor: Color,
+    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier =
-            Modifier
+            modifier
                 .padding(start = 6.dp, end = 6.dp, top = 6.dp)
                 .background(textColor.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
                 .height(IntrinsicSize.Min),
@@ -1668,6 +1681,7 @@ private fun AlbumMessageBubble(
 }
 
 private const val ALBUM_MAX_TILES = 4
+private val QUOTE_ABOVE_MEDIA_MAX_WIDTH = 260.dp
 private const val ALBUM_COLUMNS = 2
 
 // --- Image message bubble ---
