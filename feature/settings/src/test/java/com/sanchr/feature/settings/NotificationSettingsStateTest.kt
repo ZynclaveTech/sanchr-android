@@ -20,6 +20,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -55,6 +56,7 @@ class NotificationSettingsStateTest {
         every { it.dynamicColorEnabled } returns flowOf(false)
         every { it.notificationsEnabled } returns flowOf(true)
         every { it.readReceiptsEnabled } returns flowOf(true)
+        every { it.screenLockTimeoutSeconds } returns flowOf(0)
         every { it.typingIndicatorsEnabled } returns flowOf(true)
         every { it.onlineStatusVisible } returns flowOf(true)
         every { it.canSendReadReceipts } returns flowOf(true)
@@ -121,6 +123,48 @@ class NotificationSettingsStateTest {
                 val state = expectMostRecentItem()
                 assertFalse(state.typingIndicatorsEnabled)
                 assertFalse(state.onlineStatusVisible)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    /** Saved and enforced all along, and never shown: the picker always said "Immediately". */
+    @Test
+    fun `the lock timeout that was chosen is the one shown`() =
+        runTest(dispatcher) {
+            val prefs =
+                preferences().also {
+                    every { it.screenLockEnabled } returns flowOf(true)
+                    every { it.screenLockTimeoutSeconds } returns flowOf(300)
+                }
+
+            viewModel(prefs).uiState.test {
+                advanceUntilIdle()
+                val state = expectMostRecentItem()
+                assertEquals("5m", state.screenLockTimeout)
+                assertTrue(state.screenLockEnabled)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `choosing a timeout stores its seconds`() =
+        runTest(dispatcher) {
+            val prefs = preferences()
+
+            viewModel(prefs).setScreenLockTimeout("30m")
+            advanceUntilIdle()
+
+            coVerify { prefs.setScreenLockTimeoutSeconds(1_800) }
+        }
+
+    @Test
+    fun `a stored timeout the picker does not offer reads as immediately, not as nothing`() =
+        runTest(dispatcher) {
+            val prefs = preferences().also { every { it.screenLockTimeoutSeconds } returns flowOf(77) }
+
+            viewModel(prefs).uiState.test {
+                advanceUntilIdle()
+                assertEquals("immediately", expectMostRecentItem().screenLockTimeout)
                 cancelAndIgnoreRemainingEvents()
             }
         }

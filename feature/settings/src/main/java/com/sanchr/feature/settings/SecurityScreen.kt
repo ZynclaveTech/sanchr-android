@@ -77,8 +77,10 @@ fun SecurityScreen(
                 onCheckedChange = viewModel::setScreenLockEnabled,
             )
 
-            // Lock timeout picker
-            if (uiState.screenLockEnabled) {
+            // Lock timeout picker. Offered whenever the app locks at all: either
+            // switch turns the lock on, and with only Biometric Unlock on there
+            // was a timeout in force and nowhere to change it.
+            if (uiState.screenLockEnabled || uiState.biometricEnabled) {
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
                 Text(
                     text = "Lock Timeout",
