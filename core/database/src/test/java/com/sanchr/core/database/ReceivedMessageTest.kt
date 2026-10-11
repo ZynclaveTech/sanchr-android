@@ -1,0 +1,125 @@
+package com.sanchr.core.database
+
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.sanchr.core.database.entity.ConversationEntity
+import com.sanchr.core.database.entity.MessageEntity
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * A message that arrives cannot replace one already held.
+ *
+ * Its id is chosen by whoever sent it, and they know the id of every message
+ * in the chat they share with this user — theirs and this user's.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE, sdk = [33])
+class ReceivedMessageTest {
+    private lateinit var db: SanchrDatabase
+
+    @Before
+    fun setUp() {
+        db =
+            Room
+                .inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), SanchrDatabase::class.java)
+                .allowMainThreadQueries()
+                .build()
+        runTest {
+            db.conversationDao().insertConversation(
+                ConversationEntity(id = "c1", type = "DIRECT", participantIds = "[]", createdAt = 1, updatedAt = 1),
+            )
+        }
+    }
+
+    @After
+    fun tearDown() {
+        db.close()
+    }
+
+    private fun message(
+        sender: String,
+        body: String,
+        status: String = "DELIVERED",
+    ) = MessageEntity(
+        id = "m1",
+        conversationId = "c1",
+        senderId = sender,
+        contentType = "text",
+        contentBody = body,
+        status = status,
+        timestamp = 1,
+    )
+
+    private suspend fun stored() = checkNotNull(db.messageDao().getMessageById("m1"))
+
+    @Test
+    fun `a new message is saved`() =
+        runTest {
+            assertNotEquals(-1L, db.messageDao().insertMessageIfAbsent(message("peer", "hello")))
+
+            assertEquals("hello", stored().contentBody)
+        }
+
+    @Test
+    fun `a message this user sent cannot be rewritten by the person it went to`() =
+        runTest {
+            db.messageDao().insertMessage(message("self", "I will pay you back Friday", status = "SENT"))
+
+            assertEquals(-1L, db.messageDao().insertMessageIfAbsent(message("peer", "I owe you nothing")))
+
+            assertEquals("I will pay you back Friday", stored().contentBody)
+            assertEquals("self", stored().senderId)
+            assertEquals("SENT", stored().status)
+        }
+
+    @Test
+    fun `a sender cannot quietly change what they said earlier`() =
+        runTest {
+            db.messageDao().insertMessageIfAbsent(message("peer", "what I really said"))
+
+            db.messageDao().insertMessageIfAbsent(message("peer", "what I wish I had said"))
+
+            assertEquals("what I really said", stored().contentBody)
+        }
+
+    @Test
+    fun `a deleted message stays deleted when it is sent again`() =
+        runTest {
+            db.messageDao().insertMessageIfAbsent(message("peer", "hello"))
+            db.messageDao().softDeleteMessage("m1")
+
+            db.messageDao().insertMessageIfAbsent(message("peer", "hello"))
+
+            assertTrue(stored().isDeleted)
+        }
+
+    @Test
+    fun `an opened view-once is not refilled when it is sent again`() =
+        runTest {
+            db.messageDao().insertMessageIfAbsent(message("peer", "{the photo}"))
+            db.messageDao().replaceContent("m1", "text", "Opened")
+
+            db.messageDao().insertMessageIfAbsent(message("peer", "{the photo}"))
+
+            assertEquals("Opened", stored().contentBody)
+        }
+
+    @Test
+    fun `a message already read is not handed back as unread`() =
+        runTest {
+            db.messageDao().insertMessageIfAbsent(message("peer", "hello", status = "READ"))
+
+            db.messageDao().insertMessageIfAbsent(message("peer", "hello"))
+
+            assertEquals("READ", stored().status)
+        }
+}

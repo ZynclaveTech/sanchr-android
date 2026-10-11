@@ -60,6 +60,9 @@ class MessageRepositoryImpl
     ) : MessageRepository {
         private companion object {
             const val TAG = "MessageRepositoryImpl"
+
+            /** What an insert that leaves an existing row alone returns. */
+            const val ROW_NOT_INSERTED = -1L
         }
 
         /**
@@ -419,10 +422,15 @@ class MessageRepositoryImpl
                     expiresAt = expiresAtMillis,
                     replyToId = replyToId,
                 )
-            // A resend replaces the same row (see InnerPayload.messageId) and must
-            // not count twice; our own messages echoed from another device are read.
-            val isNewRow = messageDao.getMessageById(messageId) == null
-            messageDao.insertMessage(entity)
+            // First one in keeps the row. A genuine resend carries what is
+            // already here, so nothing is lost by leaving it; and anything
+            // else arriving under an id that is taken — the sender picks the
+            // id — must not be allowed to rewrite a message this phone already
+            // holds, bring back one that was deleted, or refill a view-once
+            // that has been opened. It also must not count as unread twice.
+            // Our own messages echoed from another device are read.
+            val isNewRow = messageDao.insertMessageIfAbsent(entity) != ROW_NOT_INSERTED
+            if (!isNewRow) Log.d(TAG, "received a message under an id already held; kept the one here")
             if (isNewRow && senderId != sessionManager.getUserId()) {
                 conversationDao.incrementUnread(conversationId, timestamp)
                 // Only a cheap check here, on the receive path: is this media,
