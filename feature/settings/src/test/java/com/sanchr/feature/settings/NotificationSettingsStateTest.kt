@@ -55,6 +55,8 @@ class NotificationSettingsStateTest {
         every { it.dynamicColorEnabled } returns flowOf(false)
         every { it.notificationsEnabled } returns flowOf(true)
         every { it.readReceiptsEnabled } returns flowOf(true)
+        every { it.typingIndicatorsEnabled } returns flowOf(true)
+        every { it.onlineStatusVisible } returns flowOf(true)
         every { it.canSendReadReceipts } returns flowOf(true)
         every { it.biometricEnabled } returns flowOf(false)
         every { it.screenshotProtectionEnabled } returns flowOf(false)
@@ -98,6 +100,30 @@ class NotificationSettingsStateTest {
         unmockkStatic(Log::class)
         Dispatchers.resetMain()
     }
+
+    /**
+     * What the phone enforces is what the switch shows. These two were shown
+     * from the server's copy, which defaults to on and can be out of date, so
+     * a switch could read on while the phone sent nothing — or off while it
+     * still sent.
+     */
+    @Test
+    fun `typing and online status are shown from the values the phone enforces`() =
+        runTest(dispatcher) {
+            val prefs =
+                preferences().also {
+                    every { it.typingIndicatorsEnabled } returns flowOf(false)
+                    every { it.onlineStatusVisible } returns flowOf(false)
+                }
+
+            viewModel(prefs).uiState.test {
+                advanceUntilIdle()
+                val state = expectMostRecentItem()
+                assertFalse(state.typingIndicatorsEnabled)
+                assertFalse(state.onlineStatusVisible)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
 
     @Test
     fun `switches that were turned off come back off`() =

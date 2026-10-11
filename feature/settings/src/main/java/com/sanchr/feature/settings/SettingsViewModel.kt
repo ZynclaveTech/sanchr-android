@@ -179,10 +179,19 @@ class SettingsViewModel
                         userPreferences.themeMode,
                         userPreferences.dynamicColorEnabled,
                         userPreferences.notificationsEnabled,
-                        userPreferences.readReceiptsEnabled,
+                        // The three the phone itself enforces, read from where
+                        // it enforces them. Typing and online status were shown
+                        // from the server's copy instead, so the switch and the
+                        // behaviour could disagree: off on screen while still
+                        // sending, or springing back to on when the load failed.
+                        combine(
+                            userPreferences.readReceiptsEnabled,
+                            userPreferences.typingIndicatorsEnabled,
+                            userPreferences.onlineStatusVisible,
+                        ) { readReceipts, typing, online -> Triple(readReceipts, typing, online) },
                         userPreferences.biometricEnabled,
-                    ) { theme, dynamic, notifications, readReceipts, biometric ->
-                        PrefsGroup(theme, dynamic, notifications, readReceipts, biometric)
+                    ) { theme, dynamic, notifications, sharing, biometric ->
+                        PrefsGroup(theme, dynamic, notifications, sharing.first, sharing.second, sharing.third, biometric)
                     },
                     // The notification switches, which used to reach the server
                     // and nowhere else: the screen read its own data-class
@@ -272,8 +281,8 @@ class SettingsViewModel
                     notificationSoundEnabled = notifications.sound,
                     notificationVibrationEnabled = notifications.vibrate,
                     readReceiptsEnabled = prefs.readReceiptsEnabled,
-                    typingIndicatorsEnabled = remote?.typingIndicatorsEnabled ?: true,
-                    onlineStatusVisible = remote?.onlineStatusVisible ?: true,
+                    typingIndicatorsEnabled = prefs.typingIndicatorsEnabled,
+                    onlineStatusVisible = prefs.onlineStatusVisible,
                     profilePhotoVisibility = extras.profilePhotoVisibility,
                     biometricEnabled = prefs.biometricEnabled,
                     screenLockEnabled = extras.screenLockEnabled,
@@ -972,6 +981,8 @@ private data class PrefsGroup(
     val dynamicColorEnabled: Boolean,
     val notificationsEnabled: Boolean,
     val readReceiptsEnabled: Boolean,
+    val typingIndicatorsEnabled: Boolean,
+    val onlineStatusVisible: Boolean,
     val biometricEnabled: Boolean,
 )
 
