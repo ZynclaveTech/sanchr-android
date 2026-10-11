@@ -1,6 +1,7 @@
 package com.sanchr.feature.auth.navigation
 
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -86,8 +87,16 @@ fun NavGraphBuilder.authGraph(
             val parent = remember(entry) { navController.getBackStackEntry(AUTH_GRAPH_ROUTE) }
             val vm: AuthViewModel = hiltViewModel(parent)
             AuthFlowHost(vm = vm, navController = navController, onAuthSuccess = onAuthSuccess) {
+                // The state goes back before the screen does: the flow follows
+                // the state, and left on the code step it would bring this
+                // screen straight back.
+                val backToPhone = {
+                    if (vm.backToPhoneEntry()) navController.popBackStack()
+                    Unit
+                }
+                BackHandler(onBack = backToPhone)
                 OtpScreen(
-                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateBack = backToPhone,
                     viewModel = vm,
                 )
             }
