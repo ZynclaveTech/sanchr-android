@@ -289,7 +289,7 @@ class ReceiveMessageUseCase
                 is RoutedPayload.Control -> {
                     Log.d(TAG, "control payload (${routed.contentType}) received; not persisted as a message")
                     if (routed.contentType == RECEIPT_CONTENT_TYPE) {
-                        applyReceiptUpdate(routed.payload.content)
+                        applyReceiptUpdate(routed.payload.content, success.senderUserId)
                     }
                     if (routed.contentType == PRESENCE_CONTENT_TYPE) {
                         applyPresence(success.senderUserId, routed.payload.content)
@@ -463,13 +463,10 @@ class ReceiveMessageUseCase
          * unchanged. Silently does nothing — and writes nothing — for a
          * payload whose `content` fails to decode as a [Messaging.ReceiptUpdate],
          * carries a blank message id, or carries a status that does not
-         * match a known [MessageStatus] name case-insensitively (`"read"`
-         * is the only status the sealed sender emits today, but this stays
-         * open to `sent/delivered/failed` without a code change). Landing
-         * on the same local effect as the cleartext path in
-         * `RealtimeManager.handleReceipt` — uppercase the wire status,
-         * write it to the message row — via [MessageRepository.applyReceiptStatus]
-         * rather than a second, independent case-conversion.
+         * match a known [MessageStatus] name case-insensitively. Whether
+         * a recognised status may be written — to this message, on this
+         * sender's word — is [MessageRepository.applyReceiptStatus]'s to
+         * decide; see [ReceiptRule].
          *
          * [MessageRepository.applyReceiptStatus] itself is not guaranteed
          * never to throw (e.g. a Room/SQLite failure) — that write is
@@ -482,7 +479,10 @@ class ReceiveMessageUseCase
          * unrecognised, malformed, or unwritable receipt must never leave
          * its envelope unacked, or the server redelivers it forever.
          */
-        private suspend fun applyReceiptUpdate(content: ByteArray) {
+        private suspend fun applyReceiptUpdate(
+            content: ByteArray,
+            senderUserId: String,
+        ) {
             val receipt =
                 runCatching { Messaging.ReceiptUpdate.parseFrom(content) }.getOrNull()
                     ?: run {
@@ -499,7 +499,7 @@ class ReceiveMessageUseCase
                 return
             }
             try {
-                messageRepository.get().applyReceiptStatus(receipt.messageId, status)
+                messageRepository.get().applyReceiptStatus(receipt.messageId, status, senderUserId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

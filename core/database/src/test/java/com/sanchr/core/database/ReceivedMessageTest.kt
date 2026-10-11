@@ -122,4 +122,47 @@ class ReceivedMessageTest {
 
             assertEquals("READ", stored().status)
         }
+
+    // ── Receipts ─────────────────────────────────────────────────────────
+
+    private val notYetRead = listOf("QUEUED", "SENDING", "SENT", "FAILED", "DELIVERED")
+
+    @Test
+    fun `a receipt moves this user's own message forward`() =
+        runTest {
+            db.messageDao().insertMessage(message("self", "hello", status = "SENT"))
+
+            assertEquals(1, db.messageDao().advanceOwnMessageStatus("m1", "self", "READ", notYetRead))
+
+            assertEquals("READ", stored().status)
+        }
+
+    @Test
+    fun `a receipt cannot touch a message someone else sent`() =
+        runTest {
+            db.messageDao().insertMessage(message("peer", "hello", status = "DELIVERED"))
+
+            assertEquals(0, db.messageDao().advanceOwnMessageStatus("m1", "self", "READ", notYetRead))
+
+            assertEquals("DELIVERED", stored().status)
+        }
+
+    @Test
+    fun `a receipt cannot pull a read message back`() =
+        runTest {
+            db.messageDao().insertMessage(message("self", "hello", status = "READ"))
+
+            assertEquals(
+                0,
+                db.messageDao().advanceOwnMessageStatus("m1", "self", "DELIVERED", listOf("QUEUED", "SENDING", "SENT", "FAILED")),
+            )
+
+            assertEquals("READ", stored().status)
+        }
+
+    @Test
+    fun `a receipt for a message that is not here changes nothing`() =
+        runTest {
+            assertEquals(0, db.messageDao().advanceOwnMessageStatus("nope", "self", "READ", notYetRead))
+        }
 }

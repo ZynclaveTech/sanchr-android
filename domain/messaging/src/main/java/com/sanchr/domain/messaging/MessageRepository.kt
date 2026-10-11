@@ -172,33 +172,24 @@ interface MessageRepository {
     ): String?
 
     /**
-     * Applies an inbound receipt's status to [messageId] — the same local
-     * effect `RealtimeManager.handleReceipt` produces for a server-generated
-     * cleartext receipt (uppercase the wire status, write it to the
-     * `messages` row's `status` column), reached through this repository
-     * because [ReceiveMessageUseCase] (the sealed-receipt caller) has no
-     * `MessageDao` of its own.
+     * Applies a receipt that [fromUserId] sent, sealed, to [messageId].
      *
-     * [status] is a validated [MessageStatus], not a raw wire string,
-     * precisely so an unrecognised status can never reach here — the caller
-     * decodes the receipt and is responsible for that check; an unknown
-     * wire value must be ignored rather than written.
+     * Only what a receipt can truthfully say is written — see [ReceiptRule]:
+     * the message must be one this user sent, [fromUserId] must be someone
+     * else who belongs to its conversation, and [status] must move it
+     * forward to delivered or read. Anything else is ignored.
      *
-     * A no-op if [messageId] does not name a row this device has (e.g. the
-     * receipt named a message this device never persisted, or one deleted
-     * by a race) — guaranteed by plain `UPDATE ... WHERE id = :messageId`
-     * semantics. The write itself is **not** guaranteed never to throw
-     * (e.g. a Room/SQLite failure): this method does not swallow that.
-     * [ReceiveMessageUseCase], the only caller today, guards its own call
-     * so a write failure here can never leave an envelope unacked; a future
-     * caller that needs the same "ack/complete regardless" property must
-     * guard its own call the same way.
+     * Not guaranteed never to throw (a Room/SQLite failure is not
+     * swallowed). [ReceiveMessageUseCase], the only caller, guards its own
+     * call so a write failure can never leave an envelope unacked.
+     *
+     * @return whether the message's status changed.
      */
-
     suspend fun applyReceiptStatus(
         messageId: String,
         status: MessageStatus,
-    )
+        fromUserId: String,
+    ): Boolean
 
     /** Adds or removes one user's emoji on a message; a no-op when the row already matches. */
     suspend fun applyReaction(

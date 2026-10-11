@@ -103,6 +103,22 @@ interface MessageDao {
     )
 
     /**
+     * Moves one of [ownUserId]'s messages to [newStatus], if it is in one of
+     * [from]. For receipts: one statement, so "is it mine, and is this a step
+     * forward" cannot be true when checked and false when written.
+     *
+     * @return rows changed: 1, or 0 if the message is not here, not this
+     *         user's, or not in a status the move is allowed from.
+     */
+    @Query("UPDATE messages SET status = :newStatus WHERE id = :messageId AND sender_id = :ownUserId AND status IN (:from)")
+    suspend fun advanceOwnMessageStatus(
+        messageId: String,
+        ownUserId: String,
+        newStatus: String,
+        from: List<String>,
+    ): Int
+
+    /**
      * Terminal-state transition for outbound sends that cannot be retried.
      * Writes `status`, `failure_reason`, and `failure_class` in one UPDATE so
      * observers see a single row transition and the UI never sees a

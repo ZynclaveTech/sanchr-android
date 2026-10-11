@@ -6,7 +6,9 @@ import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ConversationEntity
+import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.MessageStatus
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.notifications.NotificationServiceClient
@@ -99,6 +101,51 @@ class MessageRepositoryImplUnreadTest {
             org.junit.Assert.assertFalse(repo.mayPostTo("c1", "mallory"))
             // A chat this phone has not seen yet cannot be judged.
             org.junit.Assert.assertTrue(repo.mayPostTo("unknown", "mallory"))
+        }
+
+    private fun ownMessageInChatWithAlice() {
+        coEvery { messageDao.getMessageById("m1") } returns
+            MessageEntity(
+                id = "m1",
+                conversationId = "c1",
+                senderId = "self",
+                contentType = "text",
+                contentBody = "hi",
+                status = "SENT",
+                timestamp = 1,
+            )
+        coEvery { conversationDao.getConversationById("c1") } returns
+            ConversationEntity(id = "c1", type = "DIRECT", participantIds = """["self","alice"]""", updatedAt = 1, createdAt = 1)
+        coEvery { messageDao.advanceOwnMessageStatus(any(), any(), any(), any()) } returns 1
+    }
+
+    @Test
+    fun `a read receipt from the person the message went to is applied`() =
+        runTest {
+            ownMessageInChatWithAlice()
+
+            org.junit.Assert.assertTrue(repo.applyReceiptStatus("m1", MessageStatus.READ, "alice"))
+
+            coVerify(exactly = 1) {
+                messageDao.advanceOwnMessageStatus("m1", "self", "READ", listOf("QUEUED", "SENDING", "SENT", "FAILED", "DELIVERED"))
+            }
+        }
+
+    @Test
+    fun `a receipt from someone outside the chat, from ourselves, or with a made-up status is not`() =
+        runTest {
+            ownMessageInChatWithAlice()
+            coEvery { messageDao.getMessageById("not-here") } returns null
+
+            org.junit.Assert.assertFalse(repo.applyReceiptStatus("m1", MessageStatus.READ, "mallory"))
+            org.junit.Assert.assertFalse(repo.applyReceiptStatus("m1", MessageStatus.READ, "self"))
+            // The outbox's cue to send it again.
+            org.junit.Assert.assertFalse(repo.applyReceiptStatus("m1", MessageStatus.QUEUED, "alice"))
+            org.junit.Assert.assertFalse(repo.applyReceiptStatus("m1", MessageStatus.FAILED, "alice"))
+            org.junit.Assert.assertFalse(repo.applyReceiptStatus("not-here", MessageStatus.READ, "alice"))
+
+            coVerify(exactly = 0) { messageDao.advanceOwnMessageStatus(any(), any(), any(), any()) }
+            coVerify(exactly = 0) { messageDao.updateMessageStatus(any(), any()) }
         }
 
     @Test
