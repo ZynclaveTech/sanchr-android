@@ -1,5 +1,10 @@
 package com.sanchr.feature.contacts.lookup
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +45,7 @@ fun PhoneLookupScreen(
     viewModel: PhoneLookupViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Scaffold(
         // The NavHost's Scaffold has already inset this for the system
@@ -67,8 +74,16 @@ fun PhoneLookupScreen(
             when (val result = uiState.result) {
                 LookupResult.Idle -> Unit
                 LookupResult.Searching -> CircularProgressIndicator()
-                LookupResult.NotFound ->
+                LookupResult.NotFound -> {
                     Notice("Nobody on Sanchr is using that number.")
+                    SmsInvite.addressFor(uiState.phoneNumber)?.let { address ->
+                        SanchrButton(
+                            text = "Invite by text message",
+                            onClick = { openSmsInvite(context, address) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
                 // Kept distinct from "not found": a failed search must not be
                 // read as proof that the contact is not on Sanchr.
                 is LookupResult.Failed -> Notice(result.message)
@@ -101,6 +116,22 @@ fun PhoneLookupScreen(
                     }
             }
         }
+    }
+}
+
+/** Opens the phone's messaging app on a text to [address], ready to send. */
+private fun openSmsInvite(
+    context: Context,
+    address: String,
+) {
+    val intent =
+        Intent(Intent.ACTION_SENDTO, Uri.parse(address))
+            .putExtra(SmsInvite.BODY_EXTRA, SmsInvite.MESSAGE)
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        // A tablet with no messaging app, say.
+        Toast.makeText(context, "No app here can send a text message", Toast.LENGTH_SHORT).show()
     }
 }
 
