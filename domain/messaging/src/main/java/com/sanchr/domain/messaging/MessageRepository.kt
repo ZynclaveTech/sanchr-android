@@ -74,6 +74,16 @@ interface MessageRepository {
     suspend fun isSenderBlocked(senderId: String): Boolean
 
     /**
+     * Whether a message from [senderId] may be filed in [conversationId] —
+     * see [DirectChatMembership] for the rule and for why it says yes to
+     * anything it cannot be sure about.
+     */
+    suspend fun mayPostTo(
+        conversationId: String,
+        senderId: String,
+    ): Boolean
+
+    /**
      * Atomically bumps the `attempts` counter, stamps `last_attempt_at`,
      * and sets the status to [newStatus]. Returns the row's `attempts`
      * value *after* the increment so callers can decide whether to

@@ -20,7 +20,11 @@ import sanchr.messaging.Messaging
 class ReceiveMessageUseCasePresenceTest {
     private val sealedSenderCipher = mockk<SealedSenderCipher>()
     private val typedEnvelopeCipher = mockk<com.sanchr.core.crypto.sealed.TypedEnvelopeCipher>(relaxed = true)
-    private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val messageRepository =
+        mockk<MessageRepository>(relaxed = true) {
+            // A relaxed mock answers false, which would turn every message away.
+            coEvery { mayPostTo(any(), any()) } returns true
+        }
     private val dispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher = Dispatchers.Unconfined

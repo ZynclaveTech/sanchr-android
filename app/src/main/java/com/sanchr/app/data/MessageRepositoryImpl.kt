@@ -22,6 +22,7 @@ import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.ContactProfileResolver
+import com.sanchr.domain.messaging.DirectChatMembership
 import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.vault.AutoVaultScheduler
@@ -208,6 +209,19 @@ class MessageRepositoryImpl
             MessageReaction(emoji = emoji, userId = userId, timestamp = Instant.fromEpochMilliseconds(timestamp))
 
         override suspend fun isSenderBlocked(senderId: String): Boolean = blockedUserDao.isBlocked(senderId)
+
+        override suspend fun mayPostTo(
+            conversationId: String,
+            senderId: String,
+        ): Boolean {
+            val conversation = conversationDao.getConversationById(conversationId) ?: return true
+            return DirectChatMembership.allows(
+                conversationType = conversation.type,
+                participantIds = parseParticipantIds(conversation.participantIds),
+                senderId = senderId,
+                selfId = sessionManager.getUserId(),
+            )
+        }
 
         override suspend fun conversationDisappearingSeconds(conversationId: String): Long? =
             conversationDao

@@ -27,7 +27,11 @@ class ReceiveMessageUseCaseProfileKeyTest {
     private val typedEnvelopeCipher = mockk<com.sanchr.core.crypto.sealed.TypedEnvelopeCipher>(relaxed = true)
     private val signalSessionManager = mockk<SignalSessionManager>(relaxed = true)
     private val quarantineUseCase = mockk<QuarantineEnvelopeUseCase>(relaxed = true)
-    private val messageRepository = mockk<MessageRepository>(relaxed = true)
+    private val messageRepository =
+        mockk<MessageRepository>(relaxed = true) {
+            // A relaxed mock answers false, which would turn every message away.
+            coEvery { mayPostTo(any(), any()) } returns true
+        }
     private val messageRepositoryLazy = Lazy<MessageRepository> { messageRepository }
     private val dispatchers =
         object : DispatcherProvider {
