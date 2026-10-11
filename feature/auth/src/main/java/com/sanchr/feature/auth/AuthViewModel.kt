@@ -79,7 +79,7 @@ class AuthViewModel
             phone: String,
             countryIso: String = "",
         ) {
-            val current = _state.value as? AuthState.LoginPhone ?: return
+            val current = editing<AuthState.LoginPhone>() ?: return
             _state.value =
                 current.copy(
                     countryCode = countryCode,
@@ -105,6 +105,7 @@ class AuthViewModel
                 return
             }
             val phoneE164 = current.countryCode + current.phone
+            lastPhoneEntry = current.copy(isSubmitting = false)
             _state.value = current.copy(isSubmitting = true)
             viewModelScope.launch {
                 try {
@@ -138,7 +139,7 @@ class AuthViewModel
         // region ── OtpEntry ──────────────────────────────────────────────────
 
         fun onOtpChanged(otp: String) {
-            val current = _state.value as? AuthState.OtpEntry ?: return
+            val current = editing<AuthState.OtpEntry>() ?: return
             _state.value = current.copy(otp = otp.filter { it.isDigit() }.take(OTP_LENGTH))
         }
 
@@ -172,7 +173,7 @@ class AuthViewModel
         }
 
         fun onRegistrationLockPinChanged(pin: String) {
-            val current = _state.value as? AuthState.OtpEntry ?: return
+            val current = editing<AuthState.OtpEntry>() ?: return
             _state.value = current.copy(pin = pin.filter { it.isDigit() }.take(REGISTRATION_LOCK_PIN_LENGTH))
         }
 
@@ -255,9 +256,12 @@ class AuthViewModel
                         _state.value = current.copy(isSubmitting = false, pinRequired = true, pin = "")
                         return@launch
                     }
+                    // The code is cleared, as on iOS: it was refused, and what
+                    // is wanted next is a different one, not the same six
+                    // digits sent again.
                     _state.value =
                         AuthState.Error(
-                            current.copy(isSubmitting = false),
+                            current.copy(isSubmitting = false, otp = ""),
                             e.message ?: "Failed to verify code",
                         )
                 }
@@ -355,6 +359,47 @@ class AuthViewModel
             val err = _state.value as? AuthState.Error ?: return
             _state.value = err.previousState
         }
+
+        /**
+         * The state a keystroke applies to: the screen's own, or the one an
+         * error is being shown over.
+         *
+         * The fields are drawn from the state under an error, but edits were
+         * accepted only when no error was showing. So once anything went
+         * wrong — a wrong code, a number one digit too long — the field kept
+         * showing its text and silently dropped every key: the wrong code
+         * could not be deleted, the long number could not be shortened, and
+         * the only button that did anything resubmitted the same thing.
+         * Typing is how an error is answered, so it also dismisses it.
+         */
+        private inline fun <reified T : AuthState> editing(): T? =
+            when (val state = _state.value) {
+                is T -> state
+                is AuthState.Error -> state.previousState as? T
+                else -> null
+            }
+
+        /**
+         * Back from the code screen: to the phone number, to change it.
+         *
+         * Only the navigation went back. The state stayed on the code step,
+         * and the flow is driven by the state — so the phone screen appeared
+         * and was immediately replaced by the code screen again, or, with an
+         * error showing, stayed up empty.
+         *
+         * @return whether the flow went back; the caller pops the screen only then.
+         */
+        fun backToPhoneEntry(): Boolean {
+            val leaving = editing<AuthState.OtpEntry>() ?: return false
+            // Not out from under a code that is being checked: its answer
+            // would land on a screen that no longer expects it.
+            if (leaving.isSubmitting) return false
+            _state.value = lastPhoneEntry ?: AuthState.LoginPhone()
+            return true
+        }
+
+        /** What was on the phone screen when the code was asked for, to go back to. */
+        private var lastPhoneEntry: AuthState.LoginPhone? = null
 
         // endregion
 
