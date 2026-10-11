@@ -20,6 +20,8 @@ data class Conversation(
     val wallpaper: String? = null,
     /** How this chat treats media; all off until the user changes it here. */
     val vaultPolicy: ChatVaultPolicy = ChatVaultPolicy.DEFAULT,
+    /** Text typed into this chat and not sent. On this device only. */
+    val draftText: String? = null,
     val updatedAt: Instant,
     val createdAt: Instant,
 )

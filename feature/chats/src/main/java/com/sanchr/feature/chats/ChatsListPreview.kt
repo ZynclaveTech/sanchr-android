@@ -51,3 +51,13 @@ fun formatChatTimestamp(
 }
 
 private const val WEEK_MS = 7 * 24 * 60 * 60 * 1000L
+
+/**
+ * What was typed into this chat and left unsent, for its row in the list —
+ * or null when there is nothing worth showing.
+ *
+ * Drafts were kept and put back when the chat was reopened, but the list gave
+ * no sign of one: a half-written message was invisible until its chat
+ * happened to be opened again. iOS marks the row.
+ */
+fun Conversation.draftPreview(): String? = draftText?.trim()?.takeIf { it.isNotEmpty() }

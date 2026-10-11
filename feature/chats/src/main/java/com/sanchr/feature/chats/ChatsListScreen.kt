@@ -81,9 +81,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -581,6 +584,24 @@ internal fun ConversationItem(
                             style = IosType.conversationPreview,
                             color = SanchrIndigo500,
                             maxLines = 1,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    } else if (conversation.draftPreview() != null) {
+                        // A draft outranks the last message: it is what the
+                        // user left unfinished. It does not outrank "typing…",
+                        // which is about the other person and is live.
+                        Text(
+                            text =
+                                buildAnnotatedString {
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)) {
+                                        append("Draft: ")
+                                    }
+                                    append(conversation.draftPreview().orEmpty())
+                                },
+                            style = IosType.conversationPreview,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
                     } else {
