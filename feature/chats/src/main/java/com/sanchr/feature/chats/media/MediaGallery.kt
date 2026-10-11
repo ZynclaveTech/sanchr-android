@@ -21,13 +21,17 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,6 +44,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -82,6 +87,8 @@ fun MediaGallery(
 
         val pagerState = rememberPagerState(initialPage = state.initialIndex) { state.items.size }
         var chromeVisible by remember { mutableStateOf(true) }
+        // Whether the page in front is zoomed in. A new page starts unzoomed.
+        var zoomed by remember(pagerState.currentPage) { mutableStateOf(false) }
         var toast by remember { mutableStateOf<String?>(null) }
 
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -90,12 +97,15 @@ fun MediaGallery(
                 modifier = Modifier.fillMaxSize(),
                 // A zoomed page pans within itself, so paging is disabled while
                 // zoomed rather than fighting the drag for the same gesture.
-                userScrollEnabled = true,
+                // (That was the intention all along; this was simply `true`,
+                // so dragging across a zoomed photo turned the page instead.)
+                userScrollEnabled = !zoomed,
             ) { page ->
                 GalleryPage(
                     message = state.items[page],
                     openAttachment = openAttachment,
                     onSingleTap = { chromeVisible = !chromeVisible },
+                    onZoomChanged = { if (page == pagerState.currentPage) zoomed = it },
                 )
             }
 
@@ -145,10 +155,16 @@ private fun GalleryPage(
     message: MessageUiModel,
     openAttachment: suspend (MessageUiModel) -> File?,
     onSingleTap: () -> Unit,
+    onZoomChanged: (Boolean) -> Unit,
 ) {
     var file by remember(message.id) { mutableStateOf<File?>(null) }
     var failed by remember(message.id) { mutableStateOf(false) }
-    LaunchedEffect(message.id) {
+    // Counted up by a tap on a page that failed, which is all it takes to
+    // try again; a failure here used to be final for as long as the viewer
+    // stayed open.
+    var attempt by remember(message.id) { mutableIntStateOf(0) }
+    LaunchedEffect(message.id, attempt) {
+        failed = false
         val opened = openAttachment(message)
         if (opened == null) failed = true else file = opened
     }
@@ -157,12 +173,20 @@ private fun GalleryPage(
         val local = file
         when {
             local != null && message.isVideoAttachment -> GalleryVideo(file = local)
-            local != null -> ZoomableImage(file = local, contentDescription = message.text, onSingleTap = onSingleTap)
+            local != null ->
+                ZoomableImage(
+                    file = local,
+                    contentDescription = message.text,
+                    onSingleTap = onSingleTap,
+                    onZoomChanged = onZoomChanged,
+                )
             failed ->
                 Text(
-                    text = if (message.isVideoAttachment) "Video unavailable" else "Photo unavailable",
+                    text = (if (message.isVideoAttachment) "Couldn't load this video" else "Couldn't load this photo") + "\nTap to retry",
                     color = Color.White,
                     style = IosType.body,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.clickable(onClickLabel = "Try again") { attempt++ }.padding(24.dp),
                 )
             else -> CircularProgressIndicator(color = Color.White)
         }
@@ -180,8 +204,10 @@ private fun ZoomableImage(
     file: File,
     contentDescription: String,
     onSingleTap: () -> Unit,
+    onZoomChanged: (Boolean) -> Unit,
 ) {
     var scale by remember(file) { mutableStateOf(1f) }
+    LaunchedEffect(scale > 1f) { onZoomChanged(scale > 1f) }
     var offsetX by remember(file) { mutableStateOf(0f) }
     var offsetY by remember(file) { mutableStateOf(0f) }
     var frameWidth by remember(file) { mutableStateOf(0f) }
@@ -223,25 +249,120 @@ private fun ZoomableImage(
 }
 
 /**
- * Plays one clip. The framework's `VideoView` is enough here: the file is
- * already decrypted in our private cache and never leaves the app, so a
- * player library would add a dependency for nothing.
+ * Plays one clip, with something to control it by.
+ *
+ * The framework's `VideoView` does the playing: the file is already decrypted
+ * in our private cache and never leaves the app, so a player library would
+ * add a dependency for nothing. But it was put on screen bare — it started,
+ * ran to the end and stopped, and there was no way to pause it, go back, or
+ * watch it again short of closing the viewer. The controls are drawn here
+ * rather than with the framework's `MediaController`, which opens a window
+ * of its own that ends up behind a dialog like this one.
  */
 @Composable
 private fun GalleryVideo(file: File) {
-    AndroidView(
-        factory = { context ->
-            VideoView(context).apply {
-                setVideoPath(file.absolutePath)
-                setOnPreparedListener { player ->
-                    player.isLooping = false
-                    start()
+    var player by remember(file) { mutableStateOf<VideoView?>(null) }
+    var playing by remember(file) { mutableStateOf(false) }
+    var positionMs by remember(file) { mutableIntStateOf(0) }
+    var durationMs by remember(file) { mutableIntStateOf(0) }
+    var scrubbing by remember(file) { mutableStateOf(false) }
+
+    // The view has no callback for "the position moved"; ask it a few times a second.
+    LaunchedEffect(player) {
+        val view = player ?: return@LaunchedEffect
+        while (true) {
+            playing = view.isPlaying
+            if (!scrubbing) positionMs = view.currentPosition
+            kotlinx.coroutines.delay(VIDEO_POLL_MILLIS)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { context ->
+                VideoView(context).apply {
+                    setVideoPath(file.absolutePath)
+                    setOnPreparedListener { prepared ->
+                        prepared.isLooping = false
+                        durationMs = duration.coerceAtLeast(0)
+                        start()
+                    }
+                    // Back to the start, ready to be played again.
+                    setOnCompletionListener { seekTo(0) }
+                    player = this
                 }
-            }
-        },
-        modifier = Modifier.fillMaxSize(),
-        onRelease = { it.stopPlayback() },
-    )
+            },
+            modifier = Modifier.fillMaxSize(),
+            onRelease = {
+                player = null
+                it.stopPlayback()
+            },
+        )
+        VideoControls(
+            playing = playing,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onPlayPause = { player?.let { view -> if (view.isPlaying) view.pause() else view.start() } },
+            onScrub = { target ->
+                scrubbing = true
+                positionMs = target
+            },
+            onScrubFinished = {
+                player?.seekTo(positionMs)
+                scrubbing = false
+            },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = VIDEO_CONTROLS_BOTTOM_DP.dp),
+        )
+    }
+}
+
+@Composable
+private fun VideoControls(
+    playing: Boolean,
+    positionMs: Int,
+    durationMs: Int,
+    onPlayPause: () -> Unit,
+    onScrub: (Int) -> Unit,
+    onScrubFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().background(Color.Black.copy(alpha = TOAST_SCRIM)).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPlayPause) {
+            Icon(
+                imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (playing) "Pause" else "Play",
+                tint = Color.White,
+            )
+        }
+        Text(text = VideoClock.format(positionMs), color = Color.White, style = IosType.captionSmall)
+        Slider(
+            value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat().coerceAtLeast(0f)),
+            onValueChange = { onScrub(it.toInt()) },
+            onValueChangeFinished = onScrubFinished,
+            valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
+            enabled = durationMs > 0,
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+        )
+        Text(text = VideoClock.format(durationMs), color = Color.White, style = IosType.captionSmall)
+    }
+}
+
+/** Minutes and seconds for a position in a clip: 0:07, 12:40, 1:02:03. */
+internal object VideoClock {
+    private const val MILLIS_PER_SECOND = 1_000
+    private const val SECONDS_PER_MINUTE = 60
+    private const val MINUTES_PER_HOUR = 60
+
+    fun format(millis: Int): String {
+        val totalSeconds = millis.coerceAtLeast(0) / MILLIS_PER_SECOND
+        val seconds = totalSeconds % SECONDS_PER_MINUTE
+        val minutes = (totalSeconds / SECONDS_PER_MINUTE) % MINUTES_PER_HOUR
+        val hours = totalSeconds / (SECONDS_PER_MINUTE * MINUTES_PER_HOUR)
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
+    }
 }
 
 /** Close and save, over the top of the current page. */
@@ -323,3 +444,7 @@ private const val THUMB_DP = 48
 private const val TOAST_MILLIS = 2_000L
 private const val TOAST_BOTTOM_DP = 96
 private const val TOAST_SCRIM = 0.6f
+private const val VIDEO_POLL_MILLIS = 250L
+
+/** Clear of the filmstrip, which sits along the bottom edge when there is more than one item. */
+private const val VIDEO_CONTROLS_BOTTOM_DP = 72
