@@ -372,7 +372,7 @@ class ChatDetailViewModel
                 // Read per keystroke rather than cached: the toggle is in
                 // Settings, and a chat left open must stop broadcasting the
                 // moment it is turned off, not on next launch.
-                val enabled = runCatching { userPreferences.typingIndicatorsEnabled.first() }.getOrDefault(true)
+                val enabled = runCatching { userPreferences.canSendTypingIndicators.first() }.getOrDefault(true)
                 if (enabled) typing.onTextChanged(text.isNotBlank()) else typing.stop()
             }
         }
@@ -797,7 +797,7 @@ class ChatDetailViewModel
                 // Protection switch turns it on here even when the
                 // account-wide one is off.
                 combine(
-                    userPreferences.screenshotProtectionEnabled,
+                    userPreferences.screenSecurityActive,
                     messageRepository.observeConversation(conversationId),
                 ) { accountWide, conversation ->
                     VaultPolicyRules.captureProtected(accountWide, conversation?.vaultPolicy)

@@ -72,9 +72,11 @@ class ChatDetailViewModelPrivacySettingsTest {
             mockk {
                 every { linkPreviewsEnabled } returns flowOf(true)
                 every { screenshotProtectionEnabled } returns flowOf(true)
+                every { screenSecurityActive } returns flowOf(true)
                 every { chatWallpaper } returns flowOf("default")
                 every { mediaAutoDownload } returns flowOf(autoDownload)
                 every { typingIndicatorsEnabled } returns flowOf(typingEnabled)
+                every { canSendTypingIndicators } returns flowOf(typingEnabled)
             },
         linkPreviewFetcher = mockk(relaxed = true),
         safetyNumbers = mockk(relaxed = true),

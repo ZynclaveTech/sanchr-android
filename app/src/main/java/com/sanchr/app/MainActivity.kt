@@ -249,7 +249,7 @@ class MainActivity : FragmentActivity() {
     private fun observeScreenshotProtectionPreference() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                userPreferences.screenshotProtectionEnabled.collect { enabled ->
+                userPreferences.screenSecurityActive.collect { enabled ->
                     if (enabled) {
                         window.setFlags(
                             WindowManager.LayoutParams.FLAG_SECURE,

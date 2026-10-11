@@ -59,7 +59,7 @@ class ReceiptJitter
  * [SendMessageUseCase.attemptSend].
  *
  * Five behavioural rules, all load-bearing:
- * 1. [UserPreferences.readReceiptsEnabled] gates everything — false means
+ * 1. [UserPreferences.canSendReadReceipts] (the toggle, and Sanchr Mode) gates everything — false means
  *    no jitter, no token, no send.
  * 2. 1:1 only — [MessageRepository.oneToOneRecipient] resolves the single
  *    other participant of a DIRECT conversation, returning null (silently
@@ -113,7 +113,7 @@ class SendReadReceiptUseCase
             conversationId: String,
             messageId: String,
         ) {
-            if (!userPreferences.readReceiptsEnabled.first()) return
+            if (!userPreferences.canSendReadReceipts.first()) return
 
             val selfUserId = sessionManager.getUserId()
             if (selfUserId.isNullOrBlank()) return

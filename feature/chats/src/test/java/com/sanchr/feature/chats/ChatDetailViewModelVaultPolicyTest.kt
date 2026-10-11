@@ -101,9 +101,11 @@ class ChatDetailViewModelVaultPolicyTest {
                 mockk<UserPreferences>(relaxed = true) {
                     every { linkPreviewsEnabled } returns flowOf(true)
                     every { screenshotProtectionEnabled } returns flowOf(accountWideProtection)
+                    every { screenSecurityActive } returns flowOf(accountWideProtection)
                     every { chatWallpaper } returns flowOf("default")
                     every { mediaAutoDownload } returns flowOf("wifi")
                     every { typingIndicatorsEnabled } returns flowOf(false)
+                    every { canSendTypingIndicators } returns flowOf(false)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
