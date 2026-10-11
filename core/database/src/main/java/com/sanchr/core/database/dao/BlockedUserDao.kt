@@ -21,7 +21,8 @@ interface BlockedUserDao {
     @Query("SELECT EXISTS(SELECT 1 FROM blocked_users WHERE user_id = :userId)")
     suspend fun isBlocked(userId: String): Boolean
 
-    @Query("SELECT user_id FROM blocked_users")
+    /** Most recently blocked first. */
+    @Query("SELECT user_id FROM blocked_users ORDER BY blocked_at DESC, user_id ASC")
     suspend fun blockedUserIds(): List<String>
 
     @Query("DELETE FROM blocked_users")

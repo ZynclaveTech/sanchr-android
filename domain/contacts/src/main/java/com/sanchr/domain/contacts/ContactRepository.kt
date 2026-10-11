@@ -51,15 +51,30 @@ interface ContactRepository {
         blocked: Boolean,
     )
 
-    /** Whether we have blocked [userId], from the local contact row. */
+    /** Whether we have blocked [userId], from this phone's own record. */
     suspend fun isBlocked(userId: String): Boolean
 
     /**
-     * The server's blocked list (every page), each named by our own
-     * resolution of the person, falling back to the number the server
+     * Everyone this phone has blocked, most recent first, each named by our
+     * own resolution of the person, falling back to the number the server
      * knows and finally a shortened id, as iOS `BlockedContactsView`.
+     *
+     * The phone's record, not the server's: it is the one that is enforced,
+     * so it is the one to show. The server is asked only for the numbers of
+     * people we cannot otherwise name, and the list does not need it.
      */
     suspend fun blockedContacts(): List<BlockedContact>
+
+    /**
+     * Adds everyone on the server's blocked list to this phone's.
+     *
+     * Blocks are enforced from the phone's record, which starts empty on a
+     * new install. Adds only — it never unblocks. Throws if the server
+     * cannot be reached, having changed nothing.
+     *
+     * @return how many people the server's list held.
+     */
+    suspend fun restoreBlockedFromServer(): Int
 
     /** Adds a contact to favorites. */
     suspend fun setFavorite(
