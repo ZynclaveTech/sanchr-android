@@ -57,4 +57,9 @@ class NotifierState
                 }
             }
         }
+
+        /** Forgets the mark, for when the account is removed from this phone. */
+        suspend fun clear() {
+            dataStore.edit { it.clear() }
+        }
     }

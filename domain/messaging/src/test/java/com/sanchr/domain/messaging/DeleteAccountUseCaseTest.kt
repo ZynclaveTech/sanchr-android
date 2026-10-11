@@ -39,7 +39,7 @@ class DeleteAccountUseCaseTest {
     fun `deletes on the server before wiping locally`() =
         runTest(testDispatcher) {
             coEvery { authServiceClient.deleteAccount(any()) } returns DeleteAccountResponse(success = true)
-            coEvery { logoutUseCase() } returns kotlin.Result.success(Unit)
+            coEvery { logoutUseCase() } returns Unit
 
             val result = useCase()()
 
@@ -54,7 +54,7 @@ class DeleteAccountUseCaseTest {
     fun `a failed server delete leaves local state intact`() =
         runTest(testDispatcher) {
             coEvery { authServiceClient.deleteAccount(any()) } throws IllegalStateException("UNAVAILABLE")
-            coEvery { logoutUseCase() } returns kotlin.Result.success(Unit)
+            coEvery { logoutUseCase() } returns Unit
 
             val result = useCase()()
 
