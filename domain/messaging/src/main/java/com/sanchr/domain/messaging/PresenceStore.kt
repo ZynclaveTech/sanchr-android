@@ -58,7 +58,7 @@ class PresenceStore(
         val p = _presence.value[userId] ?: return null
         return when (p.status) {
             PresenceStatus.HIDDEN -> null
-            PresenceStatus.ONLINE -> if (now - p.receivedAtMs <= ONLINE_TTL_MS) "Online" else null
+            PresenceStatus.ONLINE -> if (now - p.receivedAtMs <= ONLINE_TTL_MS) ONLINE_LINE else null
             PresenceStatus.OFFLINE -> p.lastSeenMs?.let { "Last seen ${relative(now - it)}" }
         }
     }
@@ -70,6 +70,9 @@ class PresenceStore(
     companion object {
         /** iOS broadcasts ONLINE every 30 s; two missed beats and we stop claiming it. */
         const val ONLINE_TTL_MS = 75_000L
+
+        /** What [statusLine] says of someone who is here now. */
+        const val ONLINE_LINE = "Online"
         private const val MINUTE = 60_000L
         private const val HOUR = 60 * MINUTE
         private const val DAY = 24 * HOUR
