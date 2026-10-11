@@ -108,7 +108,6 @@ class SettingsViewModel
         private val _storageUsage = MutableStateFlow<StorageUsageResponse?>(null)
         private val _isLoadingSettings = MutableStateFlow(true)
         private val _screenLockEnabled = MutableStateFlow(false)
-        private val _screenLockTimeout = MutableStateFlow("immediately")
 
         private val _enterSendsMessage = MutableStateFlow(true)
         private val _mediaAutoSave = MutableStateFlow(false)
@@ -221,13 +220,19 @@ class SettingsViewModel
                 _isLoadingSettings,
                 combine(
                     combine(
-                        _screenLockEnabled,
+                        // The timeout was saved and enforced and never put on the
+                        // screen: it was left out of this combine, so the picker
+                        // showed "Immediately" whatever had been chosen. Read
+                        // from the store, which is what the lock itself reads.
+                        combine(_screenLockEnabled, userPreferences.screenLockTimeoutSeconds) { enabled, seconds ->
+                            enabled to (SCREEN_LOCK_TIMEOUTS.entries.firstOrNull { it.value == seconds }?.key ?: "immediately")
+                        },
                         userPreferences.screenshotProtectionEnabled,
                         _enterSendsMessage,
                         _lowDataMode,
                         _disappearingMessagesDefault,
                     ) { lock, screenshot, enter, lowData, disappear ->
-                        BasicExtrasGroup(lock, screenshot, enter, lowData, disappear)
+                        BasicExtrasGroup(lock.first, lock.second, screenshot, enter, lowData, disappear)
                     },
                     combine(_backupConfiguration, _backupBusy) { backupConfiguration, backupBusy ->
                         BackupUiGroup(backupConfiguration, backupBusy)
@@ -248,6 +253,7 @@ class SettingsViewModel
                         profile = profile,
                         chat = chat,
                         screenLockEnabled = basic.screenLockEnabled,
+                        screenLockTimeout = basic.screenLockTimeout,
                         screenshotProtection = basic.screenshotProtection,
                         enterSendsMessage = basic.enterSendsMessage,
                         lowDataMode = basic.lowDataMode,
@@ -286,6 +292,7 @@ class SettingsViewModel
                     profilePhotoVisibility = extras.profilePhotoVisibility,
                     biometricEnabled = prefs.biometricEnabled,
                     screenLockEnabled = extras.screenLockEnabled,
+                    screenLockTimeout = extras.screenLockTimeout,
                     screenshotProtection = extras.screenshotProtection,
                     sanchrModeEnabled = remote?.sanchrModeEnabled ?: false,
                     registrationLockEnabled = remote?.registrationLockEnabled ?: false,
@@ -336,9 +343,6 @@ class SettingsViewModel
             viewModelScope.launch {
                 try {
                     _screenLockEnabled.value = userPreferences.screenLockEnabled.first()
-                    val seconds = userPreferences.screenLockTimeoutSeconds.first()
-                    _screenLockTimeout.value =
-                        SCREEN_LOCK_TIMEOUTS.entries.firstOrNull { it.value == seconds }?.key ?: "immediately"
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -628,7 +632,7 @@ class SettingsViewModel
         }
 
         fun setScreenLockTimeout(timeout: String) {
-            _screenLockTimeout.value = timeout
+            // Shown from the store, so the picker cannot say one thing while the lock does another.
             viewModelScope.launch { userPreferences.setScreenLockTimeoutSeconds(SCREEN_LOCK_TIMEOUTS[timeout] ?: 0) }
         }
 
@@ -1007,6 +1011,7 @@ private data class ExtrasGroup(
     val profile: LocalProfile,
     val chat: ChatPrefsGroup,
     val screenLockEnabled: Boolean,
+    val screenLockTimeout: String,
     val screenshotProtection: Boolean,
     val enterSendsMessage: Boolean,
     val lowDataMode: Boolean,
@@ -1030,6 +1035,7 @@ private data class BackupUiGroup(
 
 private data class BasicExtrasGroup(
     val screenLockEnabled: Boolean,
+    val screenLockTimeout: String,
     val screenshotProtection: Boolean,
     val enterSendsMessage: Boolean,
     val lowDataMode: Boolean,

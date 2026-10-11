@@ -42,6 +42,7 @@ class ProfilePhotoVisibilityTest {
             every { it.dynamicColorEnabled } returns flowOf(false)
             every { it.notificationsEnabled } returns flowOf(true)
             every { it.readReceiptsEnabled } returns flowOf(true)
+            every { it.screenLockTimeoutSeconds } returns flowOf(0)
             every { it.typingIndicatorsEnabled } returns flowOf(true)
             every { it.onlineStatusVisible } returns flowOf(true)
             every { it.canSendReadReceipts } returns flowOf(true)
