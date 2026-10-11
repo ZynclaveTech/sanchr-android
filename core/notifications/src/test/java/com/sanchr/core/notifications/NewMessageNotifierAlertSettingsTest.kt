@@ -177,6 +177,23 @@ class NewMessageNotifierAlertSettingsTest {
             verify(exactly = 0) { announced("m1") }
         }
 
+    /** Its reader is looking at it: no banner over the conversation, nothing left in the shade. */
+    @Test
+    fun `a message for the chat that is open in front is not announced, and another chat's is`() =
+        runTest(dispatcher) {
+            settings()
+            chat("open", "DIRECT")
+            chat("other", "DIRECT")
+            every { handler.visibleConversationId } returns "open"
+
+            deliver(message("m-open", "open"), message("m-other", "other"))
+
+            verify(exactly = 0) { announced("m-open") }
+            verify(exactly = 1) { announced("m-other") }
+            // Seen, so it does not surface once the chat is closed.
+            coVerify { notifierState.advanceLastNotifiedTimestamp(1_000) }
+        }
+
     /** A chat the phone has no row for yet is treated as a direct one, and announced. */
     @Test
     fun `a message for a chat not yet stored is still announced`() =
