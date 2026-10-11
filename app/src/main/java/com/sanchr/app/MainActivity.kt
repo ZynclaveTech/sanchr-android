@@ -31,6 +31,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.work.WorkManager
 import com.sanchr.app.bootstrap.AppBootstrapViewModel
+import com.sanchr.app.bootstrap.ServerSettingsLoader
 import com.sanchr.app.bootstrap.StartDestination
 import com.sanchr.app.call.CallActivity
 import com.sanchr.app.lock.AppLockGate
@@ -59,6 +60,8 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
     @Inject lateinit var callManager: CallManager
+
+    @Inject lateinit var serverSettingsLoader: ServerSettingsLoader
 
     @Inject
     lateinit var notificationHandler: NotificationHandler
@@ -208,6 +211,10 @@ class MainActivity : FragmentActivity() {
             bootstrapViewModel.startDestination
                 .filterIsInstance<StartDestination.Main>()
                 .first()
+
+            // Its own coroutine: nothing about the keys waits on it, and it
+            // must not be skipped by the early returns below.
+            launch { serverSettingsLoader.load() }
 
             val userId = sessionManager.getUserId() ?: return@launch
             val deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: return@launch
