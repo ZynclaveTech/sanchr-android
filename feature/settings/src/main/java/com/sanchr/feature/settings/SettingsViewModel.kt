@@ -890,10 +890,10 @@ class SettingsViewModel
                     UpdateNotificationPrefsRequest(
                         messageNotifications = messagesEnabled ?: current.messageNotificationsEnabled,
                         callNotifications = callsEnabled ?: current.callNotificationsEnabled,
-                        // Proto does not distinguish group vs direct-message notifications on
-                        // the Android client today; re-use the messages toggle until a
-                        // dedicated UI setting lands.
-                        groupNotifications = groupEnabled ?: messagesEnabled ?: current.messageNotificationsEnabled,
+                        // Its own switch. This fell back to the direct-message
+                        // one, so changing any other switch on the screen sent
+                        // the direct-message value as the group value too.
+                        groupNotifications = groupEnabled ?: current.groupNotificationsEnabled,
                         showPreview = showPreview ?: (current.notificationPreview != "never"),
                         // The proto carries a platform sound name instead of a boolean.
                         // Empty string = silent, non-empty = use that sound. Map the

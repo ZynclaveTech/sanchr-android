@@ -104,22 +104,18 @@ class NewMessageNotifier
                                 val previewSetting =
                                     runCatching { userPreferences.notificationPreview.first() }
                                         .getOrDefault(NotificationPreviewPolicy.NEVER)
+                                val alerts = alertSettings()
+                                val channelId = MessageAlertPolicy.channelFor(alerts)
                                 val nameCache = mutableMapOf<String, String?>()
-                                val mutedCache = mutableMapOf<String, Boolean>()
+                                val chatCache = mutableMapOf<String, ChatAlertState>()
                                 var maxTimestamp = 0L
                                 batch.forEach { entity ->
-                                    // A muted chat's messages are still marked as seen by the
-                                    // notifier so they never surface later when it is unmuted.
-                                    val muted =
-                                        mutedCache.getOrPut(entity.conversationId) {
-                                            runCatching {
-                                                conversationDao
-                                                    .getConversationById(
-                                                        entity.conversationId,
-                                                    )?.isMuted == true
-                                            }.getOrDefault(false)
-                                        }
-                                    if (renderedIds.put(entity.id, true) == null && !muted) {
+                                    // A message that is not announced — its chat is muted, or
+                                    // its kind is switched off — is still marked as seen by the
+                                    // notifier, so it never surfaces later when that changes.
+                                    val chat = chatCache.getOrPut(entity.conversationId) { chatAlertState(entity.conversationId) }
+                                    val announce = !chat.muted && MessageAlertPolicy.shouldNotify(alerts, chat.isGroup)
+                                    if (renderedIds.put(entity.id, true) == null && announce) {
                                         val senderName =
                                             nameCache.getOrPut(entity.senderId) {
                                                 resolveSenderName(entity.senderId)
@@ -129,6 +125,7 @@ class NewMessageNotifier
                                             senderDisplayName = senderName,
                                             showPreviewOnLockscreen = showPreview,
                                             messagePreviewSetting = previewSetting,
+                                            channelId = channelId,
                                         )
                                     }
                                     if (entity.timestamp > maxTimestamp) {
@@ -155,7 +152,39 @@ class NewMessageNotifier
         private suspend fun resolveSenderName(senderId: String): String? =
             runCatching { contactDao.getContactById(senderId)?.displayName }.getOrNull()
 
+        /**
+         * The notification switches, read once per batch. One that cannot be
+         * read counts as on: failing towards silence would lose a message's
+         * alert over a storage hiccup, where failing the other way costs a
+         * sound.
+         */
+        private suspend fun alertSettings(): MessageAlertSettings {
+            suspend fun read(flow: kotlinx.coroutines.flow.Flow<Boolean>) = runCatching { flow.first() }.getOrDefault(true)
+            return MessageAlertSettings(
+                enabled = read(userPreferences.notificationsEnabled),
+                directMessages = read(userPreferences.messageNotificationsEnabled),
+                groupMessages = read(userPreferences.groupNotificationsEnabled),
+                sound = read(userPreferences.notificationSoundEnabled),
+                vibrate = read(userPreferences.notificationVibrateEnabled),
+            )
+        }
+
+        private class ChatAlertState(
+            val muted: Boolean,
+            val isGroup: Boolean,
+        )
+
+        /** Unknown chat, or a failed read: treated as an unmuted direct chat, so its message is announced. */
+        private suspend fun chatAlertState(conversationId: String): ChatAlertState {
+            val conversation = runCatching { conversationDao.getConversationById(conversationId) }.getOrNull()
+            return ChatAlertState(
+                muted = conversation?.isMuted == true,
+                isGroup = conversation?.type.equals(GROUP_TYPE, ignoreCase = true),
+            )
+        }
+
         private companion object {
+            const val GROUP_TYPE = "GROUP"
             const val TAG = "NewMessageNotifier"
 
             /**
