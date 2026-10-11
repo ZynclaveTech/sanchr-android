@@ -31,7 +31,12 @@ class CallRepositoryImpl
                 isOutgoing = direction == "outgoing",
                 isVideo = callType == "video",
                 durationSeconds = durationSecs.toLong(),
-                timestamp = startedAt,
+                // The server speaks seconds; everything on this side keeps time in milliseconds.
+                timestamp = startedAt * MILLIS_PER_SECOND,
                 isMissed = status == "missed",
             )
+
+        private companion object {
+            const val MILLIS_PER_SECOND = 1_000L
+        }
     }

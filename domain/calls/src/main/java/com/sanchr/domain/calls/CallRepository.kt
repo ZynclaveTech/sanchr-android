@@ -25,6 +25,7 @@ data class CallRecord(
     val isOutgoing: Boolean,
     val isVideo: Boolean,
     val durationSeconds: Long,
+    /** When the call started, in milliseconds since the epoch. */
     val timestamp: Long,
     val isMissed: Boolean,
 )
