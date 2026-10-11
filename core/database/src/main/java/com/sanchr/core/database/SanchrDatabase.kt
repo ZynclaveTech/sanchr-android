@@ -429,7 +429,8 @@ object DatabaseModule {
                     migration12To13,
                     migration13To14,
                     migration14To15,
-                ).build()
+                ).addCallback(ReactionCleanup)
+                .build()
         }
     }
 

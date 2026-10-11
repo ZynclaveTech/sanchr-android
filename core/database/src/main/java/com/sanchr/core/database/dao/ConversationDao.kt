@@ -193,8 +193,21 @@ interface ConversationDao {
         isArchived: Boolean,
     )
 
+    /**
+     * The conversation's messages go with it by foreign key; their reactions
+     * have no key to follow, so they are taken first.
+     */
+    @Transaction
+    suspend fun deleteConversation(conversationId: String) {
+        deleteReactionsInConversation(conversationId)
+        deleteConversationRow(conversationId)
+    }
+
     @Query("DELETE FROM conversations WHERE id = :conversationId")
-    suspend fun deleteConversation(conversationId: String)
+    suspend fun deleteConversationRow(conversationId: String)
+
+    @Query("DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = :conversationId)")
+    suspend fun deleteReactionsInConversation(conversationId: String)
 
     @Query("DELETE FROM conversations")
     suspend fun deleteAllConversations()

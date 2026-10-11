@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.sanchr.core.database.entity.MessageEntity
 import kotlinx.coroutines.flow.Flow
@@ -155,8 +156,26 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE status = 'QUEUED' AND is_deleted = 0")
     suspend fun countQueued(): Int
 
+    /**
+     * "Delete message": the row stays, flagged, and its reactions go.
+     *
+     * Every delete here takes the reactions first, in one transaction.
+     * `message_reactions` has no foreign key to do it (a reaction may arrive
+     * before its message), and a delete trigger cannot: Room turns recursive
+     * triggers on, so re-saving a message with `REPLACE` would fire it and
+     * strip the reactions from a message that is still there.
+     */
+    @Transaction
+    suspend fun softDeleteMessage(messageId: String) {
+        deleteReactionsOn(messageId)
+        flagDeleted(messageId)
+    }
+
     @Query("UPDATE messages SET is_deleted = 1 WHERE id = :messageId")
-    suspend fun softDeleteMessage(messageId: String)
+    suspend fun flagDeleted(messageId: String)
+
+    @Query("DELETE FROM message_reactions WHERE message_id = :messageId")
+    suspend fun deleteReactionsOn(messageId: String)
 
     /** Swaps a row's content in place, keeping id, sender and timestamp (a view-once tombstone). */
     @Query("UPDATE messages SET content_type = :contentType, content_body = :contentBody WHERE id = :messageId")
@@ -193,8 +212,17 @@ interface MessageDao {
         serverTimestamp: Long,
     ): Int
 
+    @Transaction
+    suspend fun deleteAllMessagesInConversation(conversationId: String) {
+        deleteReactionsInConversation(conversationId)
+        deleteMessageRowsInConversation(conversationId)
+    }
+
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
-    suspend fun deleteAllMessagesInConversation(conversationId: String)
+    suspend fun deleteMessageRowsInConversation(conversationId: String)
+
+    @Query("DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = :conversationId)")
+    suspend fun deleteReactionsInConversation(conversationId: String)
 
     /** Every message a conversation holds, by id. For clearing a chat: its media has to be found before its rows go. */
     @Query("SELECT id FROM messages WHERE conversation_id = :conversationId")
@@ -203,13 +231,28 @@ interface MessageDao {
     @Query("DELETE FROM messages")
     suspend fun deleteAllMessages()
 
+    /** @return how many messages expired. */
+    @Transaction
+    suspend fun deleteExpiredMessages(currentTimeMillis: Long): Int {
+        deleteReactionsOnExpiredMessages(currentTimeMillis)
+        return deleteExpiredMessageRows(currentTimeMillis)
+    }
+
     @Query(
         """
         DELETE FROM messages
         WHERE expires_at IS NOT NULL AND expires_at < :currentTimeMillis
         """,
     )
-    suspend fun deleteExpiredMessages(currentTimeMillis: Long): Int
+    suspend fun deleteExpiredMessageRows(currentTimeMillis: Long): Int
+
+    @Query(
+        """
+        DELETE FROM message_reactions
+        WHERE message_id IN (SELECT id FROM messages WHERE expires_at IS NOT NULL AND expires_at < :currentTimeMillis)
+        """,
+    )
+    suspend fun deleteReactionsOnExpiredMessages(currentTimeMillis: Long)
 
     @Query("SELECT COUNT(*) FROM messages WHERE conversation_id = :conversationId AND status != 'READ'")
     fun observeUnreadCount(conversationId: String): Flow<Int>
