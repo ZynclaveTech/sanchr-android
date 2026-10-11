@@ -154,6 +154,7 @@ class CallService : Service() {
             callManager.callState.collectLatest { state ->
                 when (state) {
                     is CallState.Active -> {
+                        callNotificationManager.cancelIncomingCallNotification()
                         val name = state.remoteUserName
                         val callType = callManager.callType.value
                         val notification =

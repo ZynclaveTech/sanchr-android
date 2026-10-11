@@ -27,7 +27,14 @@ class CallNotificationManager
             const val ACTION_ANSWER = "com.sanchr.action.ANSWER_CALL"
             const val ACTION_DECLINE = "com.sanchr.action.DECLINE_CALL"
             const val ACTION_END_CALL = "com.sanchr.action.END_CALL"
-            const val ACTION_OPEN_CALL = "com.sanchr.action.OPEN_CALL"
+
+            /** The app module's call screen; named here because this module cannot see it. */
+            const val CALL_ACTIVITY_CLASS = "com.sanchr.app.call.CallActivity"
+            const val EXTRA_CALL_ACTION = "extra_call_action"
+            const val CALL_ACTION_ANSWER = "answer"
+            private const val REQUEST_OPEN_ONGOING = 20
+            private const val REQUEST_ANSWER = 21
+            private const val REQUEST_OPEN_INCOMING = 22
 
             const val EXTRA_CALL_ID = "extra_call_id"
         }
@@ -73,17 +80,7 @@ class CallNotificationManager
             callType: String,
             isIncoming: Boolean,
         ): Notification {
-            val openIntent =
-                Intent(ACTION_OPEN_CALL).apply {
-                    setPackage(context.packageName)
-                }
-            val openPendingIntent =
-                PendingIntent.getBroadcast(
-                    context,
-                    0,
-                    openIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
+            val openPendingIntent = callScreenIntent(REQUEST_OPEN_ONGOING, callId = "", answer = false)
 
             val endIntent =
                 Intent(context, CallService::class.java).apply {
@@ -123,18 +120,10 @@ class CallNotificationManager
             isVideo: Boolean,
             callId: String = "",
         ): Notification {
-            val answerIntent =
-                Intent(context, CallService::class.java).apply {
-                    action = CallService.ACTION_ANSWER
-                    putExtra(EXTRA_CALL_ID, callId)
-                }
-            val answerPendingIntent =
-                PendingIntent.getService(
-                    context,
-                    10,
-                    answerIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
+            // Answer opens the call screen, which does the answering. Done from
+            // the service instead, the call was answered with no screen to
+            // control it from, and without ever asking for the microphone.
+            val answerPendingIntent = callScreenIntent(REQUEST_ANSWER, callId, answer = true)
 
             val declineIntent =
                 Intent(context, CallService::class.java).apply {
@@ -149,18 +138,7 @@ class CallNotificationManager
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 )
 
-            val fullScreenIntent =
-                Intent(ACTION_OPEN_CALL).apply {
-                    setPackage(context.packageName)
-                    putExtra(EXTRA_CALL_ID, callId)
-                }
-            val fullScreenPendingIntent =
-                PendingIntent.getBroadcast(
-                    context,
-                    12,
-                    fullScreenIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
+            val openPendingIntent = callScreenIntent(REQUEST_OPEN_INCOMING, callId, answer = false)
 
             val callTypeLabel = if (isVideo) "Incoming video call" else "Incoming voice call"
 
@@ -175,7 +153,8 @@ class CallNotificationManager
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setOngoing(true)
                     .setAutoCancel(false)
-                    .setFullScreenIntent(fullScreenPendingIntent, true)
+                    .setContentIntent(openPendingIntent)
+                    .setFullScreenIntent(openPendingIntent, true)
                     .addAction(
                         android.R.drawable.ic_menu_close_clear_cancel,
                         "Decline",
@@ -189,6 +168,43 @@ class CallNotificationManager
 
             notificationManager.notify(NOTIFICATION_ID_INCOMING, notification)
             return notification
+        }
+
+        /**
+         * The call screen, as something a notification can open.
+         *
+         * An activity, named outright. These used to be a broadcast of
+         * `com.sanchr.action.OPEN_CALL` that no receiver was registered for,
+         * so tapping a call notification did nothing — and a full-screen
+         * intent that is not an activity never shows a screen at all.
+         */
+        private fun callScreenIntent(
+            requestCode: Int,
+            callId: String,
+            answer: Boolean,
+        ): PendingIntent {
+            val intent =
+                Intent()
+                    .setClassName(context.packageName, CALL_ACTIVITY_CLASS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_CALL_ID, callId)
+            if (answer) intent.putExtra(EXTRA_CALL_ACTION, CALL_ACTION_ANSWER)
+            return PendingIntent.getActivity(
+                context,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
+         * Takes down the ringing notification once the call is no longer
+         * ringing. It was left up for the whole call, next to the ongoing
+         * one, still offering "Decline" — which, pressed mid-call, stopped
+         * the call service underneath a call that carried on.
+         */
+        fun cancelIncomingCallNotification() {
+            notificationManager.cancel(NOTIFICATION_ID_INCOMING)
         }
 
         fun cancelCallNotification() {

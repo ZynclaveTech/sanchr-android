@@ -90,6 +90,9 @@ fun ActiveCallScreen(
     onCallEnded: () -> Unit,
     modifier: Modifier = Modifier,
     outgoing: OutgoingCallRequest? = null,
+    /** True when the screen was opened by the notification's Answer action. */
+    answerRequested: Boolean = false,
+    onAnswerRequestHandled: () -> Unit = {},
     viewModel: CallsViewModel = hiltViewModel(),
 ) {
     val callState by viewModel.callState.collectAsStateWithLifecycle()
@@ -106,6 +109,9 @@ fun ActiveCallScreen(
 
     val isVideoCall = callType == "video"
     val isIncoming = callState is CallState.Incoming
+    val answer = rememberAnswerWithPermissions(isVideoCall, viewModel)
+
+    AnswerWhenRequested(answerRequested && isIncoming, onAnswerRequestHandled, answer)
     val isActive = callState is CallState.Active
     val isRinging =
         callState is CallState.Ringing ||
@@ -169,6 +175,7 @@ fun ActiveCallScreen(
                     isVideoCall = isVideoCall,
                     canRequestVideo = isActive && !outgoingVideoUpgradePending,
                     viewModel = viewModel,
+                    onAnswer = answer,
                 )
 
                 Spacer(modifier = Modifier.height(SanchrTheme.spacing.xxl))
@@ -725,6 +732,63 @@ private fun rememberCallPlaced(
     return placed
 }
 
+/**
+ * Answer pressed on the notification: the same answer as the button on this
+ * screen, permissions and all. Once, and only while the call still rings.
+ */
+@Composable
+private fun AnswerWhenRequested(
+    requested: Boolean,
+    onHandled: () -> Unit,
+    answer: () -> Unit,
+) {
+    LaunchedEffect(requested) {
+        if (requested) {
+            onHandled()
+            answer()
+        }
+    }
+}
+
+/**
+ * Answers the ringing call, asking first for what a call needs.
+ *
+ * Answering never asked. Only placing a call did, so someone whose first
+ * call was one they received answered into silence: connected, timer
+ * running, and no microphone. A refusal leaves the call ringing — it can
+ * still be declined, or answered once the permission is given.
+ */
+@Composable
+private fun rememberAnswerWithPermissions(
+    isVideo: Boolean,
+    viewModel: CallsViewModel,
+): () -> Unit {
+    val context = LocalContext.current
+    val needed =
+        if (isVideo) {
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+        } else {
+            arrayOf(Manifest.permission.RECORD_AUDIO)
+        }
+    val launcher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+            // The microphone is the call. A video call answered without the
+            // camera is still a call, with this side's video off.
+            if (grants[Manifest.permission.RECORD_AUDIO] == true) {
+                viewModel.answerCall()
+            } else {
+                Toast.makeText(context, "Microphone is needed to answer a call", Toast.LENGTH_SHORT).show()
+            }
+        }
+    return {
+        if (needed.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
+            viewModel.answerCall()
+        } else {
+            launcher.launch(needed)
+        }
+    }
+}
+
 @Composable
 private fun CallControlsSection(
     isIncoming: Boolean,
@@ -734,10 +798,11 @@ private fun CallControlsSection(
     isVideoCall: Boolean,
     canRequestVideo: Boolean,
     viewModel: CallsViewModel,
+    onAnswer: () -> Unit,
 ) {
     if (isIncoming) {
         IncomingCallControls(
-            onAnswer = viewModel::answerCall,
+            onAnswer = onAnswer,
             onDecline = viewModel::declineCall,
         )
     } else {
