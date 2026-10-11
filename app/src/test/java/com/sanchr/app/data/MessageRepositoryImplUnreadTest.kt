@@ -5,6 +5,7 @@ import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
+import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -84,6 +85,20 @@ class MessageRepositoryImplUnreadTest {
             coVerify(exactly = 1) { messageDao.insertMessageIfAbsent(match { it.id == "m1" && it.senderId == "peer" }) }
             coVerify(exactly = 0) { messageDao.insertMessage(any()) }
             coVerify(exactly = 0) { messageDao.insertMessages(any()) }
+        }
+
+    @Test
+    fun `only the two people in a one-to-one chat may have a message filed in it`() =
+        runTest {
+            coEvery { conversationDao.getConversationById("c1") } returns
+                ConversationEntity(id = "c1", type = "DIRECT", participantIds = """["self","alice"]""", updatedAt = 1, createdAt = 1)
+            coEvery { conversationDao.getConversationById("unknown") } returns null
+
+            org.junit.Assert.assertTrue(repo.mayPostTo("c1", "alice"))
+            org.junit.Assert.assertTrue(repo.mayPostTo("c1", "self"))
+            org.junit.Assert.assertFalse(repo.mayPostTo("c1", "mallory"))
+            // A chat this phone has not seen yet cannot be judged.
+            org.junit.Assert.assertTrue(repo.mayPostTo("unknown", "mallory"))
         }
 
     @Test
