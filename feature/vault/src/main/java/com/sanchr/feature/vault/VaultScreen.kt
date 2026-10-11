@@ -59,6 +59,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -197,7 +198,14 @@ fun VaultScreen(
                     }
                 }
 
-                uiState.items.isEmpty() && !uiState.isLoading -> {
+                // A load that failed is not an empty vault. This was set and
+                // never shown, so "couldn't reach the server" looked exactly
+                // like "you have nothing stored".
+                uiState.isVaultEmpty && uiState.errorMessage != null -> {
+                    VaultLoadFailedState(message = uiState.errorMessage.orEmpty(), onRetry = viewModel::refresh)
+                }
+
+                uiState.isVaultEmpty -> {
                     VaultEmptyState()
                 }
 
@@ -252,6 +260,23 @@ fun VaultScreen(
                                             .fillMaxWidth()
                                             .padding(horizontal = IosSpacing.screenHorizontal),
                                     color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+
+                        // Something is stored, just not of this kind. Said here,
+                        // under the chips, so another kind can still be chosen.
+                        if (uiState.items.isEmpty()) {
+                            item(key = "nothing_of_this_kind") {
+                                Text(
+                                    text = "No ${uiState.filter.label.lowercase()} in your vault",
+                                    style = IosType.body,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = IosSpacing.screenHorizontal, vertical = SanchrTheme.spacing.xxl),
                                 )
                             }
                         }
@@ -616,6 +641,27 @@ private fun VaultEmptyState() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+        }
+    }
+}
+
+@Composable
+private fun VaultLoadFailedState(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = message, style = IosType.sectionHeader)
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.sm))
+            Text(
+                text = "Check your connection and try again.",
+                style = IosType.body,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(modifier = Modifier.height(SanchrTheme.spacing.default))
+            TextButton(onClick = onRetry) { Text("Try again") }
         }
     }
 }

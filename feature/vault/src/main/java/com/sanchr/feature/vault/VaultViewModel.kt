@@ -77,6 +77,14 @@ enum class VaultSort(
 
 data class VaultUiState(
     val items: List<VaultItem> = emptyList(),
+    /**
+     * Nothing in the vault at all — as against nothing of the kind the
+     * filter is showing. The screen used to tell the two apart by [items]
+     * alone, which is the filtered list: choosing "Videos" with no videos
+     * swapped the whole screen for the empty-vault one, filter chips and all,
+     * and left no way to choose anything else.
+     */
+    val isVaultEmpty: Boolean = true,
     val filter: VaultFilter = VaultFilter.ALL,
     val sort: VaultSort = VaultSort.NEWEST,
     /** Multi-select (iOS's select mode): tapping a card picks it instead of opening it. */
@@ -108,6 +116,7 @@ class VaultViewModel
         observeConversationsUseCase: ObserveConversationsUseCase,
     ) : ViewModel() {
         companion object {
+            const val LOAD_FAILED = "Couldn't load your vault"
             private const val TAG = "VaultViewModel"
         }
 
@@ -138,6 +147,7 @@ class VaultViewModel
             ) { (items, filter, sort), (loading, refreshing, uploading), selection ->
                 VaultUiState(
                     items = sort.sort(items.filter(filter::accepts)),
+                    isVaultEmpty = items.isEmpty(),
                     filter = filter,
                     sort = sort,
                     isSelectMode = selection != null,
@@ -267,7 +277,9 @@ class VaultViewModel
                     throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to load vault items", e)
-                    if (_allItems.value.isEmpty()) _errorMessage.value = e.message ?: "Failed to load vault"
+                    // Only when there is nothing to show instead; and in
+                    // words, not the exception's.
+                    if (_allItems.value.isEmpty()) _errorMessage.value = LOAD_FAILED
                 } finally {
                     _isLoading.value = false
                     _isRefreshing.value = false

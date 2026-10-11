@@ -9,6 +9,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlin.test.assertFalse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -58,6 +59,61 @@ class VaultViewModelTest {
             sendAttachmentUseCase = mockk(relaxed = true),
             observeConversationsUseCase = mockk(relaxed = true) { every { this@mockk() } returns flowOf(Result.Success(emptyList())) },
         )
+
+    /** Choosing a kind there is none of used to swap the screen for the empty-vault one, chips and all. */
+    @Test
+    fun `a filter that matches nothing is not an empty vault`() =
+        runTest(dispatcher) {
+            coEvery { repo.listItems(any(), "") } returns VaultPage(listOf(item("a", VaultItemType.PHOTO)), "")
+            val vm = viewModel()
+            val collector = launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+
+            vm.setFilter(VaultFilter.VIDEOS)
+            advanceUntilIdle()
+
+            assertTrue(
+                vm.uiState.value.items
+                    .isEmpty(),
+            )
+            assertFalse(vm.uiState.value.isVaultEmpty, "there is a photo in it")
+            assertEquals(VaultFilter.VIDEOS, vm.uiState.value.filter)
+            collector.cancel()
+        }
+
+    @Test
+    fun `a vault with nothing in it says so`() =
+        runTest(dispatcher) {
+            coEvery { repo.listItems(any(), "") } returns VaultPage(emptyList(), "")
+            val vm = viewModel()
+            val collector = launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.isVaultEmpty)
+            assertEquals(null, vm.uiState.value.errorMessage)
+            collector.cancel()
+        }
+
+    /** It was set and never shown: a failed load looked like nothing stored. */
+    @Test
+    fun `a load that fails is reported, in words, and can be tried again`() =
+        runTest(dispatcher) {
+            coEvery { repo.listItems(any(), "") } throws IllegalStateException("UNAVAILABLE: io exception")
+            val vm = viewModel()
+            val collector = launch { vm.uiState.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(VaultViewModel.LOAD_FAILED, vm.uiState.value.errorMessage)
+            assertTrue(vm.uiState.value.isVaultEmpty)
+
+            coEvery { repo.listItems(any(), "") } returns VaultPage(listOf(item("a", VaultItemType.PHOTO)), "")
+            vm.refresh()
+            advanceUntilIdle()
+
+            assertEquals(null, vm.uiState.value.errorMessage)
+            assertFalse(vm.uiState.value.isVaultEmpty)
+            collector.cancel()
+        }
 
     @Test
     fun `first page loads, filters by type, and paging continues from the cursor`() =
