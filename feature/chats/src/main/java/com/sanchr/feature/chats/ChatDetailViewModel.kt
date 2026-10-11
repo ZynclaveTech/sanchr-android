@@ -259,27 +259,40 @@ class ChatDetailViewModel
             }
         }
 
-        /**
-         * Zeroes the conversation's unread count and sends a read receipt
-         * naming the newest inbound message. Both are best-effort and
-         * separately guarded, and each runs in its own coroutine so the
-         * receipt's jitter never holds up the unread-count write. Fires once, from
-         * `init` — a conversation left open while new inbound messages
-         * arrive will not re-fire this and so will not send a further
-         * receipt for them. Widening the trigger (e.g. re-firing per new
-         * message) is a behaviour change beyond this task's scope.
-         */
-        private var newestInboundSeen: String? = null
+        private val inboundRead = InboundReadTracker(::markReadAndTellSender)
 
-        /** While the chat is on screen, a message that just arrived is read: clear the badge the way iOS does on append. */
-        private suspend fun markReadIfNewInbound(messages: List<Message>) {
+        /** Called by the screen as it comes to the front and as it leaves it; see [InboundReadTracker]. */
+        fun onScreenVisibilityChanged(visible: Boolean) = inboundRead.onVisibilityChanged(visible)
+
+        /**
+         * A message that arrives while the chat is on screen is read: the
+         * badge is cleared, and its sender is told. The telling was missing —
+         * only opening the chat sent a read receipt, so in a live
+         * back-and-forth every message but the first stayed at "delivered".
+         */
+        private fun markReadIfNewInbound(messages: List<Message>) {
             val self = sessionManager.getUserId() ?: return
-            val newestInbound = messages.lastOrNull { it.senderId != self }?.id ?: return
-            if (newestInbound == newestInboundSeen) return
-            val first = newestInboundSeen == null
-            newestInboundSeen = newestInbound
-            if (first) return // the initial load is handled by markAsRead() in init
-            runCatching { messageRepository.markAsRead(conversationId) }
+            inboundRead.onNewestInbound(messages.lastOrNull { it.senderId != self }?.id)
+        }
+
+        /**
+         * Each in its own coroutine, as on opening: the receipt waits out its
+         * jitter and must not hold up the badge. Both are best-effort and
+         * neither may escape — these are unsupervised coroutines.
+         */
+        private fun markReadAndTellSender(messageId: String) {
+            viewModelScope.launch {
+                try {
+                    messageRepository.markAsRead(conversationId)
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Leaves a stale badge until the next open; see markAsRead().
+                }
+            }
+            // Never throws, bar cancellation; honours the read-receipts
+            // setting and the 1:1-only rule itself.
+            viewModelScope.launch { sendReadReceiptUseCase(conversationId, messageId) }
         }
 
         private fun markAsRead() {

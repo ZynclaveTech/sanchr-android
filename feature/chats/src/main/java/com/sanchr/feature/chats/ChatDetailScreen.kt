@@ -231,7 +231,9 @@ fun ChatDetailScreen(
     // this banner when the user comes back, not leave a stale warning.
     LifecycleResumeEffect(Unit) {
         viewModel.refreshIdentityChangeState()
-        onPauseOrDispose {}
+        // What arrives is only "read" while this screen is in front.
+        viewModel.onScreenVisibilityChanged(true)
+        onPauseOrDispose { viewModel.onScreenVisibilityChanged(false) }
     }
     var emojiPickerOpen by remember { mutableStateOf(false) }
     var stickerPickerOpen by remember { mutableStateOf(false) }
