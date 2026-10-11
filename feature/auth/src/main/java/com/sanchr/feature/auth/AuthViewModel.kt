@@ -129,7 +129,7 @@ class AuthViewModel
                     _state.value =
                         AuthState.Error(
                             current.copy(isSubmitting = false),
-                            e.message ?: "Failed to request verification code",
+                            AuthErrorMessages.forRequestingCode(e),
                         )
                 }
             }
@@ -167,7 +167,7 @@ class AuthViewModel
                     _state.value =
                         AuthState.Error(
                             current.copy(isSubmitting = false),
-                            e.message ?: "Failed to resend verification code",
+                            AuthErrorMessages.forRequestingCode(e),
                         )
                 }
             }
@@ -263,7 +263,7 @@ class AuthViewModel
                     _state.value =
                         AuthState.Error(
                             current.copy(isSubmitting = false, otp = ""),
-                            e.message ?: "Failed to verify code",
+                            AuthErrorMessages.forVerifyingCode(e),
                         )
                 }
             }
@@ -347,7 +347,7 @@ class AuthViewModel
                 _state.value =
                     AuthState.Error(
                         previousState = stage(RegistrationStep.GENERATING_KEYS),
-                        message = e.message ?: "Registration failed",
+                        message = AuthErrorMessages.forSettingUp(e),
                     )
             }
         }
