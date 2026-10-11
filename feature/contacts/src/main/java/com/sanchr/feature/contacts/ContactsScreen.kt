@@ -70,7 +70,8 @@ import com.sanchr.proto.contacts.Contact
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactsScreen(
-    onContactClick: (String) -> Unit,
+    /** Shows a conversation, by its conversation id — not the contact's user id. */
+    onOpenConversation: (conversationId: String) -> Unit,
     onSyncContacts: () -> Unit,
     /** Opens the by-number search, for reaching someone not in the address book. */
     onFindByNumber: () -> Unit,
@@ -91,6 +92,10 @@ fun ContactsScreen(
                     ContactsEvent.ContactBlocked -> "Contact blocked"
                     ContactsEvent.ContactUnblocked -> "Contact unblocked"
                     is ContactsEvent.Error -> event.message
+                    is ContactsEvent.OpenConversation -> {
+                        onOpenConversation(event.conversationId)
+                        return@collect
+                    }
                 }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
@@ -193,10 +198,10 @@ fun ContactsScreen(
                         ContactsList(
                             groupedContacts = state.groupedContacts,
                             onlineUserIds = state.onlineUserIds,
-                            onContactClick = onContactClick,
+                            onContactClick = viewModel::openChat,
                             onBlockContact = viewModel::blockContact,
                             onUnblockContact = viewModel::unblockContact,
-                            onMessageContact = { userId -> onContactClick(userId) },
+                            onMessageContact = viewModel::openChat,
                             onCallContact = { contact -> onStartCall(contact.userId, contact.displayName, false) },
                         )
                     }

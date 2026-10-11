@@ -21,8 +21,8 @@ fun NavGraphBuilder.contactsGraph(
     navigation(startDestination = CONTACTS_LIST_ROUTE, route = CONTACTS_TAB_ROUTE) {
         composable(CONTACTS_LIST_ROUTE) {
             ContactsScreen(
-                onContactClick = { userId ->
-                    navController.navigate("chats/detail/$userId")
+                onOpenConversation = { conversationId ->
+                    navController.navigate("chats/detail/$conversationId")
                 },
                 onSyncContacts = {
                     navController.navigate(CONTACT_SYNC_ROUTE)

@@ -26,6 +26,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        // The view models log through android.util.Log, which a JVM unit
+        // test only has as a stub that throws.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

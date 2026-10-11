@@ -7,11 +7,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.contacts.DeviceContact
+import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.proto.contacts.Contact
 import com.sanchr.proto.contacts.ContactServiceClient
 import com.sanchr.proto.contacts.GetContactsRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,6 +58,7 @@ class ContactsViewModel
     constructor(
         private val contactServiceClient: ContactServiceClient,
         private val contactRepository: ContactRepository,
+        private val messageRepository: MessageRepository,
     ) : ViewModel() {
         companion object {
             private const val TAG = "ContactsViewModel"
@@ -187,6 +190,35 @@ class ContactsViewModel
             }
         }
 
+        /** The contact whose chat is being opened, so a double tap opens one. */
+        private var openingChatWith: String? = null
+
+        /**
+         * Opens the conversation with a contact, creating it if there is none.
+         *
+         * A tap used to navigate to the chat screen with the contact's *user*
+         * id where that screen takes a *conversation* id. The screen believed
+         * it: drafts, history and sends were all keyed on an id no
+         * conversation has. Every other way into a chat asks for the
+         * conversation first; this one now does too.
+         */
+        fun openChat(userId: String) {
+            if (openingChatWith != null) return
+            openingChatWith = userId
+            viewModelScope.launch {
+                try {
+                    _events.emit(ContactsEvent.OpenConversation(messageRepository.ensureConversation(userId)))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to open chat", e)
+                    _events.emit(ContactsEvent.Error("Couldn't open that chat"))
+                } finally {
+                    openingChatWith = null
+                }
+            }
+        }
+
         /**
          * Blocking goes through [ContactRepository] so it is written to the
          * contacts table, which is what `ReceiveMessageUseCase` reads to drop
@@ -197,6 +229,7 @@ class ContactsViewModel
          * The repository treats the server sync as best-effort, so a block
          * takes effect on this device even while ContactService is unwired.
          */
+
         fun blockContact(userId: String) {
             viewModelScope.launch {
                 try {
@@ -316,6 +349,11 @@ sealed interface ContactsEvent {
     data object ContactBlocked : ContactsEvent
 
     data object ContactUnblocked : ContactsEvent
+
+    /** The conversation with the contact that was tapped is ready to show. */
+    data class OpenConversation(
+        val conversationId: String,
+    ) : ContactsEvent
 
     data class Error(
         val message: String,
