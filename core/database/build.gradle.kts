@@ -24,6 +24,10 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     // MigrationTest loads the exported schemas from the test APK's assets;
     // without this every migration test dies with "Cannot find the schema
     // file in the assets folder" before it can validate anything.
@@ -49,6 +53,13 @@ dependencies {
 
     implementation(libs.sqlcipher.android)
     implementation(libs.androidx.security.crypto)
+
+    // In-memory Room on the JVM, so database rules are checked by the ordinary gate.
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(libs.junit.ext)
     androidTestImplementation(libs.androidx.test.core)
