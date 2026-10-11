@@ -3,7 +3,6 @@ package com.sanchr.app.data
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.entity.ConversationEntity
-import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageContent
 import com.sanchr.domain.messaging.vault.AutoVaultScheduler
@@ -42,7 +41,7 @@ class MessageRepositoryImplAutoVaultTest {
         sender: String = "peer",
         alreadyStored: Boolean = false,
     ) {
-        coEvery { messageDao.getMessageById("m1") } returns if (alreadyStored) mockk<MessageEntity>() else null
+        coEvery { messageDao.insertMessageIfAbsent(any()) } returns if (alreadyStored) -1L else 1L
         repo.insertDecryptedMessage(
             "c1",
             "m1",

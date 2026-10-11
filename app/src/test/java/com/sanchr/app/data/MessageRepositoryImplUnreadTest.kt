@@ -5,7 +5,6 @@ import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
-import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -60,7 +59,6 @@ class MessageRepositoryImplUnreadTest {
     @Test
     fun `a peer's new message increments unread with its timestamp`() =
         runTest {
-            coEvery { messageDao.getMessageById("m1") } returns null
             insert(sender = "peer")
             coVerify(exactly = 1) { conversationDao.incrementUnread("c1", 500L) }
         }
@@ -68,11 +66,24 @@ class MessageRepositoryImplUnreadTest {
     @Test
     fun `a resend of an existing row and our own echoed message do not`() =
         runTest {
-            coEvery { messageDao.getMessageById("m1") } returns mockk<MessageEntity>()
+            coEvery { messageDao.insertMessageIfAbsent(match { it.id == "m1" }) } returns -1L
             insert(sender = "peer")
-            coEvery { messageDao.getMessageById("m2") } returns null
             insert(sender = "self", id = "m2")
             coVerify(exactly = 0) { conversationDao.incrementUnread(any(), any()) }
+        }
+
+    /**
+     * The sender chooses a received message's id. Saving used to overwrite,
+     * so reusing an id rewrote whatever message held it.
+     */
+    @Test
+    fun `a received message is never saved over one already here`() =
+        runTest {
+            insert(sender = "peer")
+
+            coVerify(exactly = 1) { messageDao.insertMessageIfAbsent(match { it.id == "m1" && it.senderId == "peer" }) }
+            coVerify(exactly = 0) { messageDao.insertMessage(any()) }
+            coVerify(exactly = 0) { messageDao.insertMessages(any()) }
         }
 
     @Test

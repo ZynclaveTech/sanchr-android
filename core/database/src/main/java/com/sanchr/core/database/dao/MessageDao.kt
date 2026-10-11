@@ -78,6 +78,21 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<MessageEntity>)
 
+    /**
+     * Saves a message only if no message has its id yet.
+     *
+     * For anything that arrives from someone else. The id of a received
+     * message is chosen by its sender, and [insertMessage] overwrites: a
+     * sender who reused an id — and they know the id of every message in the
+     * chat they share with this user, in both directions — replaced that
+     * message, whoever had written it.
+     *
+     * @return the new row's id, or -1 if a message with this id was already
+     *         here and nothing was written.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMessageIfAbsent(message: MessageEntity): Long
+
     @Update
     suspend fun updateMessage(message: MessageEntity)
 
