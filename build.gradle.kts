@@ -24,6 +24,24 @@ subprojects {
             )
         }
     }
+
+    // Lint reads the sources KSP generates — for every variant, including
+    // ones the lint task is not for: analysing the debug androidTest sources
+    // opens files under build/generated/ksp/release. It does not declare
+    // them as inputs, so Gradle is free to run that variant's KSP task at
+    // the same moment, and KSP rewrites its output directory as it goes.
+    // `./gradlew check` runs both, and now and then lint reached for a file
+    // KSP had just deleted and crashed the build with NoSuchFileException
+    // ("this is a bug in lint").
+    //
+    // This does not make lint depend on KSP — a lint-only run still runs
+    // only what it did. It says that when both are going to run, KSP goes
+    // first.
+    tasks
+        .matching { it.name.startsWith("lintAnalyze") || it.name.startsWith("lintVitalAnalyze") }
+        .configureEach {
+            mustRunAfter(tasks.matching { it.name.startsWith("ksp") && it.name.endsWith("Kotlin") })
+        }
 }
 
 allprojects {
