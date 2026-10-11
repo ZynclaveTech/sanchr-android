@@ -196,6 +196,10 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")
     suspend fun deleteAllMessagesInConversation(conversationId: String)
 
+    /** Every message a conversation holds, by id. For clearing a chat: its media has to be found before its rows go. */
+    @Query("SELECT id FROM messages WHERE conversation_id = :conversationId")
+    suspend fun messageIdsInConversation(conversationId: String): List<String>
+
     @Query("DELETE FROM messages")
     suspend fun deleteAllMessages()
 

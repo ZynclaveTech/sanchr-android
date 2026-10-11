@@ -47,6 +47,10 @@ object AutoVaultRules {
         index: Int,
     ): String = if (message.content is MessageContent.Album) message.id + "#" + index else message.id
 
+    /** Every attachment a message carries, view-once or not, each with the id it is cached under. */
+    fun cachedAttachments(message: Message): List<Pair<String, MediaAttachment>> =
+        attachmentsOf(message.content).mapIndexed { index, attachment -> cacheId(message, index) to attachment }
+
     private fun attachmentsOf(content: MessageContent): List<MediaAttachment> =
         when (content) {
             is MessageContent.Image -> listOfNotNull(content.attachment)

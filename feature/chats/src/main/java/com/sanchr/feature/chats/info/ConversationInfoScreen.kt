@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -71,6 +72,28 @@ fun ConversationInfoScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val peerId = uiState.peerId
     var confirmingBlock by remember { mutableStateOf(false) }
+    var confirmingClear by remember { mutableStateOf(false) }
+    if (confirmingClear) {
+        AlertDialog(
+            onDismissRequest = { confirmingClear = false },
+            title = { Text("Clear chat?") },
+            text = {
+                Text(
+                    "This permanently deletes every message in this chat from this phone, with any photos, videos " +
+                        "and files they saved here. ${uiState.title} keeps their copy. This cannot be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingClear = false
+                        viewModel.clearMessages()
+                    },
+                ) { Text("Clear all messages", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmingClear = false }) { Text("Cancel") } },
+        )
+    }
     if (confirmingBlock) {
         AlertDialog(
             onDismissRequest = { confirmingBlock = false },
@@ -189,6 +212,12 @@ fun ConversationInfoScreen(
                         title = if (uiState.isArchived) "Unarchive chat" else "Archive chat",
                         subtitle = if (uiState.isArchived) "Move it back to the chat list" else "Move it out of the chat list",
                         onClick = { viewModel.setArchived(!uiState.isArchived) },
+                    )
+                    InfoRow(
+                        icon = Icons.Filled.DeleteSweep,
+                        title = "Clear chat",
+                        subtitle = "Delete every message here; the chat stays",
+                        onClick = { confirmingClear = true },
                     )
                     InfoRow(
                         icon = Icons.Filled.VisibilityOff,

@@ -320,6 +320,16 @@ interface MessageRepository {
         muted: Boolean,
     )
 
+    /** The ids of every message this device holds for a conversation. */
+    suspend fun messageIds(conversationId: String): List<String>
+
+    /**
+     * Removes every message of a conversation from this device, leaving the
+     * conversation itself. Local only: nothing is asked of the server or of
+     * the other person, whose copies are theirs.
+     */
+    suspend fun clearMessages(conversationId: String)
+
     /**
      * Deletes a conversation and its messages here, and asks the server to
      * drop it; a server failure still removes it locally (iOS does the same

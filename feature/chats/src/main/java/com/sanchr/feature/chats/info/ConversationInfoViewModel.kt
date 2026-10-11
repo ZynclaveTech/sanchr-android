@@ -8,6 +8,7 @@ import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
 import com.sanchr.domain.contacts.ContactRepository
+import com.sanchr.domain.messaging.ClearChatUseCase
 import com.sanchr.domain.messaging.MessageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -68,6 +69,7 @@ class ConversationInfoViewModel
         private val userPreferences: UserPreferences,
         savedStateHandle: SavedStateHandle,
         private val contactRepository: ContactRepository,
+        private val clearChat: ClearChatUseCase,
     ) : ViewModel() {
         private val conversationId: String = savedStateHandle["conversationId"] ?: ""
 
@@ -143,6 +145,13 @@ class ConversationInfoViewModel
         }
 
         fun dismissError() = _uiState.update { it.copy(error = null) }
+
+        /**
+         * Removes every message in this chat from this phone, with the media
+         * they had saved to it. There was no way to do this: a chat could be
+         * hidden, archived or deleted outright, but not emptied and kept.
+         */
+        fun clearMessages() = action { clearChat(conversationId) }
 
         private var blockedLoadedFor: String? = null
 
