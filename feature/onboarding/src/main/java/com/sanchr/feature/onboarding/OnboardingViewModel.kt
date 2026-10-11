@@ -11,6 +11,7 @@ import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.mediaviewer.ImageSendEncoder
 import com.sanchr.core.network.media.AvatarUploader
+import com.sanchr.domain.contacts.DiscoverDeviceContactsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Drives the onboarding flow.
@@ -75,6 +77,7 @@ class OnboardingViewModel
         private val avatarUploader: AvatarUploader,
         @ApplicationContext private val appContext: Context,
         private val dispatchers: DispatcherProvider,
+        private val discoverDeviceContacts: DiscoverDeviceContactsUseCase,
     ) : ViewModel() {
         private val _state: MutableStateFlow<OnboardingState> =
             MutableStateFlow(initialState())
@@ -184,6 +187,7 @@ class OnboardingViewModel
          * WelcomeConfirm screen, matching iOS where `saveProfile` runs at the
          * very end of the flow.
          */
+
         fun onContactSyncFinish() {
             val current = _state.value as? OnboardingState.ContactSync ?: return
             _state.value =
@@ -191,6 +195,43 @@ class OnboardingViewModel
                     name = current.name,
                     avatarUri = current.avatarUri,
                 )
+        }
+
+        /**
+         * "Sync All Contacts", once the permission prompt has been answered.
+         *
+         * The button asked for the permission and then moved on whatever the
+         * answer, without ever looking at the address book. Someone who said
+         * yes arrived in the app with no contacts, and nothing running to
+         * find any: the background refresh only re-checks people already
+         * found, and the first finding was left to a screen they had no
+         * reason to visit, having just been told it was done.
+         *
+         * Granted, it now finds them here, before moving on. It does not
+         * hold onboarding hostage: Skip still works while it runs, a failure
+         * moves on all the same — it can be run again from Contacts — and so
+         * does a search that outlasts [CONTACT_DISCOVERY_TIMEOUT_MS].
+         */
+        fun onContactsPermissionResult(granted: Boolean) {
+            val current = _state.value as? OnboardingState.ContactSync ?: return
+            if (!granted) {
+                onContactSyncFinish()
+                return
+            }
+            if (current.isSubmitting) return
+            _state.value = current.copy(isSubmitting = true)
+            viewModelScope.launch {
+                try {
+                    val found = withTimeoutOrNull(CONTACT_DISCOVERY_TIMEOUT_MS) { discoverDeviceContacts() }
+                    Log.i(TAG, if (found == null) "Contact discovery timed out during onboarding" else "Onboarding found $found contacts")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Contact discovery failed during onboarding", e)
+                }
+                // A no-op if the user has skipped ahead in the meantime.
+                onContactSyncFinish()
+            }
         }
 
         /**
@@ -292,5 +333,8 @@ class OnboardingViewModel
             private const val AVATAR_MAX_EDGE = 1024
             private const val MAX_NAME_LENGTH = 128
             private const val TAG = "OnboardingViewModel"
+
+            /** Long enough for a large address book on a slow link; short enough not to strand a new user. */
+            internal const val CONTACT_DISCOVERY_TIMEOUT_MS = 30_000L
         }
     }
