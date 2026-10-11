@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -21,13 +22,18 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -63,11 +69,24 @@ fun ConversationInfoScreen(
     viewModel: ConversationInfoViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val peerId =
-        uiState.conversation
-            ?.participants
-            ?.firstOrNull { it.displayName != "You" }
-            ?.id
+    val peerId = uiState.peerId
+    var confirmingBlock by remember { mutableStateOf(false) }
+    if (confirmingBlock) {
+        AlertDialog(
+            onDismissRequest = { confirmingBlock = false },
+            title = { Text("Block ${uiState.title}?") },
+            text = { Text("They won't be able to message or call you. They are not told.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingBlock = false
+                        viewModel.setBlocked(true)
+                    },
+                ) { Text("Block", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmingBlock = false }) { Text("Cancel") } },
+        )
+    }
 
     Scaffold(
         // The NavHost's Scaffold has already inset this for the system
@@ -106,6 +125,21 @@ fun ConversationInfoScreen(
                         subtitle = DisappearingDurations.displayName(uiState.disappearingLabel),
                         onClick = onOpenDisappearing,
                     )
+                    // One-to-one chats only: there is no one person to block in a group.
+                    if (peerId != null) {
+                        InfoRow(
+                            icon = Icons.Filled.Block,
+                            title = if (uiState.isBlocked) "Unblock" else "Block",
+                            subtitle =
+                                if (uiState.isBlocked) {
+                                    "Let them message and call you again"
+                                } else {
+                                    "Stop messages and calls from this person"
+                                },
+                            // Blocking asks first; undoing it does not need to.
+                            onClick = { if (uiState.isBlocked) viewModel.setBlocked(false) else confirmingBlock = true },
+                        )
+                    }
                 }
             }
 
