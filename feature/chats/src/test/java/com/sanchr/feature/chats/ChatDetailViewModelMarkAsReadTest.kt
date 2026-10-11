@@ -242,7 +242,8 @@ class ChatDetailViewModelMarkAsReadTest {
             every { messageRepository.observeRecentMessages(conversationId, any()) } returns stream
             stream.emit(listOf(message(id = "m1", senderId = "user-peer", timestampMillis = 1_000L)))
 
-            newViewModel()
+            // In front, as the screen reports on resume.
+            newViewModel().onScreenVisibilityChanged(true)
             advanceUntilIdle()
             coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
 
@@ -263,5 +264,104 @@ class ChatDetailViewModelMarkAsReadTest {
             )
             advanceUntilIdle()
             coVerify(exactly = 2) { messageRepository.markAsRead(conversationId) }
+        }
+
+    private fun peer(
+        id: String,
+        at: Long,
+    ) = message(id = id, senderId = "user-peer", timestampMillis = at)
+
+    /** Opens on one inbound message, with the stream left open for more. */
+    private fun openOn(stream: MutableStateFlow<List<Message>>): ChatDetailViewModel {
+        every { messageRepository.observeRecentMessages(conversationId, any()) } returns stream
+        return newViewModel()
+    }
+
+    /**
+     * The gap: only opening the chat sent a receipt, so in a live
+     * conversation every message after the first stayed at "delivered".
+     */
+    @Test
+    fun `a message that arrives while the chat is in front is read, and its sender is told`() =
+        runTest(testDispatcher) {
+            val stream = MutableStateFlow(listOf(peer("msg-1", 1_000)))
+            val viewModel = openOn(stream)
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+
+            stream.value = listOf(peer("msg-1", 1_000), peer("msg-2", 2_000))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { sendReadReceiptUseCase(conversationId, "msg-2") }
+            // Once on opening, once for the arrival.
+            coVerify(exactly = 2) { messageRepository.markAsRead(conversationId) }
+        }
+
+    /** Read has to mean seen: the chat can be open under a locked phone. */
+    @Test
+    fun `a message that arrives while the chat is not in front is not called read`() =
+        runTest(testDispatcher) {
+            val stream = MutableStateFlow(listOf(peer("msg-1", 1_000)))
+            val viewModel = openOn(stream)
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+            viewModel.onScreenVisibilityChanged(false)
+
+            stream.value = listOf(peer("msg-1", 1_000), peer("msg-2", 2_000))
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { sendReadReceiptUseCase(conversationId, "msg-2") }
+            coVerify(exactly = 1) { messageRepository.markAsRead(conversationId) }
+        }
+
+    @Test
+    fun `coming back to the chat reads what arrived meanwhile, naming the newest`() =
+        runTest(testDispatcher) {
+            val stream = MutableStateFlow(listOf(peer("msg-1", 1_000)))
+            val viewModel = openOn(stream)
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+            viewModel.onScreenVisibilityChanged(false)
+            stream.value = listOf(peer("msg-1", 1_000), peer("msg-2", 2_000))
+            advanceUntilIdle()
+            stream.value = listOf(peer("msg-1", 1_000), peer("msg-2", 2_000), peer("msg-3", 3_000))
+            advanceUntilIdle()
+
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { sendReadReceiptUseCase(conversationId, "msg-3") }
+            coVerify(exactly = 0) { sendReadReceiptUseCase(conversationId, "msg-2") }
+            coVerify(exactly = 2) { messageRepository.markAsRead(conversationId) }
+        }
+
+    @Test
+    fun `coming back with nothing new sends nothing more`() =
+        runTest(testDispatcher) {
+            val stream = MutableStateFlow(listOf(peer("msg-1", 1_000)))
+            val viewModel = openOn(stream)
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+
+            viewModel.onScreenVisibilityChanged(false)
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+
+            // Only the one from opening the chat.
+            coVerify(exactly = 1) { sendReadReceiptUseCase(any(), any()) }
+        }
+
+    @Test
+    fun `my own message arriving in the list is not a reason to send a receipt`() =
+        runTest(testDispatcher) {
+            val stream = MutableStateFlow(listOf(peer("msg-1", 1_000)))
+            val viewModel = openOn(stream)
+            viewModel.onScreenVisibilityChanged(true)
+            advanceUntilIdle()
+
+            stream.value = listOf(peer("msg-1", 1_000), message(id = "mine", senderId = currentUserId, timestampMillis = 2_000))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { sendReadReceiptUseCase(any(), any()) }
         }
 }
