@@ -70,6 +70,7 @@ class UserPreferences
             val SCREEN_LOCK_TIMEOUT = intPreferencesKey("screen_lock_timeout_seconds")
             val ONLINE_STATUS_VISIBLE = booleanPreferencesKey("last_active_visible")
             val READ_RECEIPTS_ENABLED = booleanPreferencesKey("read_receipts_enabled")
+            val SANCHR_MODE_ENABLED = booleanPreferencesKey("sanchr_mode_enabled")
             val TYPING_INDICATORS_ENABLED = booleanPreferencesKey("typing_indicators_enabled")
             val LINK_PREVIEWS_ENABLED = booleanPreferencesKey("link_previews_enabled")
 
@@ -202,6 +203,49 @@ class UserPreferences
         }
 
         // --- Privacy ---
+
+        /**
+         * Sanchr Mode: the one switch for "leave no trace of when I am here".
+         *
+         * It was a switch and nothing else. Turning it on saved a flag on the
+         * server and changed nothing this app did: read receipts, typing and
+         * presence all went out as before, and the screen stayed
+         * capturable. On iOS it turns all three off and shields the screen,
+         * whatever the individual toggles say.
+         *
+         * Kept on the device because it is enforced on the device, on every
+         * send, including with no network. The individual toggles below keep
+         * their own values underneath it, so turning the mode off again puts
+         * things back as they were. What is actually allowed is in
+         * [canSendReadReceipts], [canSendTypingIndicators], [canSendPresence]
+         * and [screenSecurityActive]; code that sends or shields reads those,
+         * and only the settings screens read the toggles themselves.
+         */
+        val sanchrModeEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.SANCHR_MODE_ENABLED] ?: false }
+
+        suspend fun setSanchrModeEnabled(enabled: Boolean) {
+            dataStore.edit { it[Keys.SANCHR_MODE_ENABLED] = enabled }
+        }
+
+        /** Whether a read receipt may be sent: the toggle, unless Sanchr Mode is on. */
+        val canSendReadReceipts: Flow<Boolean> =
+            dataStore.data.map { (it[Keys.READ_RECEIPTS_ENABLED] ?: true) && it[Keys.SANCHR_MODE_ENABLED] != true }
+
+        /** Whether "typing" may be sent: the toggle, unless Sanchr Mode is on. */
+        val canSendTypingIndicators: Flow<Boolean> =
+            dataStore.data.map { (it[Keys.TYPING_INDICATORS_ENABLED] ?: true) && it[Keys.SANCHR_MODE_ENABLED] != true }
+
+        /**
+         * Whether anything about presence may be sent at all. With online
+         * status merely hidden a peer is still told "hidden"; under Sanchr
+         * Mode they are told nothing, as on iOS.
+         */
+        val canSendPresence: Flow<Boolean> = dataStore.data.map { it[Keys.SANCHR_MODE_ENABLED] != true }
+
+        /** Whether the window is shielded from capture: the toggle, or Sanchr Mode. */
+        val screenSecurityActive: Flow<Boolean> =
+            dataStore.data.map { (it[Keys.SCREENSHOT_PROTECTION_ENABLED] ?: true) || it[Keys.SANCHR_MODE_ENABLED] == true }
+
         val readReceiptsEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.READ_RECEIPTS_ENABLED] ?: true }
 
         suspend fun setReadReceiptsEnabled(enabled: Boolean) {

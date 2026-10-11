@@ -49,6 +49,8 @@ class SendPresenceUseCase
             if (peerId.isEmpty()) return
             val selfUserId = sessionManager.getUserId()
             if (selfUserId.isNullOrBlank()) return
+            // Sanchr Mode says nothing at all, not even "hidden".
+            if (!userPreferences.canSendPresence.first()) return
             val status = if (userPreferences.onlineStatusVisible.first()) requested else PresenceStatus.HIDDEN
             val now = System.currentTimeMillis()
             val update =

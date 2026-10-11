@@ -44,6 +44,7 @@ class SendPresenceUseCaseTest {
     fun `sends an ONLINE PresenceUpdate as a sealed control payload carrying our profile key`() =
         runTest {
             every { prefs.onlineStatusVisible } returns flowOf(true)
+            every { prefs.canSendPresence } returns flowOf(true)
             val plaintext = slot<ByteArray>()
             coEvery { sender.encryptAndWrapDeviceMessages(capture(plaintext), listOf("peer"), "", SealedSendKind.Control) } returns
                 listOf(mockk())
@@ -64,6 +65,7 @@ class SendPresenceUseCaseTest {
     fun `with online status off the peer is told HIDDEN, and offline carries a last-seen`() =
         runTest {
             every { prefs.onlineStatusVisible } returns flowOf(false)
+            every { prefs.canSendPresence } returns flowOf(true)
             val plaintext = slot<ByteArray>()
             coEvery { sender.encryptAndWrapDeviceMessages(capture(plaintext), listOf("peer"), "", SealedSendKind.Control) } returns
                 listOf(mockk())
@@ -74,6 +76,8 @@ class SendPresenceUseCaseTest {
             )
 
             every { prefs.onlineStatusVisible } returns flowOf(true)
+
+            every { prefs.canSendPresence } returns flowOf(true)
             useCase("peer", PresenceStatus.OFFLINE)
             val update = Messaging.PresenceUpdate.parseFrom(InnerPayload.decode(plaintext.captured)!!.content)
             assertEquals(Messaging.PresenceStatus.OFFLINE, update.statusCode)
@@ -84,8 +88,23 @@ class SendPresenceUseCaseTest {
     fun `no key-capable devices means no token is spent and nothing is sent`() =
         runTest {
             every { prefs.onlineStatusVisible } returns flowOf(true)
+            every { prefs.canSendPresence } returns flowOf(true)
             coEvery { sender.encryptAndWrapDeviceMessages(any(), any(), any(), any()) } returns emptyList()
             useCase("peer", PresenceStatus.ONLINE)
+            coVerify(exactly = 0) { sender.sendControl(any(), any()) }
+        }
+
+    /** Sanchr Mode tells a peer nothing — not "online", and not "hidden" either. */
+    @Test
+    fun `in Sanchr Mode nothing about presence is sent at all`() =
+        runTest {
+            every { prefs.onlineStatusVisible } returns flowOf(true)
+            every { prefs.canSendPresence } returns flowOf(false)
+
+            useCase("peer", PresenceStatus.ONLINE)
+            useCase("peer", PresenceStatus.OFFLINE)
+
+            coVerify(exactly = 0) { sender.encryptAndWrapDeviceMessages(any(), any(), any(), any()) }
             coVerify(exactly = 0) { sender.sendControl(any(), any()) }
         }
 }

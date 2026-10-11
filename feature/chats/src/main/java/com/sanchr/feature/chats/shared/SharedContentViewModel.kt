@@ -56,7 +56,7 @@ class SharedContentViewModel
                 // The same rule as the chat itself: this browser opens the
                 // same media, so it must not be the unprotected way in.
                 combine(
-                    userPreferences.screenshotProtectionEnabled,
+                    userPreferences.screenSecurityActive,
                     messageRepository.observeConversation(conversationId),
                 ) { accountWide, conversation ->
                     VaultPolicyRules.captureProtected(accountWide, conversation?.vaultPolicy)

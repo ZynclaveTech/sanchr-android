@@ -80,6 +80,7 @@ class SendReadReceiptUseCaseTest {
     private fun primeCommonMocks() {
         every { sessionManager.getUserId() } returns "self-uuid"
         every { userPreferences.readReceiptsEnabled } returns flowOf(true)
+        every { userPreferences.canSendReadReceipts } returns flowOf(true)
         coEvery { messageRepository.oneToOneRecipient("conv-1", "self-uuid") } returns "peer-uuid"
         coEvery { receiptJitter.await() } just Runs
         every { receiptClock.nowEpochMillis() } returns 42_000L
@@ -92,6 +93,7 @@ class SendReadReceiptUseCaseTest {
         runTest {
             every { sessionManager.getUserId() } returns "self-uuid"
             every { userPreferences.readReceiptsEnabled } returns flowOf(false)
+            every { userPreferences.canSendReadReceipts } returns flowOf(false)
 
             useCase.invoke("conv-1", "msg-1")
 
@@ -106,6 +108,7 @@ class SendReadReceiptUseCaseTest {
         runTest {
             every { sessionManager.getUserId() } returns "self-uuid"
             every { userPreferences.readReceiptsEnabled } returns flowOf(true)
+            every { userPreferences.canSendReadReceipts } returns flowOf(true)
             coEvery { messageRepository.oneToOneRecipient("conv-1", "self-uuid") } returns null
 
             useCase.invoke("conv-1", "msg-1")
@@ -169,7 +172,7 @@ class SendReadReceiptUseCaseTest {
             useCase.invoke("conv-1", "msg-1")
 
             coVerifyOrder {
-                userPreferences.readReceiptsEnabled
+                userPreferences.canSendReadReceipts
                 messageRepository.oneToOneRecipient("conv-1", "self-uuid")
                 deliveryTokenStore.acquire()
                 messagingClient.sendSealedMessage(any())

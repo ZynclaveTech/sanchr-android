@@ -372,6 +372,9 @@ class SettingsViewModel
                             GetSettingsRequest(userId = ""),
                         )
                     _remoteSettings.value = settings
+                    // Enforced from the device's own copy, so a change made on
+                    // another device has to reach it.
+                    userPreferences.setSanchrModeEnabled(settings.sanchrModeEnabled)
                     // The profile may have been edited on the profile screen,
                     // which writes to the same store this reads.
                     _localProfile.value = readLocalProfile()
@@ -638,6 +641,8 @@ class SettingsViewModel
                             ToggleSanchrModeRequest(enabled = enabled),
                         )
                     _remoteSettings.value = updated
+                    // What the server settled on, which is what this device now enforces.
+                    userPreferences.setSanchrModeEnabled(updated.sanchrModeEnabled)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to toggle Sanchr Mode", e)
                     _events.emit(SettingsEvent.Error("Failed to toggle Sanchr Mode"))

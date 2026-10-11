@@ -95,9 +95,11 @@ class ChatDetailViewModelMarkAsReadTest {
                 mockk {
                     every { linkPreviewsEnabled } returns flowOf(true)
                     every { screenshotProtectionEnabled } returns flowOf(true)
+                    every { screenSecurityActive } returns flowOf(true)
                     every { chatWallpaper } returns flowOf("default")
                     every { mediaAutoDownload } returns flowOf("wifi")
                     every { typingIndicatorsEnabled } returns flowOf(true)
+                    every { canSendTypingIndicators } returns flowOf(true)
                 },
             linkPreviewFetcher = mockk(relaxed = true),
             safetyNumbers = mockk(relaxed = true),
