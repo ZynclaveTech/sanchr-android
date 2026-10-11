@@ -1,7 +1,9 @@
 package com.sanchr.app.data
 
+import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
+import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -168,8 +171,8 @@ class ContactRepositoryImplTest {
     @Test
     fun `blocking is written locally even when the server call fails`() =
         runTest {
-            val dao = RecordingContactDao()
-            val repo = repo(BlockRejectingClient(), dao)
+            val blocks = FakeBlockedUserDao()
+            val repo = repo(BlockRejectingClient(), NoOpContactDao(), blocks = blocks)
 
             repo.setBlocked("peer-uuid", blocked = true)
 
@@ -177,13 +180,29 @@ class ContactRepositoryImplTest {
             // blocked sender, and for sealed 1:1 traffic the server cannot
             // enforce the block at all — so a failed sync must not undo or
             // prevent the only enforcement that works.
-            assertEquals(listOf("peer-uuid" to true), dao.blockWrites)
+            assertTrue(repo.isBlocked("peer-uuid"))
+        }
+
+    /**
+     * The block used to be a column on the contact's row, so blocking someone
+     * with no row — anyone not in the address book — changed nothing.
+     */
+    @Test
+    fun `someone who is not a contact can be blocked`() =
+        runTest {
+            val repo = repo(BlockRejectingClient(), NoOpContactDao())
+            assertFalse(repo.isBlocked("stranger"))
+
+            repo.setBlocked("stranger", blocked = true)
+
+            assertTrue(repo.isBlocked("stranger"))
+            assertFalse(repo.isBlocked("someone-else"))
         }
 
     @Test
     fun `a failed block sync does not surface as an error to the caller`() =
         runTest {
-            val repo = repo(BlockRejectingClient(), RecordingContactDao())
+            val repo = repo(BlockRejectingClient(), NoOpContactDao())
 
             // Does not throw.
             repo.setBlocked("peer-uuid", blocked = true)
@@ -193,12 +212,24 @@ class ContactRepositoryImplTest {
     @Test
     fun `unblocking is written locally too`() =
         runTest {
-            val dao = RecordingContactDao()
-            val repo = repo(BlockRejectingClient(), dao)
+            val repo = repo(BlockRejectingClient(), NoOpContactDao())
+            repo.setBlocked("peer-uuid", blocked = true)
 
             repo.setBlocked("peer-uuid", blocked = false)
 
-            assertEquals(listOf("peer-uuid" to false), dao.blockWrites)
+            assertFalse(repo.isBlocked("peer-uuid"))
+        }
+
+    @Test
+    fun `blocking twice and unblocking once leaves them unblocked`() =
+        runTest {
+            val repo = repo(BlockRejectingClient(), NoOpContactDao())
+            repo.setBlocked("peer-uuid", blocked = true)
+            repo.setBlocked("peer-uuid", blocked = true)
+
+            repo.setBlocked("peer-uuid", blocked = false)
+
+            assertFalse(repo.isBlocked("peer-uuid"))
         }
 
     // ── Construction ─────────────────────────────────────────────────────
@@ -212,9 +243,11 @@ class ContactRepositoryImplTest {
         discovery: DiscoveryRepository = this.discovery,
         own: String? = "+15550000000",
         profiles: ContactProfileDao = NoOpContactProfileDao(),
+        blocks: BlockedUserDao = FakeBlockedUserDao(),
     ) = ContactRepositoryImpl(
         contactClient = client,
         contactDao = dao,
+        blockedUserDao = blocks,
         contactProfileDao = profiles,
         discoveryRepository = discovery,
         sessionManager = mockk<SessionManager> { every { getStoredPhoneE164() } returns own },
@@ -396,16 +429,26 @@ class ContactRepositoryImplTest {
         }
     }
 
-    /** Records every local block-state write. */
-    private class RecordingContactDao : NoOpContactDao() {
-        val blockWrites = mutableListOf<Pair<String, Boolean>>()
+    private class FakeBlockedUserDao : BlockedUserDao {
+        private val blocked = linkedSetOf<String>()
 
-        override suspend fun setBlocked(
-            contactId: String,
-            isBlocked: Boolean,
-        ) {
-            blockWrites += contactId to isBlocked
+        override suspend fun block(user: BlockedUserEntity) {
+            blocked += user.userId
         }
+
+        override suspend fun blockAll(users: List<BlockedUserEntity>) {
+            blocked += users.map { it.userId }
+        }
+
+        override suspend fun unblock(userId: String) {
+            blocked -= userId
+        }
+
+        override suspend fun isBlocked(userId: String): Boolean = userId in blocked
+
+        override suspend fun blockedUserIds(): List<String> = blocked.toList()
+
+        override suspend fun deleteAll() = blocked.clear()
     }
 
     /** Stands in for the unwired ContactService: both block RPCs fail. */
@@ -492,8 +535,6 @@ class ContactRepositoryImplTest {
     }
 
     private open class NoOpContactDao : ContactDao {
-        override suspend fun isBlocked(contactId: String): Boolean? = null
-
         override fun observeContacts(): Flow<List<ContactEntity>> = emptyFlow()
 
         override fun observeRegisteredContacts(): Flow<List<ContactEntity>> = emptyFlow()
@@ -511,11 +552,6 @@ class ContactRepositoryImplTest {
         override suspend fun insertContacts(contacts: List<ContactEntity>) = Unit
 
         override suspend fun updateContact(contact: ContactEntity) = Unit
-
-        override suspend fun setBlocked(
-            contactId: String,
-            isBlocked: Boolean,
-        ) = Unit
 
         override suspend fun setFavorite(
             contactId: String,

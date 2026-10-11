@@ -11,6 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.sanchr.core.database.crypto.DatabasePassphraseProvider
 import com.sanchr.core.database.dao.AccessKeyDao
 import com.sanchr.core.database.dao.AccountDao
+import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
@@ -25,6 +26,7 @@ import com.sanchr.core.database.dao.SignalSessionDao
 import com.sanchr.core.database.dao.SignalSignedPreKeyDao
 import com.sanchr.core.database.entity.AccessKeyEntity
 import com.sanchr.core.database.entity.AccountEntity
+import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.database.entity.ConversationEntity
@@ -61,8 +63,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         ContactProfileEntity::class,
         AccessKeyEntity::class,
         MessageReactionEntity::class,
+        BlockedUserEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -94,6 +97,8 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun accessKeyDao(): AccessKeyDao
 
     abstract fun messageReactionDao(): MessageReactionDao
+
+    abstract fun blockedUserDao(): BlockedUserDao
 }
 
 /**
@@ -391,6 +396,27 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * v15→v16: blocks move to a table of their own, so that someone who is
+     * not in the address book can be blocked. Everyone already blocked is
+     * carried over. `contacts.is_blocked` stays where it is, no longer read
+     * or written.
+     */
+    internal val migration15To16 =
+        object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `blocked_users` (`user_id` TEXT NOT NULL, `blocked_at` INTEGER NOT NULL, PRIMARY KEY(`user_id`))",
+                )
+                database.execSQL(
+                    """
+                    INSERT OR IGNORE INTO `blocked_users` (`user_id`, `blocked_at`)
+                    SELECT COALESCE(`user_id`, `id`), COALESCE(`last_synced_at`, 0) FROM `contacts` WHERE `is_blocked` = 1
+                    """.trimIndent(),
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -429,10 +455,14 @@ object DatabaseModule {
                     migration12To13,
                     migration13To14,
                     migration14To15,
+                    migration15To16,
                 ).addCallback(ReactionCleanup)
                 .build()
         }
     }
+
+    @Provides
+    fun provideBlockedUserDao(database: SanchrDatabase): BlockedUserDao = database.blockedUserDao()
 
     @Provides
     fun provideMessageDao(database: SanchrDatabase): MessageDao = database.messageDao()

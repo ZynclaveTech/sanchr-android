@@ -1,8 +1,10 @@
 package com.sanchr.app.data
 
 import android.util.Log
+import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
+import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
@@ -33,6 +35,7 @@ class ContactRepositoryImpl
     constructor(
         private val contactClient: ContactServiceClient,
         private val contactDao: ContactDao,
+        private val blockedUserDao: BlockedUserDao,
         private val contactProfileDao: ContactProfileDao,
         private val discoveryRepository: DiscoveryRepository,
         private val sessionManager: SessionManager,
@@ -101,6 +104,7 @@ class ContactRepositoryImpl
                 contactClient.syncContacts(SyncContactsRequest(phoneHashes = confirmedE164.map { phoneHashHex(it) }))
             val now = System.currentTimeMillis()
             // REPLACE-on-insert would otherwise drop local state on a re-sync.
+            // (Not blocks: those are in their own table, out of its reach.)
             val existing = contactDao.getAllContacts().associateBy { it.id }
             val entities =
                 response.matchedContacts.map { matched ->
@@ -116,7 +120,6 @@ class ContactRepositoryImpl
                         displayName = addressBookNames[matched.phoneNumber] ?: previous?.displayName.orEmpty(),
                         avatarUrl = matched.avatarUrl.ifEmpty { null },
                         isRegistered = true,
-                        isBlocked = previous?.isBlocked ?: false,
                         isFavorite = previous?.isFavorite ?: false,
                         lastSyncedAt = now,
                     )
@@ -144,7 +147,11 @@ class ContactRepositoryImpl
             userId: String,
             blocked: Boolean,
         ) {
-            contactDao.setBlocked(userId, blocked)
+            if (blocked) {
+                blockedUserDao.block(BlockedUserEntity(userId = userId, blockedAt = System.currentTimeMillis()))
+            } else {
+                blockedUserDao.unblock(userId)
+            }
             try {
                 if (blocked) {
                     contactClient.blockContact(BlockContactRequest(userId = userId))
@@ -165,7 +172,7 @@ class ContactRepositoryImpl
             contactDao.setFavorite(userId, favorite)
         }
 
-        override suspend fun isBlocked(userId: String): Boolean = contactDao.isBlocked(userId) == true
+        override suspend fun isBlocked(userId: String): Boolean = blockedUserDao.isBlocked(userId)
 
         override suspend fun blockedContacts(): List<BlockedContact> {
             val entries = mutableListOf<BlockedContact>()

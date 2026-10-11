@@ -26,6 +26,7 @@ data class ContactEntity(
     val avatarUrl: String? = null,
     @ColumnInfo(name = "is_registered")
     val isRegistered: Boolean = false, // Whether they're on Sanchr
+    // No longer read or written: blocks live in `blocked_users`, which can hold someone who is not a contact.
     @ColumnInfo(name = "is_blocked")
     val isBlocked: Boolean = false,
     @ColumnInfo(name = "is_favorite")

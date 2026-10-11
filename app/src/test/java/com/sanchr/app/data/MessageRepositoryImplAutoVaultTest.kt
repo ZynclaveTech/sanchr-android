@@ -25,7 +25,7 @@ class MessageRepositoryImplAutoVaultTest {
             messageDao = messageDao,
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk(relaxed = true),
-            contactDao = mockk(relaxed = true),
+            blockedUserDao = mockk(relaxed = true),
             contactProfileDao = mockk(relaxed = true),
             contactProfileResolver = mockk(relaxed = true),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },

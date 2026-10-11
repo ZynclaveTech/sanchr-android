@@ -13,7 +13,7 @@ interface ContactDao {
     @Query(
         """
         SELECT * FROM contacts
-        WHERE is_blocked = 0
+        WHERE COALESCE(user_id, id) NOT IN (SELECT user_id FROM blocked_users)
         ORDER BY display_name ASC
         """,
     )
@@ -22,7 +22,7 @@ interface ContactDao {
     @Query(
         """
         SELECT * FROM contacts
-        WHERE is_registered = 1 AND is_blocked = 0
+        WHERE is_registered = 1 AND COALESCE(user_id, id) NOT IN (SELECT user_id FROM blocked_users)
         ORDER BY display_name ASC
         """,
     )
@@ -31,7 +31,7 @@ interface ContactDao {
     @Query(
         """
         SELECT * FROM contacts
-        WHERE is_favorite = 1 AND is_blocked = 0
+        WHERE is_favorite = 1 AND COALESCE(user_id, id) NOT IN (SELECT user_id FROM blocked_users)
         ORDER BY display_name ASC
         """,
     )
@@ -61,20 +61,6 @@ interface ContactDao {
 
     @Update
     suspend fun updateContact(contact: ContactEntity)
-
-    /**
-     * Whether this contact is blocked; null when no such row exists (an
-     * unknown sender, who is by definition not blocked). Keyed on `id` to
-     * match [setBlocked], which writes on the same column.
-     */
-    @Query("SELECT is_blocked FROM contacts WHERE id = :contactId")
-    suspend fun isBlocked(contactId: String): Boolean?
-
-    @Query("UPDATE contacts SET is_blocked = :isBlocked WHERE id = :contactId")
-    suspend fun setBlocked(
-        contactId: String,
-        isBlocked: Boolean,
-    )
 
     @Query("UPDATE contacts SET is_favorite = :isFavorite WHERE id = :contactId")
     suspend fun setFavorite(

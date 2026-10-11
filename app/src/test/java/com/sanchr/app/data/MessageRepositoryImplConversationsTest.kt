@@ -1,6 +1,6 @@
 package com.sanchr.app.data
 
-import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
@@ -30,7 +30,7 @@ class MessageRepositoryImplConversationsTest {
             messageDao = messageDao,
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
-            contactDao = mockk<ContactDao>(relaxed = true),
+            blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
             contactProfileDao = mockk<ContactProfileDao>(relaxed = true),
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },

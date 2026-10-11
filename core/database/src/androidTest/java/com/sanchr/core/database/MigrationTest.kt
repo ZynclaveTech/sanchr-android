@@ -161,4 +161,19 @@ class MigrationTest {
                 }
         }
     }
+
+    @Test
+    fun migrate_15_to_16_carries_existing_blocks_into_their_own_table() {
+        helper.createDatabase("migration-test-16", 15).use { db ->
+            db.execSQL(
+                "INSERT INTO contacts (id, user_id, phone_number, display_name, is_registered, is_blocked, is_favorite, " +
+                    "last_synced_at) VALUES ('alice', 'alice', '+1', 'Alice', 1, 0, 0, 7), ('bob', 'bob', '+2', 'Bob', 1, 1, 0, 9)",
+            )
+        }
+        helper.runMigrationsAndValidate("migration-test-16", 16, true, DatabaseModule.migration15To16).use { db ->
+            db.query("SELECT user_id FROM blocked_users").use { c ->
+                check(c.count == 1 && c.moveToFirst() && c.getString(0) == "bob") { "exactly the blocked contact must carry over" }
+            }
+        }
+    }
 }

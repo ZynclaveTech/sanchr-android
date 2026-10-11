@@ -1,7 +1,7 @@
 package com.sanchr.app.data
 
 import android.util.Log
-import com.sanchr.core.database.dao.ContactDao
+import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
@@ -50,7 +50,7 @@ class MessageRepositoryImpl
         private val messageDao: MessageDao,
         private val conversationDao: ConversationDao,
         private val pendingMessageAckDao: PendingMessageAckDao,
-        private val contactDao: ContactDao,
+        private val blockedUserDao: BlockedUserDao,
         private val contactProfileDao: ContactProfileDao,
         private val contactProfileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
@@ -204,7 +204,7 @@ class MessageRepositoryImpl
         private fun MessageReactionEntity.toDomain(): MessageReaction =
             MessageReaction(emoji = emoji, userId = userId, timestamp = Instant.fromEpochMilliseconds(timestamp))
 
-        override suspend fun isSenderBlocked(senderId: String): Boolean = contactDao.isBlocked(senderId) == true
+        override suspend fun isSenderBlocked(senderId: String): Boolean = blockedUserDao.isBlocked(senderId)
 
         override suspend fun conversationDisappearingSeconds(conversationId: String): Long? =
             conversationDao
