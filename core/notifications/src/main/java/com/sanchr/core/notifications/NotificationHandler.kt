@@ -30,6 +30,11 @@ class NotificationHandler
     ) {
         companion object {
             const val CHANNEL_MESSAGES = "sanchr_messages"
+
+            // The same messages, for someone who turned sound, vibration or both off.
+            const val CHANNEL_MESSAGES_SOUND_ONLY = "sanchr_messages_sound"
+            const val CHANNEL_MESSAGES_VIBRATE_ONLY = "sanchr_messages_vibrate"
+            const val CHANNEL_MESSAGES_QUIET = "sanchr_messages_quiet"
             const val CHANNEL_CALLS = "sanchr_calls"
             const val CHANNEL_SYSTEM = "sanchr_system"
 
@@ -91,8 +96,30 @@ class NotificationHandler
                 }
 
             notificationManager.createNotificationChannels(
-                listOf(messageChannel, callChannel, systemChannel),
+                listOf(messageChannel, callChannel, systemChannel) +
+                    listOf(
+                        quieterMessageChannel(CHANNEL_MESSAGES_SOUND_ONLY, "Messages (no vibration)", sound = true, vibrate = false),
+                        quieterMessageChannel(CHANNEL_MESSAGES_VIBRATE_ONLY, "Messages (vibrate only)", sound = false, vibrate = true),
+                        quieterMessageChannel(CHANNEL_MESSAGES_QUIET, "Messages (silent)", sound = false, vibrate = false),
+                    ),
             )
+        }
+
+        /**
+         * A message channel with sound, vibration or both turned off; see
+         * [MessageAlertPolicy.channelFor]. Still high importance: the message
+         * is still shown as it arrives, it just does so more quietly.
+         */
+        private fun quieterMessageChannel(
+            id: String,
+            name: String,
+            sound: Boolean,
+            vibrate: Boolean,
+        ) = NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "New message notifications"
+            enableLights(true)
+            enableVibration(vibrate)
+            if (!sound) setSound(null, null)
         }
 
         // -----------------------------------------------------------------------
@@ -124,6 +151,8 @@ class NotificationHandler
             showPreviewOnLockscreen: Boolean = false,
             /** Settings → Notifications → Message Preview; decides what may be shown at all. */
             messagePreviewSetting: String = NotificationPreviewPolicy.ALWAYS,
+            /** Which of the message channels to post on: [MessageAlertPolicy.channelFor]. */
+            channelId: String = CHANNEL_MESSAGES,
         ) {
             val notificationId = entity.conversationId.hashCode()
             val contentPendingIntent =
@@ -151,7 +180,7 @@ class NotificationHandler
 
             val publicVersion =
                 NotificationCompat
-                    .Builder(context, CHANNEL_MESSAGES)
+                    .Builder(context, channelId)
                     .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle("New message")
                     .setContentText("")
@@ -168,7 +197,7 @@ class NotificationHandler
 
             val notification =
                 NotificationCompat
-                    .Builder(context, CHANNEL_MESSAGES)
+                    .Builder(context, channelId)
                     .setSmallIcon(R.drawable.ic_stat_sanchr)
                     .setContentTitle(displayTitle)
                     .setContentText(preview)
