@@ -41,9 +41,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -84,9 +82,10 @@ class RealtimeManager
         private var presenceLoop: Job? = null
 
         private val outboundEvents = Channel<ClientEvent>(capacity = Channel.BUFFERED)
-        private val _typingCache = MutableStateFlow<Map<String, TypingIndicator>>(emptyMap())
+        private val typingIndicators = TypingIndicators(appScope)
 
-        val typingCache: StateFlow<Map<String, TypingIndicator>> = _typingCache.asStateFlow()
+        /** Who is typing, by conversation; each entry lapses unless it is repeated. */
+        val typingCache: StateFlow<Map<String, TypingIndicator>> get() = typingIndicators.active
 
         private val lock = Any()
         private var streamJob: Job? = null
@@ -373,16 +372,5 @@ class RealtimeManager
             }
         }
 
-        private fun handleTyping(indicator: TypingIndicator?) {
-            if (indicator == null || indicator.conversationId.isBlank()) return
-            _typingCache.update { current ->
-                current.toMutableMap().apply {
-                    if (indicator.isTyping) {
-                        put(indicator.conversationId, indicator)
-                    } else {
-                        remove(indicator.conversationId)
-                    }
-                }
-            }
-        }
+        private fun handleTyping(indicator: TypingIndicator?) = typingIndicators.onIndicator(indicator)
     }

@@ -190,6 +190,7 @@ class ChatDetailViewModel
         }
 
         override fun onCleared() {
+            typing.stop()
             presencePeer?.let(realtimeManager::untrackPresencePeer)
             super.onCleared()
         }
@@ -262,7 +263,10 @@ class ChatDetailViewModel
         private val inboundRead = InboundReadTracker(::markReadAndTellSender)
 
         /** Called by the screen as it comes to the front and as it leaves it; see [InboundReadTracker]. */
-        fun onScreenVisibilityChanged(visible: Boolean) = inboundRead.onVisibilityChanged(visible)
+        fun onScreenVisibilityChanged(visible: Boolean) {
+            inboundRead.onVisibilityChanged(visible)
+            if (!visible) typing.stop()
+        }
 
         /**
          * A message that arrives while the chat is on screen is read: the
@@ -276,41 +280,33 @@ class ChatDetailViewModel
         }
 
         /**
-         * Each in its own coroutine, as on opening: the receipt waits out its
-         * jitter and must not hold up the badge. Both are best-effort and
-         * neither may escape — these are unsupervised coroutines.
+         * Each in its own coroutine: the receipt waits out its jitter and
+         * must not hold up the badge. The receipt never throws, bar
+         * cancellation, and honours the read-receipts setting and the
+         * 1:1-only rule itself.
          */
         private fun markReadAndTellSender(messageId: String) {
-            viewModelScope.launch {
-                try {
-                    messageRepository.markAsRead(conversationId)
-                } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    // Leaves a stale badge until the next open; see markAsRead().
-                }
-            }
-            // Never throws, bar cancellation; honours the read-receipts
-            // setting and the 1:1-only rule itself.
+            clearUnread()
             viewModelScope.launch { sendReadReceiptUseCase(conversationId, messageId) }
         }
 
         private fun markAsRead() {
+            clearUnread()
+            viewModelScope.launch { sendReadReceiptForNewestInboundMessage() }
+        }
+
+        private fun clearUnread() {
             viewModelScope.launch {
                 try {
                     messageRepository.markAsRead(conversationId)
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    // Same reasoning as the receipt below: an unsupervised
-                    // coroutine, so a DB failure here would take down the
-                    // process. The count is recomputed from the message rows
-                    // on the next open, so dropping this write only leaves a
-                    // stale badge.
+                    // An unsupervised coroutine, so a DB failure here would
+                    // take down the process. The count is recomputed from the
+                    // message rows on the next open, so dropping this write
+                    // only leaves a stale badge.
                 }
-            }
-            viewModelScope.launch {
-                sendReadReceiptForNewestInboundMessage()
             }
         }
 
@@ -377,9 +373,11 @@ class ChatDetailViewModel
                 // Settings, and a chat left open must stop broadcasting the
                 // moment it is turned off, not on next launch.
                 val enabled = runCatching { userPreferences.typingIndicatorsEnabled.first() }.getOrDefault(true)
-                if (enabled) realtimeManager.sendTypingIndicator(conversationId, text.isNotBlank())
+                if (enabled) typing.onTextChanged(text.isNotBlank()) else typing.stop()
             }
         }
+
+        private val typing = TypingBroadcaster(viewModelScope) { realtimeManager.sendTypingIndicator(conversationId, it) }
 
         fun sendMessage() {
             val content = _uiState.value.inputText.trim()
@@ -387,6 +385,7 @@ class ChatDetailViewModel
             val replyToId = takePendingReply()
             _uiState.update { it.copy(inputText = "") }
             draftText.value = ""
+            typing.stop()
             viewModelScope.launch { runCatching { messageRepository.setDraftText(conversationId, null) } }
             dispatchSend(content, contentType = "text", replyToId = replyToId)
         }
