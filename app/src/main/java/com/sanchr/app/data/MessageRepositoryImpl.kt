@@ -26,6 +26,7 @@ import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.DirectChatMembership
 import com.sanchr.domain.messaging.FailureClass
+import com.sanchr.domain.messaging.HeldIncoming
 import com.sanchr.domain.messaging.MessageMediaEvictor
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiptRule
@@ -62,6 +63,7 @@ class MessageRepositoryImpl
         private val blockedUserDao: BlockedUserDao,
         private val notificationHandler: NotificationHandler,
         private val userPreferences: UserPreferences,
+        private val heldIncomingStore: HeldIncomingStore,
         // Lazy: the evictor reads messages through this repository.
         private val mediaEvictor: Lazy<MessageMediaEvictor>,
         private val contactProfileDao: ContactProfileDao,
@@ -256,6 +258,14 @@ class MessageRepositoryImpl
             MessageReaction(emoji = emoji, userId = userId, timestamp = Instant.fromEpochMilliseconds(timestamp))
 
         override suspend fun isSenderBlocked(senderId: String): Boolean = blockedUserDao.isBlocked(senderId)
+
+        override suspend fun holdIncoming(held: HeldIncoming) = heldIncomingStore.hold(held)
+
+        override suspend fun heldIncoming(): List<HeldIncoming> = heldIncomingStore.all()
+
+        override suspend fun releaseIncoming(id: Long) = heldIncomingStore.release(id)
+
+        override suspend fun noteHeldAttempt(id: Long) = heldIncomingStore.noteAttempt(id)
 
         override suspend fun prepareConversationForIncoming(
             conversationId: String,

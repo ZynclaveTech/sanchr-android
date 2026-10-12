@@ -186,4 +186,14 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_17_to_18_adds_an_empty_place_to_hold_unfiled_messages() {
+        helper.createDatabase("migration-test-18", 17).close()
+        helper.runMigrationsAndValidate("migration-test-18", 18, true, DatabaseModule.migration17To18).use { db ->
+            db.query("SELECT COUNT(*) FROM held_incoming").use { c ->
+                check(c.moveToFirst() && c.getInt(0) == 0) { "nothing is held before anything has failed" }
+            }
+        }
+    }
 }
