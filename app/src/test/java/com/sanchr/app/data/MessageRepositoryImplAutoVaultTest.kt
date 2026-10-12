@@ -45,7 +45,7 @@ class MessageRepositoryImplAutoVaultTest {
         sender: String = "peer",
         alreadyStored: Boolean = false,
     ) {
-        coEvery { messageDao.insertMessageIfAbsent(any()) } returns if (alreadyStored) -1L else 1L
+        coEvery { messageDao.insertReceivedMessage(any()) } returns !alreadyStored
         repo.insertDecryptedMessage(
             "c1",
             "m1",

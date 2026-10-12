@@ -24,7 +24,25 @@ internal object ReactionCleanup : RoomDatabase.Callback() {
      */
     const val ORPHAN_GRACE_MILLIS = 30L * 24 * 60 * 60 * 1000
 
-    override fun onOpen(db: SupportSQLiteDatabase) = sweep(db, System.currentTimeMillis())
+    /**
+     * How long the id of a message removed on purpose is remembered. Twice
+     * as long as the server holds an undelivered message (30 days), which is
+     * the only thing that can send it again.
+     */
+    const val DELETED_ID_RETENTION_MILLIS = 60L * 24 * 60 * 60 * 1000
+
+    override fun onOpen(db: SupportSQLiteDatabase) {
+        val now = System.currentTimeMillis()
+        sweep(db, now)
+        forgetOldDeletedIds(db, now)
+    }
+
+    fun forgetOldDeletedIds(
+        db: SupportSQLiteDatabase,
+        nowMillis: Long,
+    ) {
+        db.execSQL("DELETE FROM deleted_messages WHERE deleted_at < ?", arrayOf<Any>(nowMillis - DELETED_ID_RETENTION_MILLIS))
+    }
 
     fun sweep(
         db: SupportSQLiteDatabase,

@@ -209,8 +209,19 @@ interface ConversationDao {
     @Transaction
     suspend fun deleteConversation(conversationId: String) {
         deleteReactionsInConversation(conversationId)
+        // Nor does anything remember their ids, unless it is done here: a
+        // message of a deleted chat, delivered again, must not come back.
+        rememberDeletedInConversation(conversationId, System.currentTimeMillis())
         deleteConversationRow(conversationId)
     }
+
+    @Query(
+        "INSERT OR REPLACE INTO deleted_messages (id, deleted_at) SELECT id, :nowMillis FROM messages WHERE conversation_id = :conversationId",
+    )
+    suspend fun rememberDeletedInConversation(
+        conversationId: String,
+        nowMillis: Long,
+    )
 
     @Query("DELETE FROM conversations WHERE id = :conversationId")
     suspend fun deleteConversationRow(conversationId: String)
