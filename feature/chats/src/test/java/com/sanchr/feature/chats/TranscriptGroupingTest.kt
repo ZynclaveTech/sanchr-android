@@ -1,6 +1,8 @@
 package com.sanchr.feature.chats
 
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -121,5 +123,31 @@ class TranscriptGroupingTest {
 
         assertTrue(rows.getValue("two").groupedWithPrevious)
         assertTrue(rows.getValue("two").groupedWithNext)
+    }
+
+    /**
+     * The spacing the grouping exists to drive. The list's comment described
+     * it and no code applied it, so on a phone two bubbles of one run touched.
+     */
+    @Test
+    fun `a grouped row takes iOS's 2 and any other row its 6`() {
+        assertEquals(2.dp, bubbleRowMargin(groupedWithPrevious = true))
+        assertEquals(6.dp, bubbleRowMargin(groupedWithPrevious = false))
+    }
+
+    @Test
+    fun `two bubbles of one run are never left touching`() {
+        val rows =
+            rowsOf(
+                listOf(
+                    message("first", fromMe = false, atMillis = base),
+                    message("second", fromMe = false, atMillis = base + 30_000),
+                ),
+            )
+        val gap =
+            bubbleRowMargin(rows.getValue("first").groupedWithPrevious) +
+                bubbleRowMargin(rows.getValue("second").groupedWithPrevious)
+
+        assertEquals(8.dp, gap, "the first row's bottom margin plus the grouped row's top margin")
     }
 }

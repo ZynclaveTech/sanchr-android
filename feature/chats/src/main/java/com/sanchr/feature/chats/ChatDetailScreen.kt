@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,22 +46,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GppMaybe
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -71,8 +65,6 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
@@ -87,11 +79,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -133,8 +123,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -190,7 +178,6 @@ import com.sanchr.feature.chats.media.MediaGallery
 import com.sanchr.feature.chats.stickers.StickerPickerSheet
 import com.sanchr.feature.chats.voice.VoiceClip
 import com.sanchr.feature.chats.voice.VoicePlayback
-import com.sanchr.feature.chats.voice.VoiceRecordButton
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -413,8 +400,11 @@ fun ChatDetailScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .imePadding(),
+                    // No imePadding of its own: the footer already rises with
+                    // the keyboard and innerPadding carries its height, so a
+                    // second helping here squeezed the transcript to nothing
+                    // the moment the keyboard opened.
+                    .padding(innerPadding),
         ) {
             // --- E2EE banner ---
             // A tint of its own colour over whatever is behind it, not a
@@ -577,8 +567,7 @@ private fun TranscriptList(
                     .padding(horizontal = IosSpacing.screenHorizontal),
             state = listState,
             reverseLayout = true,
-            // Spacing is per row, not uniform: a grouped message sits 2dp
-            // under its predecessor and an ungrouped one 6dp, as iOS does.
+            // Spacing is per row, not uniform: see [bubbleRowMargin].
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             if (uiState.isLoadingMore) {
@@ -603,11 +592,20 @@ private fun TranscriptList(
                     is TranscriptRow.Msg ->
                         Box(
                             modifier =
-                                if (row.message.id == focusedResultId) {
-                                    Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
-                                } else {
-                                    Modifier
-                                },
+                                Modifier
+                                    .then(
+                                        if (row.message.id == focusedResultId) {
+                                            Modifier.background(SanchrIndigo500.copy(alpha = 0.12f), SanchrShapeTokens.CornerMedium)
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    // The spacing the list's comment has always
+                                    // described and nothing applied: with none,
+                                    // two bubbles of one run touched. Inside the
+                                    // highlight, so a search hit is tinted with
+                                    // its margins, as an iOS cell is.
+                                    .padding(vertical = bubbleRowMargin(row.groupedWithPrevious)),
                         ) {
                             // Drag sideways to reply, as iOS does. Applied
                             // here so every bubble gets it rather than only the
@@ -1871,199 +1869,6 @@ private fun ImageMessageBubble(
             }
 
             MessageMetaRow(message)
-        }
-    }
-}
-
-// --- Message input bar ---
-@Composable
-private fun MessageInputBar(
-    value: String,
-    onValueChange: (String) -> Unit,
-    enterSendsMessage: Boolean,
-    onSend: () -> Unit,
-    onEmojiClick: () -> Unit,
-    onAttachSticker: () -> Unit,
-    onAttachFile: () -> Unit,
-    onAttachPhotos: () -> Unit,
-    onCapturePhoto: () -> Unit,
-    onAttachLocation: () -> Unit,
-    onAttachViewOnce: () -> Unit,
-    onAttachContact: () -> Unit,
-    onVoiceClip: (VoiceClip) -> Unit,
-    isSending: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        tonalElevation = 2.dp,
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .padding(
-                        horizontal = SanchrTheme.spacing.sm,
-                        vertical = SanchrTheme.spacing.xs,
-                    ).imePadding(),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            // "+" attach button
-            IconButton(
-                onClick = onAttachFile,
-                modifier = Modifier.size(IosSpacing.composerButtonSize),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Add,
-                    contentDescription = "Attach",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // Text input
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
-                // The Enter-sends setting, which nothing read before: the
-                // toggle in Chat Settings moved and the key kept inserting a
-                // newline. iOS switches the return key between Send and
-                // Return on the same preference.
-                keyboardOptions =
-                    KeyboardOptions(
-                        imeAction = if (enterSendsMessage) ImeAction.Send else ImeAction.Default,
-                        capitalization = KeyboardCapitalization.Sentences,
-                    ),
-                keyboardActions =
-                    KeyboardActions(
-                        onSend = { if (value.isNotBlank() && !isSending) onSend() },
-                    ),
-                placeholder = {
-                    Text(
-                        text = "Type a message...",
-                        style = IosType.body,
-                    )
-                },
-                trailingIcon = {
-                    IconButton(onClick = onEmojiClick) {
-                        Icon(
-                            imageVector = Icons.Filled.EmojiEmotions,
-                            contentDescription = "Emoji",
-                            tint = SanchrGray400,
-                        )
-                    }
-                },
-                maxLines = 4,
-                shape = SanchrShapeTokens.CornerFull,
-                colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = SanchrIndigo500,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    ),
-            )
-
-            Spacer(modifier = Modifier.width(SanchrTheme.spacing.xs))
-
-            // Paperclip: file or contact
-            var attachMenuOpen by remember { mutableStateOf(false) }
-            Box {
-                IconButton(
-                    onClick = { attachMenuOpen = true },
-                    modifier = Modifier.size(IosSpacing.composerButtonSize),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AttachFile,
-                        contentDescription = "Attach",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Camera") },
-                        leadingIcon = { Icon(Icons.Filled.PhotoCamera, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onCapturePhoto()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Photos") },
-                        leadingIcon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onAttachPhotos()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("File") },
-                        leadingIcon = { Icon(Icons.Filled.AttachFile, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onAttachFile()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("View-once photo") },
-                        leadingIcon = { Icon(Icons.Filled.LocalFireDepartment, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onAttachViewOnce()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Location") },
-                        leadingIcon = { Icon(Icons.Filled.Place, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onAttachLocation()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Contact") },
-                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onAttachContact()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Sticker") },
-                        leadingIcon = { Icon(Icons.Filled.EmojiEmotions, contentDescription = null) },
-                        onClick = {
-                            attachMenuOpen = false
-                            onAttachSticker()
-                        },
-                    )
-                }
-            }
-
-            if (value.isBlank()) {
-                // Nothing typed: the primary action is a voice note.
-                VoiceRecordButton(enabled = !isSending, onClip = onVoiceClip)
-                return@Row
-            }
-
-            // Send button
-            FilledIconButton(
-                onClick = onSend,
-                enabled = value.isNotBlank() && !isSending,
-                // iOS composerSendSize, a notch larger than the 40 the other
-                // composer buttons take: send is the primary action and reads
-                // as one.
-                modifier = Modifier.size(IosSpacing.composerSendSize),
-                colors =
-                    IconButtonDefaults.filledIconButtonColors(
-                        containerColor = SanchrIndigo500,
-                        contentColor = SanchrWhite,
-                        disabledContainerColor = SanchrGray400.copy(alpha = 0.3f),
-                        disabledContentColor = SanchrWhite.copy(alpha = 0.5f),
-                    ),
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send message",
-                    modifier = Modifier.size(20.dp),
-                )
-            }
         }
     }
 }
