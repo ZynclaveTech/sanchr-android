@@ -151,12 +151,10 @@ import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalBubbleStyle
 import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrCyan500
-import com.sanchr.core.designsystem.theme.SanchrGray100
 import com.sanchr.core.designsystem.theme.SanchrGray400
 import com.sanchr.core.designsystem.theme.SanchrGray500
-import com.sanchr.core.designsystem.theme.SanchrGray900
 import com.sanchr.core.designsystem.theme.SanchrIndigo500
-import com.sanchr.core.designsystem.theme.SanchrIndigo900
+import com.sanchr.core.designsystem.theme.SanchrIndigo950
 import com.sanchr.core.designsystem.theme.SanchrShapeTokens
 import com.sanchr.core.designsystem.theme.SanchrSuccess
 import com.sanchr.core.designsystem.theme.SanchrTheme
@@ -649,11 +647,8 @@ private fun TranscriptList(
                                     message = row.message,
                                     viewModel = viewModel,
                                     actions = actions,
-                                    // One timestamp per run, as iOS shows it:
-                                    // repeating it under every bubble of a burst is
-                                    // most of why a busy chat read differently from
-                                    // the same chat on an iPhone.
-                                    showTimestamp = !row.groupedWithNext,
+                                    groupedWithPrevious = row.groupedWithPrevious,
+                                    groupedWithNext = row.groupedWithNext,
                                     onOpenViewOnce = onOpenViewOnce,
                                     onOpenMedia = onOpenMedia,
                                     onPreviewDocument = onPreviewDocument,
@@ -760,7 +755,7 @@ private fun LocationMessageBubble(
                 shape = SanchrShapeTokens.CornerLarge,
                 colors =
                     CardDefaults.cardColors(
-                        containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
+                        containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrTheme.surfaces.surface,
                     ),
             ) {
                 Row(
@@ -777,7 +772,7 @@ private fun LocationMessageBubble(
                         Text(
                             text = "Location",
                             style = IosType.bodyLarge,
-                            color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                            color = if (message.isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             text = "%.5f, %.5f".format(pin.latitude, pin.longitude),
@@ -964,7 +959,8 @@ private fun MessageRow(
     message: MessageUiModel,
     viewModel: ChatDetailViewModel,
     actions: MessageActions,
-    showTimestamp: Boolean,
+    groupedWithPrevious: Boolean,
+    groupedWithNext: Boolean,
     onOpenViewOnce: (MessageUiModel) -> Unit,
     onOpenMedia: (MessageUiModel) -> Unit,
     onPreviewDocument: (File, MediaAttachment) -> Unit,
@@ -1052,7 +1048,12 @@ private fun MessageRow(
                 message = message,
                 onToggleReaction = { emoji -> viewModel.toggleReaction(message.id, emoji) },
                 actions = actions,
-                showTimestamp = showTimestamp,
+                // One timestamp per run, as iOS shows it: repeating it under
+                // every bubble of a burst is most of why a busy chat read
+                // differently from the same chat on an iPhone.
+                showTimestamp = !groupedWithNext,
+                groupedWithPrevious = groupedWithPrevious,
+                groupedWithNext = groupedWithNext,
                 loadLinkPreview = loadLinkPreview,
             )
     }
@@ -1283,6 +1284,9 @@ private fun MessageBubble(
     /** False for all but the last bubble of a run, as iOS hides the rest. */
     showTimestamp: Boolean = true,
     modifier: Modifier = Modifier,
+    /** Whether this bubble continues a run from above, or is continued below: see [bubbleCorners]. */
+    groupedWithPrevious: Boolean = false,
+    groupedWithNext: Boolean = false,
     onClick: (() -> Unit)? = null,
     /** Null when the privacy setting is off: no link is ever fetched. */
     loadLinkPreview: (suspend (String) -> LinkPreview?)? = null,
@@ -1300,22 +1304,18 @@ private fun MessageBubble(
             "compact" -> IosRadius.bubbleCompact
             else -> IosRadius.bubbleMain
         }
+    val corners = bubbleCorners(message.isFromMe, groupedWithPrevious, groupedWithNext, mainRadius)
     val bubbleShape =
-        if (message.isFromMe) {
-            RoundedCornerShape(
-                topStart = mainRadius,
-                topEnd = mainRadius,
-                bottomStart = mainRadius,
-                bottomEnd = IosRadius.bubbleTail,
-            )
-        } else {
-            RoundedCornerShape(
-                topStart = IosRadius.bubbleTail,
-                topEnd = mainRadius,
-                bottomStart = mainRadius,
-                bottomEnd = mainRadius,
-            )
-        }
+        RoundedCornerShape(
+            topStart = corners.topStart,
+            topEnd = corners.topEnd,
+            bottomEnd = corners.bottomEnd,
+            bottomStart = corners.bottomStart,
+        )
+    // A received bubble takes the theme's surface and its text colour, as on
+    // iOS. It was a fixed pale grey with near-black text, which in the dark
+    // theme was a white slab on a black page.
+    val bodyColor = if (message.isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface
 
     Box(
         modifier = modifier.fillMaxWidth(),
@@ -1353,21 +1353,22 @@ private fun MessageBubble(
                                 Modifier.background(
                                     brush =
                                         Brush.linearGradient(
-                                            colors = listOf(SanchrIndigo500, SanchrIndigo900),
+                                            // iOS's primary into primaryDark.
+                                            colors = listOf(SanchrIndigo500, SanchrIndigo950),
                                         ),
                                 )
                             } else {
-                                Modifier.background(SanchrGray100)
+                                Modifier.background(SanchrTheme.surfaces.surface)
                             },
                     ) {
                         Column {
                             if (message.replyToId != null) {
-                                QuoteCard(message.quote, textColor = if (message.isFromMe) SanchrWhite else SanchrGray900)
+                                QuoteCard(message.quote, textColor = bodyColor)
                             }
                             Text(
                                 text = message.text,
                                 style = messageBodyTextStyle,
-                                color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                                color = bodyColor,
                                 modifier =
                                     Modifier.padding(
                                         horizontal = IosSpacing.bubbleHPadding,
@@ -1634,14 +1635,14 @@ private fun ReactionChips(
         chips.forEach { chip ->
             Surface(
                 shape = SanchrShapeTokens.CornerFull,
-                color = if (chip.mine) SanchrIndigo500.copy(alpha = 0.15f) else SanchrGray100,
+                color = if (chip.mine) SanchrIndigo500.copy(alpha = 0.15f) else SanchrTheme.surfaces.surface,
                 border = if (chip.mine) BorderStroke(1.dp, SanchrIndigo500) else null,
                 modifier = Modifier.clickable { onToggle(chip.emoji) },
             ) {
                 Text(
                     text = if (chip.count > 1) "${chip.emoji} ${chip.count}" else chip.emoji,
                     style = IosType.sectionLabel,
-                    color = SanchrGray900,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
@@ -1837,10 +1838,10 @@ private fun AlbumMessageBubble(
                     Text(
                         text = caption,
                         style = messageBodyTextStyle,
-                        color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                        color = if (message.isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface,
                         modifier =
                             Modifier
-                                .background(if (message.isFromMe) SanchrIndigo500 else SanchrGray100)
+                                .background(if (message.isFromMe) SanchrIndigo500 else SanchrTheme.surfaces.surface)
                                 .fillMaxWidth()
                                 .padding(horizontal = IosSpacing.bubbleHPadding, vertical = IosSpacing.bubbleVPadding),
                     )
@@ -1879,7 +1880,7 @@ private fun ImageMessageBubble(
                 shape = SanchrShapeTokens.CornerLarge,
                 colors =
                     CardDefaults.cardColors(
-                        containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100,
+                        containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrTheme.surfaces.surface,
                     ),
             ) {
                 AttachmentImage(
@@ -1896,7 +1897,7 @@ private fun ImageMessageBubble(
                     Text(
                         text = message.text,
                         style = IosType.caption,
-                        color = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                        color = if (message.isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(SanchrTheme.spacing.sm),
                     )
                 }
@@ -2014,7 +2015,7 @@ private fun AttachmentImage(
     // While it has failed the tile's own tap retries, ahead of the caller's
     // tap, which would open a viewer on a picture that is not there.
     val retryOnTap = if (failed && file == null) Modifier.clickable(onClickLabel = "Try again") { attempt++ } else Modifier
-    Box(modifier = modifier.background(SanchrGray100).then(retryOnTap), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.background(SanchrTheme.surfaces.surface).then(retryOnTap), contentAlignment = Alignment.Center) {
         when {
             file != null ->
                 AsyncImage(
@@ -2112,7 +2113,7 @@ private fun ContactMessageBubble(
 ) {
     val context = LocalContext.current
     val alignment = if (message.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
-    val foreground = if (message.isFromMe) SanchrWhite else SanchrGray900
+    val foreground = if (message.isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface
 
     Box(
         modifier = modifier.fillMaxWidth(),
@@ -2125,7 +2126,7 @@ private fun ContactMessageBubble(
                         .widthIn(max = 260.dp)
                         .clickable { addToContacts(context, card) },
                 shape = SanchrShapeTokens.CornerLarge,
-                colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100),
+                colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrTheme.surfaces.surface),
             ) {
                 Row(
                     modifier = Modifier.padding(SanchrTheme.spacing.md),
@@ -2298,12 +2299,12 @@ private fun VoiceMessageBubble(
         Column(horizontalAlignment = if (message.isFromMe) Alignment.End else Alignment.Start) {
             Card(
                 shape = SanchrShapeTokens.CornerLarge,
-                colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrGray100),
+                colors = CardDefaults.cardColors(containerColor = if (message.isFromMe) SanchrIndigo500 else SanchrTheme.surfaces.surface),
             ) {
                 VoicePlayback(
                     durationMs = attachment.audioDurationMs ?: 0,
                     waveform = attachment.audioWaveform.orEmpty(),
-                    tint = if (message.isFromMe) SanchrWhite else SanchrGray900,
+                    tint = if (message.isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface,
                     openFile = { openAttachment(message) },
                     modifier = Modifier.padding(horizontal = SanchrTheme.spacing.sm, vertical = SanchrTheme.spacing.xs),
                 )
@@ -2385,7 +2386,7 @@ private fun ViewOnceBubble(
                         Text(
                             text = if (message.isVideoAttachment) "Video" else "Photo",
                             style = IosType.body,
-                            color = SanchrGray900,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(text = "View once", style = IosType.captionSmall, color = SanchrGray400)
                     }
@@ -2663,7 +2664,7 @@ private fun LinkPreviewCard(
     }
     val card = preview
     if (card == null && !loading) return
-    val fg = if (isFromMe) SanchrWhite else SanchrGray900
+    val fg = if (isFromMe) SanchrWhite else MaterialTheme.colorScheme.onSurface
     Column(
         modifier =
             Modifier
