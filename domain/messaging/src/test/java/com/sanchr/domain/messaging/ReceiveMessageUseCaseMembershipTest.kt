@@ -23,6 +23,7 @@ class ReceiveMessageUseCaseMembershipTest {
         mockk<MessageRepository>(relaxed = true) {
             coEvery { mayPostTo(any(), any()) } returns true
         }
+    private val deliveryReceipts = mockk<DeliveryReceiptDispatcher>(relaxed = true)
     private val dispatchers =
         object : DispatcherProvider {
             override val main: CoroutineDispatcher = Dispatchers.Unconfined
@@ -44,6 +45,7 @@ class ReceiveMessageUseCaseMembershipTest {
             mockk<SessionManager> { every { getUserId() } returns "self-uuid" },
             PresenceStore(),
             SessionRebuildThrottle(),
+            deliveryReceipts,
         )
 
     private val bytes = byteArrayOf(10, 20, 30)
@@ -238,5 +240,51 @@ class ReceiveMessageUseCaseMembershipTest {
                     any(),
                 )
             }
+        }
+
+    // ── Telling the sender it arrived ────────────────────────────────────
+
+    /**
+     * The server cannot: a sealed message hides its sender from it. Without
+     * this a one-to-one message never showed as delivered.
+     */
+    @Test
+    fun `a message that arrives is reported back to its sender as delivered`() =
+        runTest {
+            aMessageFromAlice()
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            // By the ids it was filed under, which are the ones the sender knows it by.
+            io.mockk.verify(exactly = 1) { deliveryReceipts.messageArrived("payload-conv", "payload-msg") }
+        }
+
+    @Test
+    fun `our own message from another of our devices is not`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "mine".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(senderUserId = "self-uuid", senderDeviceId = 2, plaintext = payload.encode())
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            io.mockk.verify(exactly = 0) { deliveryReceipts.messageArrived(any(), any()) }
+        }
+
+    @Test
+    fun `a message that was refused or could not be saved is not`() =
+        runTest {
+            aMessageFromAlice()
+            coEvery { messageRepository.mayPostTo("payload-conv", "alice-uuid") } returns false
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            io.mockk.verify(exactly = 0) { deliveryReceipts.messageArrived(any(), any()) }
         }
 }
