@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -53,8 +54,36 @@ import com.sanchr.feature.vault.navigation.vaultGraph
 import kotlinx.coroutines.flow.StateFlow
 
 /**
+ * Whether the bottom tab bar belongs on screen: only on the first screen of
+ * a tab.
+ *
+ * It used to show on anything *inside* a tab, and a chat is inside the Chats
+ * tab — so the tab bar sat under the message field of every open chat, and
+ * under every settings screen.
+ */
+internal fun showsBottomBar(
+    current: NavDestination?,
+    tabRoutes: List<String>,
+): Boolean =
+    isFirstScreenOfATab(
+        route = current?.route,
+        parentRoute = current?.parent?.route,
+        parentStartRoute = current?.parent?.startDestinationRoute,
+        tabRoutes = tabRoutes,
+    )
+
+/** [showsBottomBar], on the routes alone. */
+internal fun isFirstScreenOfATab(
+    route: String?,
+    parentRoute: String?,
+    parentStartRoute: String?,
+    tabRoutes: List<String>,
+): Boolean = route != null && parentRoute in tabRoutes && parentStartRoute == route
+
+/**
  * Top-level navigation destinations for the bottom bar.
  */
+
 enum class TopLevelDestination(
     val route: String,
     val label: String,
@@ -190,12 +219,7 @@ private fun ResolvedNavHost(
     Scaffold(
         modifier = modifier,
         bottomBar = {
-            // Only show bottom bar when on a top-level destination
-            val showBottomBar =
-                topLevelDestinations.any { dest ->
-                    currentDestination?.hierarchy?.any { it.route == dest.route } == true
-                }
-            if (showBottomBar) {
+            if (showsBottomBar(currentDestination, topLevelDestinations.map { it.route })) {
                 SanchrBottomBar(
                     destinations = topLevelDestinations,
                     currentDestination = currentDestination,

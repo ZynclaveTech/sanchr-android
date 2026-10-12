@@ -154,7 +154,6 @@ import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import com.sanchr.core.designsystem.theme.LocalBubbleStyle
 import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
-import com.sanchr.core.designsystem.theme.SanchrCyan50
 import com.sanchr.core.designsystem.theme.SanchrCyan500
 import com.sanchr.core.designsystem.theme.SanchrGray100
 import com.sanchr.core.designsystem.theme.SanchrGray400
@@ -418,9 +417,12 @@ fun ChatDetailScreen(
                     .imePadding(),
         ) {
             // --- E2EE banner ---
+            // A tint of its own colour over whatever is behind it, not a
+            // fixed pale cyan: that was a near-white strip across the dark
+            // theme.
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = SanchrCyan50,
+                color = SanchrCyan500.copy(alpha = BANNER_TINT_ALPHA),
             ) {
                 Row(
                     modifier =
@@ -898,6 +900,9 @@ private fun UnreadDivider() {
     }
 }
 
+/** How strongly the encryption banner is tinted with its own colour. */
+private const val BANNER_TINT_ALPHA = 0.12f
+
 /** The date chip above a day's first message. */
 @Composable
 private fun DaySeparator(label: String) {
@@ -908,11 +913,13 @@ private fun DaySeparator(label: String) {
                 .padding(vertical = SanchrTheme.spacing.sm),
         contentAlignment = Alignment.Center,
     ) {
-        Surface(shape = SanchrShapeTokens.CornerFull, color = SanchrGray100) {
+        // The theme's own muted surface, so the chip is dark on the dark
+        // theme; it was a fixed light grey on both.
+        Surface(shape = SanchrShapeTokens.CornerFull, color = MaterialTheme.colorScheme.surfaceVariant) {
             Text(
                 text = label,
                 style = IosType.captionSmall,
-                color = SanchrGray400,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
@@ -1146,8 +1153,13 @@ private fun ChatDetailTopBar(
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     TopAppBar(
         modifier = modifier,
+        // The NavHost's Scaffold has already made room for the status bar.
+        // Left to its default this bar made room for it again, which was the
+        // empty band above the header.
+        windowInsets = WindowInsets(0, 0, 0, 0),
         navigationIcon = {
             IconButton(onClick = onNavigateBack) {
                 Icon(
@@ -1180,10 +1192,10 @@ private fun ChatDetailTopBar(
                 }
             }
         },
+        // Three actions, not four. With Search as a fourth icon there was
+        // room for about six letters of the name: "~Suraj…". Search is under
+        // More, with the conversation's info.
         actions = {
-            IconButton(onClick = onSearch) {
-                Icon(imageVector = Icons.Filled.Search, contentDescription = "Search messages")
-            }
             IconButton(onClick = onVideoCall, enabled = canCall) {
                 Icon(
                     imageVector = Icons.Filled.Videocam,
@@ -1196,11 +1208,30 @@ private fun ChatDetailTopBar(
                     contentDescription = "Voice call",
                 )
             }
-            IconButton(onClick = onMenu) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "More options",
-                )
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "More options",
+                    )
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Search") },
+                        leadingIcon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onSearch()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Conversation info") },
+                        onClick = {
+                            menuOpen = false
+                            onMenu()
+                        },
+                    )
+                }
             }
         },
         colors =
@@ -2674,6 +2705,8 @@ private fun ChatSearchBar(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     TopAppBar(
+        // As the header it replaces: the status bar is already allowed for.
+        windowInsets = WindowInsets(0, 0, 0, 0),
         navigationIcon = {
             IconButton(onClick = onClose) {
                 Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search")
