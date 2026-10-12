@@ -75,6 +75,27 @@ class StaleSessionHealerTest {
             coVerify(exactly = 2) { sessions.resetSession("alice", 1) }
         }
 
+    /**
+     * The limit is on the pass, not only on each contact: otherwise whoever
+     * can send an unreadable message decides how often every contact is
+     * written to.
+     */
+    @Test
+    fun `a second pass inside the cooldown writes to nobody, not even a contact not yet re-keyed`() =
+        runTest {
+            holding("alice")
+            healer.heal()
+
+            holding("alice", "bob")
+            healer.heal()
+
+            coVerify(exactly = 0) { sessions.resetSession("bob", 1) }
+
+            clock += COOLDOWN + 1
+            healer.heal()
+            coVerify(exactly = 1) { sessions.resetSession("bob", 1) }
+        }
+
     @Test
     fun `a session with this account itself is left alone`() =
         runTest {

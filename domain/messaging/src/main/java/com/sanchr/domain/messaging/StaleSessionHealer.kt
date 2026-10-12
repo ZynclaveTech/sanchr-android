@@ -6,6 +6,7 @@ import com.sanchr.core.crypto.SignalSessionManager
 import com.sanchr.core.crypto.profile.ProfileKeyStore
 import com.sanchr.core.datastore.SessionManager
 import dagger.Lazy
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -26,9 +27,10 @@ import kotlinx.coroutines.launch
  * Without this the two devices stayed apart for good. The sender had no way
  * to learn its messages were unreadable, and went on sending them.
  *
- * Anyone can send such a message, so a contact is re-keyed at most once per
- * [SessionRebuildThrottle] cooldown. Re-keying costs a contact nothing: the
- * old session is set aside, not deleted, and stays readable.
+ * Anyone registered can send such a message, so this is limited twice over:
+ * one pass over the contacts per [SessionRebuildThrottle] cooldown, and each
+ * contact re-keyed at most once in that time. Re-keying costs a contact
+ * nothing: the old session is set aside, not deleted, and stays readable.
  */
 @Singleton
 class StaleSessionHealer
@@ -43,13 +45,30 @@ class StaleSessionHealer
         dispatchers: DispatcherProvider,
     ) {
         private val scope = CoroutineScope(SupervisorJob() + dispatchers.io)
+        private val passRunning = AtomicBoolean(false)
 
         /** Called by the receive path; returns at once and heals on its own time. */
         fun unreadableMessageArrived() {
-            scope.launch { heal() }
+            // One pass at a time. A burst of unreadable messages is one
+            // event, and must not start a pass of its own for each.
+            if (!passRunning.compareAndSet(false, true)) return
+            scope.launch {
+                try {
+                    heal()
+                } finally {
+                    passRunning.set(false)
+                }
+            }
         }
 
         internal suspend fun heal() {
+            // And one pass per cooldown. The message that sets this off can
+            // be sent by anyone registered, and a pass writes to every
+            // contact: without a limit on the pass itself, a stranger could
+            // have this device re-key with its whole contact list as often as
+            // each contact's own cooldown allowed.
+            if (!throttle.tryStart(PASS_CLAIM, 0)) return
+            throttle.finished(PASS_CLAIM, 0)
             val self = sessionManager.getUserId()
             val peers = sessions.sessionPeers().filter { it.name != self }
             for (peer in peers) {
@@ -109,5 +128,6 @@ class StaleSessionHealer
             const val CONTENT_TYPE_PROFILE_KEY = "profile-key/v1"
             const val ID_PREFIX = 8
             const val REKEY_CLAIM = "rekey/"
+            const val PASS_CLAIM = "rekey-pass"
         }
     }
