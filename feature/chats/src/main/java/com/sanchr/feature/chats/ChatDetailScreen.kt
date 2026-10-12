@@ -10,10 +10,16 @@ import android.provider.ContactsContract
 import android.view.WindowManager
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -104,6 +110,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -118,6 +125,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -165,6 +173,9 @@ import com.sanchr.core.network.link.LinkPreviewFetcher
 import com.sanchr.domain.messaging.PresenceStore
 import com.sanchr.domain.messaging.media.AttachmentUploader
 import com.sanchr.domain.messaging.media.GallerySaver
+import com.sanchr.feature.chats.attachments.ATTACHMENT_TRAY_HEIGHT
+import com.sanchr.feature.chats.attachments.AttachmentPill
+import com.sanchr.feature.chats.attachments.AttachmentTray
 import com.sanchr.feature.chats.emoji.EmojiPickerSheet
 import com.sanchr.feature.chats.location.CurrentLocation
 import com.sanchr.feature.chats.location.LocationPayload
@@ -230,6 +241,10 @@ fun ChatDetailScreen(
         onPauseOrDispose { viewModel.onScreenVisibilityChanged(false) }
     }
     var emojiPickerOpen by remember { mutableStateOf(false) }
+    var trayOpen by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    // Back shuts the tray before it leaves the chat.
+    BackHandler(enabled = trayOpen) { trayOpen = false }
     var stickerPickerOpen by remember { mutableStateOf(false) }
     var forwarding by remember { mutableStateOf<MessageUiModel?>(null) }
     var deleting by remember { mutableStateOf<MessageUiModel?>(null) }
@@ -373,17 +388,14 @@ fun ChatDetailScreen(
                     onValueChange = viewModel::onInputTextChanged,
                     enterSendsMessage = enterSendsMessage,
                     onEmojiClick = { emojiPickerOpen = true },
-                    onAttachSticker = { stickerPickerOpen = true },
                     onSend = viewModel::sendMessage,
-                    onAttachFile = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
-                    onAttachPhotos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
-                    onCapturePhoto = capture.launch,
-                    onAttachLocation = shareLocation,
-                    onAttachViewOnce = {
-                        viewOnceNext = true
-                        pickAttachment.launch(arrayOf("image/*"))
+                    trayOpen = trayOpen,
+                    onToggleTray = {
+                        trayOpen = !trayOpen
+                        // The tray takes the keyboard's place, as on iOS.
+                        if (trayOpen) focusManager.clearFocus()
                     },
-                    onAttachContact = { pickContact.launch(Unit) },
+                    onFieldFocused = { trayOpen = false },
                     onVoiceClip = { clip ->
                         scope.launch {
                             val prepared = withContext(Dispatchers.IO) { clip.toPrepared() }
@@ -391,6 +403,28 @@ fun ChatDetailScreen(
                         }
                     },
                     isSending = uiState.isSending,
+                )
+                AttachmentTrayPanel(
+                    visible = trayOpen,
+                    launchers =
+                        AttachmentLaunchers(
+                            camera = capture.launch,
+                            photos = { pickPhotos.launch(arrayOf("image/*", "video/*")) },
+                            video = { pickPhotos.launch(arrayOf("video/*")) },
+                            stickers = { stickerPickerOpen = true },
+                            file = { pickAttachment.launch(arrayOf("image/*", "video/*", "audio/*", "application/*", "text/*")) },
+                            contact = { pickContact.launch(Unit) },
+                            location = shareLocation,
+                            viewOnce = {
+                                viewOnceNext = true
+                                pickAttachment.launch(arrayOf("image/*"))
+                            },
+                        ),
+                    // Into the review screen, where they can be looked at and
+                    // captioned before they go, as a pick from the strip is
+                    // on iOS.
+                    onMediaChosen = { uris -> batch = uris },
+                    onClose = { trayOpen = false },
                 )
             }
         },
@@ -1870,6 +1904,64 @@ private fun ImageMessageBubble(
 
             MessageMetaRow(message)
         }
+    }
+}
+
+/** What each of the tray's actions opens. */
+private class AttachmentLaunchers(
+    val camera: () -> Unit,
+    val photos: () -> Unit,
+    val video: () -> Unit,
+    val stickers: () -> Unit,
+    val file: () -> Unit,
+    val contact: () -> Unit,
+    val location: () -> Unit,
+    val viewOnce: () -> Unit,
+) {
+    fun launch(pill: AttachmentPill) =
+        when (pill) {
+            AttachmentPill.CAMERA -> camera()
+            AttachmentPill.PHOTOS -> photos()
+            AttachmentPill.VIDEO -> video()
+            AttachmentPill.STICKERS -> stickers()
+            AttachmentPill.FILE -> file()
+            AttachmentPill.CONTACT -> contact()
+            AttachmentPill.LOCATION -> location()
+            AttachmentPill.VIEW_ONCE -> viewOnce()
+        }
+}
+
+/**
+ * The attachment tray under the composer, sliding in where the keyboard would
+ * be. Anything chosen in it shuts it first, so what it opens is not left
+ * sitting over an open panel.
+ */
+@Composable
+private fun AttachmentTrayPanel(
+    visible: Boolean,
+    launchers: AttachmentLaunchers,
+    onMediaChosen: (List<Uri>) -> Unit,
+    onClose: () -> Unit,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        AttachmentTray(
+            onPill = { pill ->
+                onClose()
+                launchers.launch(pill)
+            },
+            onMediaChosen = { uris ->
+                onClose()
+                onMediaChosen(uris)
+            },
+            // At least iOS's height, and more when a selection bar and a
+            // limited-access link are both showing, rather than clipping the
+            // actions off the bottom.
+            modifier = Modifier.heightIn(min = ATTACHMENT_TRAY_HEIGHT),
+        )
     }
 }
 
