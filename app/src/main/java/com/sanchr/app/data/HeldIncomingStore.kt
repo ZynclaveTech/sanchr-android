@@ -43,6 +43,7 @@ class HeldIncomingStore
                         ),
                     envelope = IncomingEnvelopeContext(row.envelopeConversationId, row.envelopeMessageId, row.contentType),
                     attempts = row.attempts,
+                    heldAtMillis = row.heldAt,
                 )
             }
 

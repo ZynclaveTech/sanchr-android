@@ -21,9 +21,13 @@ class HeldIncomingRetrier
         private val receiveMessage: ReceiveMessageUseCase,
     ) {
         /** @return how many were filed. */
-        suspend fun retry(): Int {
+        suspend fun retry(nowMillis: Long = System.currentTimeMillis()): Int {
             var filed = 0
-            for (held in messageRepository.heldIncoming()) {
+            val (spent, waiting) = messageRepository.heldIncoming().partition { it.isSpent(nowMillis) }
+            // Expired, or held too long: let go without filing. What it said
+            // must not be kept past the point it was meant to be gone.
+            for (held in spent) messageRepository.releaseIncoming(held.id)
+            for (held in waiting) {
                 try {
                     receiveMessage.file(held.decrypted, held.envelope)
                     messageRepository.releaseIncoming(held.id)
