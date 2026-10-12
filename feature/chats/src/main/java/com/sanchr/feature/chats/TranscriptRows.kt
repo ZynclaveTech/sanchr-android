@@ -217,3 +217,41 @@ fun bubbleRowMargin(groupedWithPrevious: Boolean): Dp = if (groupedWithPrevious)
 
 private val GROUPED_ROW_MARGIN = 2.dp
 private val UNGROUPED_ROW_MARGIN = 6.dp
+
+/** The four corners of a text bubble, start and end rather than left and right. */
+data class BubbleCorners(
+    val topStart: Dp,
+    val topEnd: Dp,
+    val bottomEnd: Dp,
+    val bottomStart: Dp,
+)
+
+/**
+ * A text bubble's corners, as iOS cuts them.
+ *
+ * The tail is the bottom corner on the sender's side: bottom-end for our own
+ * messages, bottom-start for theirs. Inside a run the corners on that side
+ * are squared off where one bubble meets the next, so the run reads as one
+ * block with a single tail at its foot.
+ *
+ * Android put a received bubble's tail at the top, and gave every bubble of a
+ * run its own full set of round corners.
+ */
+fun bubbleCorners(
+    isFromMe: Boolean,
+    groupedWithPrevious: Boolean,
+    groupedWithNext: Boolean,
+    main: Dp,
+): BubbleCorners {
+    val top = if (groupedWithPrevious) BUBBLE_JOINED_CORNER else main
+    val bottom = if (groupedWithNext) BUBBLE_JOINED_CORNER else BUBBLE_TAIL_CORNER
+    return if (isFromMe) {
+        BubbleCorners(topStart = main, topEnd = top, bottomEnd = bottom, bottomStart = main)
+    } else {
+        BubbleCorners(topStart = top, topEnd = main, bottomEnd = main, bottomStart = bottom)
+    }
+}
+
+// Both 4 on iOS, and kept apart because they are 4 for different reasons.
+private val BUBBLE_JOINED_CORNER = 4.dp
+private val BUBBLE_TAIL_CORNER = 4.dp

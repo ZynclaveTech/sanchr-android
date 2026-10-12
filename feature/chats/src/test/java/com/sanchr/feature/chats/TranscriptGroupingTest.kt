@@ -150,4 +150,37 @@ class TranscriptGroupingTest {
 
         assertEquals(8.dp, gap, "the first row's bottom margin plus the grouped row's top margin")
     }
+
+    // --- Corners -------------------------------------------------------------------------
+
+    @Test
+    fun `a lone received bubble has its tail at the bottom on the sender's side`() {
+        val corners = bubbleCorners(isFromMe = false, groupedWithPrevious = false, groupedWithNext = false, main = 20.dp)
+
+        assertEquals(BubbleCorners(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 4.dp), corners)
+    }
+
+    @Test
+    fun `a lone sent bubble has its tail at the bottom on our side`() {
+        val corners = bubbleCorners(isFromMe = true, groupedWithPrevious = false, groupedWithNext = false, main = 20.dp)
+
+        assertEquals(BubbleCorners(topStart = 20.dp, topEnd = 20.dp, bottomEnd = 4.dp, bottomStart = 20.dp), corners)
+    }
+
+    @Test
+    fun `a bubble in the middle of a run is squared on the sender's side only`() {
+        val theirs = bubbleCorners(isFromMe = false, groupedWithPrevious = true, groupedWithNext = true, main = 20.dp)
+        val ours = bubbleCorners(isFromMe = true, groupedWithPrevious = true, groupedWithNext = true, main = 20.dp)
+
+        assertEquals(BubbleCorners(topStart = 4.dp, topEnd = 20.dp, bottomEnd = 20.dp, bottomStart = 4.dp), theirs)
+        assertEquals(BubbleCorners(topStart = 20.dp, topEnd = 4.dp, bottomEnd = 4.dp, bottomStart = 20.dp), ours)
+    }
+
+    @Test
+    fun `the first bubble of a run keeps its round top`() {
+        val corners = bubbleCorners(isFromMe = false, groupedWithPrevious = false, groupedWithNext = true, main = 10.dp)
+
+        assertEquals(10.dp, corners.topStart, "the chosen bubble style sets the round corners")
+        assertEquals(4.dp, corners.bottomStart)
+    }
 }
