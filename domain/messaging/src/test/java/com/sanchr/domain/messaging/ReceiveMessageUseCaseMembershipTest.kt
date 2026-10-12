@@ -117,4 +117,46 @@ class ReceiveMessageUseCaseMembershipTest {
                 )
             }
         }
+
+    /**
+     * The first message of a chat arrives before the chat does. The
+     * conversation is made ready first; only then is it asked who may post
+     * to it, and only then is the message saved.
+     */
+    @Test
+    fun `the conversation is made ready before it is asked about or saved into`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "first hello".toByteArray(),
+                )
+            coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+                SealedSenderCipher.DecryptedEnvelope(
+                    senderUserId = "alice-uuid",
+                    senderDeviceId = 1,
+                    plaintext = payload.encode(),
+                )
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            io.mockk.coVerifyOrder {
+                messageRepository.prepareConversationForIncoming("payload-conv", "payload-msg", "alice-uuid", 42L)
+                messageRepository.mayPostTo("payload-conv", "alice-uuid")
+                messageRepository.insertDecryptedMessage(
+                    "payload-conv",
+                    "payload-msg",
+                    "alice-uuid",
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
+        }
 }

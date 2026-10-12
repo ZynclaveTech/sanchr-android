@@ -10,6 +10,7 @@ import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
+import com.sanchr.proto.messaging.GetConversationsResponse
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.Participant
 import io.mockk.coEvery
@@ -38,10 +39,11 @@ class MessageRepositoryImplConversationTitleTest {
 
     private val notificationHandler = mockk<com.sanchr.core.notifications.NotificationHandler>(relaxed = true)
     private val mediaEvictor = mockk<com.sanchr.domain.messaging.MessageMediaEvictor>(relaxed = true)
+    private val messageDao = mockk<MessageDao>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
             messagingClient = messagingClient,
-            messageDao = mockk<MessageDao>(relaxed = true),
+            messageDao = messageDao,
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
@@ -111,5 +113,102 @@ class MessageRepositoryImplConversationTitleTest {
             coVerify { conversationDao.upsertFromServer(capture(inserted)) }
             assertEquals("Weekend plans", inserted.captured.single().title)
             coVerify(exactly = 0) { resolver.displayNameFor(any()) }
+        }
+
+    // ── A message for a chat this phone does not have yet ────────────────
+
+    private suspend fun prepare(
+        sender: String = "peer",
+        messageId: String = "m1",
+    ) = repo.prepareConversationForIncoming("conv-1", messageId, sender, 500L)
+
+    /**
+     * A message cannot be stored without its conversation, and nothing put
+     * the conversation there: the first message from someone new was lost.
+     */
+    @Test
+    fun `the server's copy of an unknown conversation is taken before its first message is saved`() =
+        runTest {
+            coEvery { messagingClient.getConversations(any()) } returns
+                GetConversationsResponse(conversations = listOf(serverDirectConversation("Sanchr User")))
+            coEvery { contactProfileDao.getByUserId("peer") } returns null
+            coEvery { resolver.displayNameFor("peer") } returns "~Alice"
+            val saved = slot<List<ConversationEntity>>()
+
+            prepare()
+
+            coVerify(exactly = 1) { conversationDao.upsertFromServer(capture(saved)) }
+            assertEquals("conv-1", saved.captured.single().id)
+            assertEquals("DIRECT", saved.captured.single().type)
+            assertEquals("""["self","peer"]""", saved.captured.single().participantIds)
+            assertEquals("~Alice", saved.captured.single().title)
+        }
+
+    @Test
+    fun `offline, a placeholder with this user and the sender stands in until the next sync`() =
+        runTest {
+            coEvery { messagingClient.getConversations(any()) } throws java.io.IOException("offline")
+            coEvery { resolver.displayNameFor("peer") } returns "+15550001"
+            val saved = slot<List<ConversationEntity>>()
+
+            prepare()
+
+            coVerify(exactly = 1) { conversationDao.upsertFromServer(capture(saved)) }
+            val shell = saved.captured.single()
+            assertEquals("conv-1", shell.id)
+            assertEquals("DIRECT", shell.type)
+            assertEquals("""["self","peer"]""", shell.participantIds)
+            assertEquals("+15550001", shell.title)
+            assertEquals(500L, shell.updatedAt)
+        }
+
+    @Test
+    fun `a conversation the server does not list for us still gets a placeholder`() =
+        runTest {
+            coEvery { messagingClient.getConversations(any()) } returns GetConversationsResponse(conversations = emptyList())
+            coEvery { resolver.displayNameFor("peer") } returns "+15550001"
+            val saved = slot<List<ConversationEntity>>()
+
+            prepare()
+
+            coVerify(exactly = 1) { conversationDao.upsertFromServer(capture(saved)) }
+            assertEquals("""["self","peer"]""", saved.captured.single().participantIds)
+        }
+
+    @Test
+    fun `our own message from another device makes a placeholder with just us in it`() =
+        runTest {
+            coEvery { messagingClient.getConversations(any()) } throws java.io.IOException("offline")
+            val saved = slot<List<ConversationEntity>>()
+
+            prepare(sender = "self")
+
+            coVerify(exactly = 1) { conversationDao.upsertFromServer(capture(saved)) }
+            assertEquals("""["self"]""", saved.captured.single().participantIds)
+            assertEquals(null, saved.captured.single().title)
+        }
+
+    @Test
+    fun `a conversation already here is left as it is, and the server is not asked`() =
+        runTest {
+            coEvery { conversationDao.getConversationById("conv-1") } returns
+                ConversationEntity(id = "conv-1", type = "DIRECT", participantIds = "[]", updatedAt = 1, createdAt = 1)
+
+            prepare()
+
+            coVerify(exactly = 0) { messagingClient.getConversations(any()) }
+            coVerify(exactly = 0) { conversationDao.upsertFromServer(any()) }
+        }
+
+    /** It is about to be turned away; its chat must not come back to hold nothing. */
+    @Test
+    fun `a message deleted from this phone does not bring its conversation back`() =
+        runTest {
+            coEvery { messageDao.wasDeleted("gone") } returns true
+
+            prepare(messageId = "gone")
+
+            coVerify(exactly = 0) { messagingClient.getConversations(any()) }
+            coVerify(exactly = 0) { conversationDao.upsertFromServer(any()) }
         }
 }

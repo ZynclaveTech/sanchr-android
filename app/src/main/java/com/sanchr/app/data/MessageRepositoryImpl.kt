@@ -32,6 +32,7 @@ import com.sanchr.domain.messaging.vault.AutoVaultScheduler
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteConversationRequest
 import com.sanchr.proto.messaging.DeleteMessageRequest
+import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.StartDirectConversationRequest
 import com.sanchr.proto.notifications.NotificationServiceClient
@@ -252,6 +253,48 @@ class MessageRepositoryImpl
             MessageReaction(emoji = emoji, userId = userId, timestamp = Instant.fromEpochMilliseconds(timestamp))
 
         override suspend fun isSenderBlocked(senderId: String): Boolean = blockedUserDao.isBlocked(senderId)
+
+        override suspend fun prepareConversationForIncoming(
+            conversationId: String,
+            messageId: String,
+            senderId: String,
+            timestampMillis: Long,
+        ) {
+            if (conversationDao.getConversationById(conversationId) != null) return
+            if (messageDao.wasDeleted(messageId)) return
+
+            val fromServer =
+                try {
+                    messagingClient
+                        .getConversations(GetConversationsRequest())
+                        .conversations
+                        .firstOrNull { it.id == conversationId }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not fetch conversation $conversationId for an incoming message; using a placeholder", e)
+                    null
+                }
+            if (fromServer != null) {
+                conversationDao.upsertFromServer(listOf(fromServer.toEntity()))
+                return
+            }
+
+            val self = sessionManager.getUserId()
+            val members = listOfNotNull(self, senderId).filter { it.isNotBlank() }.distinct()
+            conversationDao.upsertFromServer(
+                listOf(
+                    ConversationEntity(
+                        id = conversationId,
+                        type = DirectChatMembership.DIRECT,
+                        title = senderId.takeIf { it != self }?.let { contactProfileResolver.displayNameFor(it) },
+                        participantIds = JSONArray(members.toTypedArray()).toString(),
+                        updatedAt = timestampMillis,
+                        createdAt = timestampMillis,
+                    ),
+                ),
+            )
+        }
 
         override suspend fun mayPostTo(
             conversationId: String,

@@ -74,6 +74,29 @@ interface MessageRepository {
     suspend fun isSenderBlocked(senderId: String): Boolean
 
     /**
+     * Makes sure [conversationId] is on this phone before a message for it
+     * is saved.
+     *
+     * A message cannot be stored without its conversation, and a
+     * conversation only reached this phone with the periodic sync. So the
+     * first message of a chat this phone had not seen yet — which is what
+     * someone new writing for the first time is — could not be saved, and
+     * was lost: its envelope cannot be decrypted a second time.
+     *
+     * The server's copy is taken if it can be had. Failing that, a
+     * placeholder holding this user and the sender, which the next sync
+     * fills in. Nothing is created for a message deleted from this phone on
+     * purpose ([messageId]): it is about to be turned away, and its chat
+     * must not come back to hold nothing.
+     */
+    suspend fun prepareConversationForIncoming(
+        conversationId: String,
+        messageId: String,
+        senderId: String,
+        timestampMillis: Long,
+    )
+
+    /**
      * Whether a message from [senderId] may be filed in [conversationId] —
      * see [DirectChatMembership] for the rule and for why it says yes to
      * anything it cannot be sure about.
