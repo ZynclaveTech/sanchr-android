@@ -18,12 +18,18 @@ interface MessageDao {
      * entire conversation into memory and into composition on every change —
      * the cost iOS avoids by bounding its transcript. The inner query takes
      * the newest rows; the outer one puts them back in reading order.
+     *
+     * A disappearing message already past its deadline at [nowMillis] is left
+     * out. The sweeper removes those, but not before the first screen of a
+     * cold start is drawn: reading is the moment one would become visible,
+     * so the rule belongs here as well.
      */
     @Query(
         """
         SELECT * FROM (
             SELECT * FROM messages
             WHERE conversation_id = :conversationId AND is_deleted = 0
+              AND (expires_at IS NULL OR expires_at > :nowMillis)
             ORDER BY timestamp DESC
             LIMIT :limit
         ) ORDER BY timestamp ASC
@@ -32,6 +38,7 @@ interface MessageDao {
     fun observeRecentMessages(
         conversationId: String,
         limit: Int,
+        nowMillis: Long,
     ): Flow<List<MessageEntity>>
 
     @Query("SELECT * FROM messages WHERE id = :messageId")
@@ -56,18 +63,24 @@ interface MessageDao {
         needle: String,
     ): List<String>
 
-    /** The newest non-deleted message of every conversation (ties on timestamp may yield more than one row per chat). */
+    /**
+     * The newest message of every conversation that is neither deleted nor,
+     * at [nowMillis], past its disappearing deadline (ties on timestamp may
+     * yield more than one row per chat). This is what the chat list previews.
+     */
     @Query(
         """
         SELECT m.* FROM messages m
         WHERE m.is_deleted = 0
+          AND (m.expires_at IS NULL OR m.expires_at > :nowMillis)
           AND m.timestamp = (
             SELECT MAX(timestamp) FROM messages
             WHERE conversation_id = m.conversation_id AND is_deleted = 0
+              AND (expires_at IS NULL OR expires_at > :nowMillis)
           )
         """,
     )
-    fun observeLatestPerConversation(): Flow<List<MessageEntity>>
+    fun observeLatestPerConversation(nowMillis: Long): Flow<List<MessageEntity>>
 
     @Query("SELECT * FROM messages ORDER BY timestamp ASC")
     suspend fun getAllMessages(): List<MessageEntity>

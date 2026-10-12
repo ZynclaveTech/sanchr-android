@@ -88,7 +88,7 @@ class MessageRepositoryImplConversationsTest {
                         conversation("d", updatedAt = 30),
                     ),
                 )
-            every { messageDao.observeLatestPerConversation() } returns
+            every { messageDao.observeLatestPerConversation(any()) } returns
                 flowOf(listOf(message("m1", "a", 100, "newest in a"), message("m2", "b", 50, "b"), message("m3", "b", 50, "b-tie")))
 
             val list = repo.observeConversations().first()

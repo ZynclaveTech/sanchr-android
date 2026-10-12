@@ -145,7 +145,7 @@ class MessageRepositoryImpl
         }
 
         private fun withNewestMessages(rows: Flow<List<ConversationEntity>>): Flow<List<Conversation>> =
-            combine(rows, messageDao.observeLatestPerConversation()) { entities, latest ->
+            combine(rows, messageDao.observeLatestPerConversation(System.currentTimeMillis())) { entities, latest ->
                 val newestByConversation = latest.groupBy { it.conversationId }.mapValues { (_, rows) -> rows.maxBy { it.timestamp } }
                 entities
                     .map { entity -> entity.toDomain().copy(lastMessage = newestByConversation[entity.id]?.toDomain()) }
@@ -228,7 +228,7 @@ class MessageRepositoryImpl
             limit: Int,
         ): Flow<List<Message>> =
             combine(
-                messageDao.observeRecentMessages(conversationId, limit),
+                messageDao.observeRecentMessages(conversationId, limit, System.currentTimeMillis()),
                 reactionDao.observeForConversation(conversationId),
             ) { entities, reactions ->
                 val byMessage = reactions.groupBy { it.messageId }

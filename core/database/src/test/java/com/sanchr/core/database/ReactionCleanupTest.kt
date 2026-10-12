@@ -226,4 +226,51 @@ class ReactionCleanupTest {
 
             assertEquals(listOf("unread"), db.messageDao().conversationsWithUnreadExpiredMessages(now, "self"))
         }
+
+    // ── Reading ──────────────────────────────────────────────────────────
+
+    /** The sweeper removes it, but not before the first screen of a cold start is drawn. */
+    @Test
+    fun `a message past its deadline is not shown in the chat, even before it has been swept`() =
+        runTest {
+            conversation("c1")
+            message("gone", expiresAt = now)
+            message("live", expiresAt = now + 1)
+            message("plain")
+
+            val shown =
+                db
+                    .messageDao()
+                    .observeRecentMessages("c1", limit = 50, nowMillis = now)
+                    .first()
+                    .map { it.id }
+
+            assertEquals(listOf("live", "plain"), shown.sorted())
+        }
+
+    @Test
+    fun `nor is it the chat list's preview`() =
+        runTest {
+            conversation("c1")
+            db.messageDao().insertMessage(entity("older", "c1").copy(timestamp = now - 10))
+            db.messageDao().insertMessage(entity("expired", "c1", expiresAt = now).copy(timestamp = now - 1))
+
+            val preview =
+                db
+                    .messageDao()
+                    .observeLatestPerConversation(now)
+                    .first()
+                    .map { it.id }
+
+            assertEquals(listOf("older"), preview)
+        }
+
+    @Test
+    fun `a chat whose only message has expired has no preview`() =
+        runTest {
+            conversation("c1")
+            message("expired", expiresAt = now)
+
+            assertEquals(emptyList(), db.messageDao().observeLatestPerConversation(now).first())
+        }
 }

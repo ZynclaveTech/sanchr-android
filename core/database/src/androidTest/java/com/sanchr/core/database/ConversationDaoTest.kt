@@ -124,7 +124,7 @@ class ConversationDaoTest {
 
             val latest =
                 dao
-                    .observeLatestPerConversation()
+                    .observeLatestPerConversation(System.currentTimeMillis())
                     .first()
                     .map { it.id }
                     .sorted()
