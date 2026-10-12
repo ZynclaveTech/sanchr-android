@@ -139,6 +139,41 @@ class ReceiveMessageUseCase
             declaredSender: ServerProvidedSender?,
             envelopeContext: IncomingEnvelopeContext? = null,
             flushAckImmediately: Boolean = true,
+        ): EnvelopeDecryptResult {
+            val result = decryptAndFile(envelopeBytes, kind, serverTimestamp, declaredSender, envelopeContext, flushAckImmediately)
+            if (envelopeContext != null && isSpent(result)) {
+                withContext(dispatchers.io) {
+                    messageRepository.get().ackEnvelope(envelopeContext.conversationId, envelopeContext.messageId, flushAckImmediately)
+                }
+            }
+            return result
+        }
+
+        /**
+         * Whether an envelope that was not filed will never be: sending it
+         * again cannot change the answer, so it is acked.
+         *
+         * Such envelopes were left on the server, which sent every one of
+         * them again at each sync and each reconnect for the thirty days it
+         * keeps them — to be found a duplicate, or quarantined, again.
+         *
+         * A duplicate has already been dealt with. A malformed one will be
+         * malformed next time. Not acked: a missing session, which the
+         * rebuild under way may yet answer, and an identity that has changed,
+         * which waits on the user; nor a failure of some other kind, whose
+         * cause is not known to be permanent.
+         */
+        private fun isSpent(result: EnvelopeDecryptResult): Boolean =
+            result is EnvelopeDecryptResult.DuplicateMessage ||
+                (result is EnvelopeDecryptResult.Quarantined && result.failureClass == FailureClass.INVALID_MESSAGE)
+
+        private suspend fun decryptAndFile(
+            envelopeBytes: ByteArray,
+            kind: EnvelopeKind,
+            serverTimestamp: Long,
+            declaredSender: ServerProvidedSender?,
+            envelopeContext: IncomingEnvelopeContext?,
+            flushAckImmediately: Boolean,
         ): EnvelopeDecryptResult =
             withContext(dispatchers.io) {
                 try {
