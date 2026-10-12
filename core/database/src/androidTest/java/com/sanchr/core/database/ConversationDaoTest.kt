@@ -59,7 +59,8 @@ class ConversationDaoTest {
             dao.insertConversation(row(archived = true, hidden = true, timerMs = 86_400_000L, lastMessageId = "m-9"))
 
             // What a server refresh carries: no archived flag, no timer, no
-            // last message id — but a fresh unread count and title.
+            // last message id — a title, and an unread count that only ever
+            // goes up because the server is never told a chat was read.
             dao.upsertFromServer(listOf(row(title = "~Alice", unread = 3)))
 
             val stored = requireNotNull(dao.getConversationById("c1"))
@@ -68,7 +69,7 @@ class ConversationDaoTest {
             assertEquals(86_400_000L, stored.disappearingDurationMs)
             assertEquals("m-9", stored.lastMessageId)
             assertEquals("~Alice", stored.title)
-            assertEquals(3, stored.unreadCount)
+            assertEquals(0, stored.unreadCount)
         }
 
     @Test
