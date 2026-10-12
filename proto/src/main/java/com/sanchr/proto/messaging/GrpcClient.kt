@@ -148,8 +148,9 @@ private fun SendMessageRequest.toProto(): Messaging.SendMessageRequest =
         .setExpiresAfterSecs(expiresAfterSecs)
         .build()
 
-private fun ClientEvent.toProto(): Messaging.ClientEvent =
+internal fun ClientEvent.toProto(): Messaging.ClientEvent =
     when (this) {
+        ClientEvent.KeepAlive -> Messaging.ClientEvent.getDefaultInstance()
         is ClientEvent.Typing -> {
             val typing =
                 Messaging.TypingIndicator

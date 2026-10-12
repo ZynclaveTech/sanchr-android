@@ -43,6 +43,17 @@ sealed interface ClientEvent {
         val userId: String = "",
         val isTyping: Boolean = false,
     ) : ClientEvent
+
+    /**
+     * Says nothing, and is sent so the stream is not silent.
+     *
+     * The ingress in front of the server closes a stream the client has sent
+     * nothing on for sixty seconds. The presence heartbeat used to keep it
+     * fed; when that was removed nothing did, and an idle app lost its stream
+     * a minute after opening it. On the wire this is a `ClientEvent` with no
+     * event set, which the server reads and ignores.
+     */
+    data object KeepAlive : ClientEvent
 }
 
 sealed interface ServerEvent {

@@ -14,6 +14,7 @@ import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.SendPresenceUseCase
 import com.sanchr.proto.messaging.CallLifecycleEvent
 import com.sanchr.proto.messaging.CallOfferEvent
+import com.sanchr.proto.messaging.ClientEvent
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.Reaction
 import com.sanchr.proto.messaging.ServerEvent
@@ -503,5 +504,50 @@ class RealtimeManagerTest {
             runCurrent()
 
             assertEquals(1, opened.get())
+        }
+
+    // --- The stream is kept fed -------------------------------------------------------------
+
+    @Test
+    fun `an idle stream is sent a keepalive well inside the ingress's minute`() =
+        runTest {
+            val sent = mutableListOf<ClientEvent>()
+            every { messagingClient.messageStream(any()) } answers {
+                val outbound = firstArg<Flow<ClientEvent>>()
+                flow {
+                    // Stands in for the server reading what the client sends.
+                    outbound.collect { sent += it }
+                }
+            }
+
+            buildManager().enterForeground()
+            runCurrent()
+            assertTrue(sent.isEmpty(), "nothing is owed the moment the stream opens")
+
+            advanceTimeBy(60_000)
+            runCurrent()
+
+            assertEquals(listOf<ClientEvent>(ClientEvent.KeepAlive, ClientEvent.KeepAlive), sent)
+        }
+
+    @Test
+    fun `keepalives stop when the stream is closed`() =
+        runTest {
+            val sent = mutableListOf<ClientEvent>()
+            every { messagingClient.messageStream(any()) } answers {
+                val outbound = firstArg<Flow<ClientEvent>>()
+                flow { outbound.collect { sent += it } }
+            }
+            val manager = buildManager()
+            manager.enterForeground()
+            advanceTimeBy(RealtimeManager.KEEPALIVE_INTERVAL_MS + 1_000)
+            val whileOpen = sent.size
+
+            manager.enterBackground()
+            advanceTimeBy(RealtimeManager.KEEPALIVE_INTERVAL_MS * 4)
+            runCurrent()
+
+            assertEquals(1, whileOpen)
+            assertEquals(whileOpen, sent.size, "a closed stream was still being fed")
         }
 }
