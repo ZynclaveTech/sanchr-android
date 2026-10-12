@@ -513,6 +513,97 @@ class TypedEnvelopeCipherTest {
     // Replays, and what a new session does to an old one
     // ------------------------------------------------------------------
 
+    /**
+     * A sender goes on framing messages as "first" until it hears back. iOS
+     * sends presence, then whatever the user typed, before any reply — both
+     * naming the same one-time pre-key, which the first of them spends.
+     */
+    @Test
+    fun `the messages a new contact sends before any reply are all read, not only the first`() =
+        runTest {
+            val alice = Peer("alice")
+            alice.startSession()
+            val presence = alice.send("presence")
+            val hello = alice.send("hello")
+            val again = alice.send("are you there?")
+            assertEquals(TypedEnvelope.PREKEY, hello[0], "still first-message form: no reply has arrived")
+
+            cipher.decryptSealed(presence, declaredSender, publishing(alice))
+            val second = cipher.decryptSealed(hello, declaredSender, nobody)
+            val third = cipher.decryptSealed(again, declaredSender, nobody)
+
+            assertEquals("alice", second.senderUserId)
+            assertEquals(1, second.senderDeviceId)
+            assertContentEquals(payload("hello", "alice" to 1), second.plaintext)
+            assertContentEquals(payload("are you there?", "alice" to 1), third.plaintext)
+            assertFalse(scratchLeftBehind())
+        }
+
+    @Test
+    fun `they are read in whatever order they arrive`() =
+        runTest {
+            val alice = Peer("alice")
+            alice.startSession()
+            val one = alice.send("one")
+            val two = alice.send("two")
+            val three = alice.send("three")
+
+            cipher.decryptSealed(two, declaredSender, publishing(alice))
+            val late = cipher.decryptSealed(one, declaredSender, nobody)
+            val last = cipher.decryptSealed(three, declaredSender, nobody)
+
+            assertContentEquals(payload("one", "alice" to 1), late.plaintext)
+            assertContentEquals(payload("three", "alice" to 1), last.plaintext)
+        }
+
+    /** It is attributed by the session that reads it, not by what its payload says. */
+    @Test
+    fun `a later first-form message is attributed to its own session among several`() =
+        runTest {
+            val alice = Peer("alice")
+            val bob = Peer("bob")
+            alice.startSession()
+            bob.startSession()
+            cipher.decryptSealed(alice.send("a1"), declaredSender, publishing(alice, bob))
+            cipher.decryptSealed(bob.send("b1"), declaredSender, publishing(alice, bob))
+            val bobBefore = store.loadSession(bob.address).serialize()
+
+            val opened = cipher.decryptSealed(alice.send("a2", claiming = "bob" to 1), declaredSender, nobody)
+
+            assertEquals("alice", opened.senderUserId)
+            assertContentEquals(bobBefore, store.loadSession(bob.address).serialize(), "a session it does not belong to is left as it was")
+        }
+
+    @Test
+    fun `and the conversation carries on normally once a reply has gone back`() =
+        runTest {
+            val alice = Peer("alice")
+            alice.startSession()
+            cipher.decryptSealed(alice.send("presence"), declaredSender, publishing(alice))
+            cipher.decryptSealed(alice.send("hello"), declaredSender, nobody)
+
+            alice.receive(SessionCipher(store, alice.address).encrypt("hi back".toByteArray()))
+            val later = alice.send("good")
+
+            assertEquals(TypedEnvelope.SIGNAL, later[0])
+            assertContentEquals(payload("good", "alice" to 1), cipher.decryptSealed(later, declaredSender, nobody).plaintext)
+        }
+
+    @Test
+    fun `a replay of one of them is still recognised as a duplicate`() =
+        runTest {
+            val alice = Peer("alice")
+            alice.startSession()
+            cipher.decryptSealed(alice.send("presence"), declaredSender, publishing(alice))
+            val hello = alice.send("hello")
+            cipher.decryptSealed(hello, declaredSender, nobody)
+            val before = store.loadSession(alice.address).serialize()
+
+            assertFailsWith<DuplicateMessageException> { cipher.decryptSealed(hello, declaredSender, nobody) }
+
+            assertContentEquals(before, store.loadSession(alice.address).serialize())
+        }
+
     @Test
     fun `a replayed first message is not read twice`() =
         runTest {
