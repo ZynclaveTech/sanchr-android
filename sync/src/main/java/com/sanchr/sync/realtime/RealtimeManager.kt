@@ -14,11 +14,13 @@ import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.model.MessageStatus
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.PresenceStatus
+import com.sanchr.domain.messaging.ReceiptRule
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.SendPresenceUseCase
 import com.sanchr.domain.messaging.ServerProvidedSender
@@ -365,8 +367,13 @@ class RealtimeManager
 
         private suspend fun handleReceipt(update: com.sanchr.proto.messaging.ReceiptUpdate?) {
             if (update == null || update.messageId.isBlank()) return
+            // The server's word is held to the same rule as anyone's: one of
+            // this user's own messages, forward, to delivered or read.
+            val status = runCatching { MessageStatus.valueOf(update.status.uppercase()) }.getOrNull() ?: return
+            val from = ReceiptRule.advancesFrom(status) ?: return
+            val self = sessionManager.getUserId()?.takeIf { it.isNotBlank() } ?: return
             runCatching {
-                messageDao.updateMessageStatus(update.messageId, update.status.uppercase())
+                messageDao.advanceOwnMessageStatus(update.messageId, self, status.name, from.map { it.name })
             }.onFailure { error ->
                 Log.w(TAG, "Failed to apply receipt update", error)
             }

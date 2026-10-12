@@ -25,6 +25,7 @@ import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.DirectChatMembership
 import com.sanchr.domain.messaging.FailureClass
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.ReceiptRule
 import com.sanchr.domain.messaging.vault.AutoVaultScheduler
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteConversationRequest
@@ -336,8 +337,15 @@ class MessageRepositoryImpl
         override suspend fun applyReceiptStatus(
             messageId: String,
             status: MessageStatus,
-        ) {
-            messageDao.updateMessageStatus(messageId, status.name)
+            fromUserId: String,
+        ): Boolean {
+            val self = sessionManager.getUserId()?.takeIf { it.isNotBlank() } ?: return false
+            val from = ReceiptRule.advancesFrom(status) ?: return false
+            // A receipt comes from the person the message went to.
+            if (fromUserId == self) return false
+            val message = messageDao.getMessageById(messageId) ?: return false
+            if (!mayPostTo(message.conversationId, fromUserId)) return false
+            return messageDao.advanceOwnMessageStatus(messageId, self, status.name, from.map { it.name }) > 0
         }
 
         override suspend fun deleteMessage(

@@ -577,7 +577,7 @@ class ReceiveMessageUseCaseTest {
             // protobuf ("inner-msg"), never the envelope's own id
             // ("env-msg") — the envelope's ids are deliberately empty for a
             // receipt, so reaching for ctx here would be a bug.
-            coVerify(exactly = 1) { messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ) }
+            coVerify(exactly = 1) { messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ, "alice-uuid") }
             coVerify(exactly = 0) { messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any(), any()) }
             coVerify(exactly = 1) {
                 messageRepository.ackEnvelope(
@@ -600,7 +600,7 @@ class ReceiveMessageUseCaseTest {
 
             useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
 
-            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any()) }
+            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any(), any()) }
             coVerify(exactly = 1) {
                 messageRepository.ackEnvelope(
                     conversationId = "env-conv",
@@ -633,7 +633,7 @@ class ReceiveMessageUseCaseTest {
             val result = useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
 
             assertTrue(result is EnvelopeDecryptResult.Success)
-            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any()) }
+            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any(), any()) }
             coVerify(exactly = 1) {
                 messageRepository.ackEnvelope(
                     conversationId = "env-conv",
@@ -655,7 +655,7 @@ class ReceiveMessageUseCaseTest {
 
             useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
 
-            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any()) }
+            coVerify(exactly = 0) { messageRepository.applyReceiptStatus(any(), any(), any()) }
             coVerify(exactly = 1) {
                 messageRepository.ackEnvelope(
                     conversationId = "env-conv",
@@ -675,7 +675,7 @@ class ReceiveMessageUseCaseTest {
                     plaintext = receiptPlaintext(messageId = "inner-msg", status = "read"),
                 )
             coEvery {
-                messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ)
+                messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ, "alice-uuid")
             } throws RuntimeException("SQLiteException: disk I/O error")
 
             val result = useCase.receive(bytes, EnvelopeKind.SEALED, 1L, declaredSender = null, envelopeContext = ctx)
@@ -709,7 +709,7 @@ class ReceiveMessageUseCaseTest {
                     plaintext = receiptPlaintext(messageId = "inner-msg", status = "read"),
                 )
             coEvery {
-                messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ)
+                messageRepository.applyReceiptStatus("inner-msg", MessageStatus.READ, "alice-uuid")
             } throws CancellationException("scope cancelled")
 
             assertFailsWith<CancellationException> {
