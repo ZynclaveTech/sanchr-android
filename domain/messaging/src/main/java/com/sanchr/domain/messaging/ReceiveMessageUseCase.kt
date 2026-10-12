@@ -336,6 +336,15 @@ class ReceiveMessageUseCase
             flushAckImmediately: Boolean,
         ) {
             val conversationId = resolveId("conversation_id", routed.conversationId, ctx.conversationId)
+            val messageId = resolveId("message_id", routed.messageId, ctx.messageId)
+            // Before anything asks about the conversation: the first message
+            // of a chat arrives before the chat does.
+            messageRepository.get().prepareConversationForIncoming(
+                conversationId = conversationId,
+                messageId = messageId,
+                senderId = success.senderUserId,
+                timestampMillis = success.serverTimestamp,
+            )
             if (!messageRepository.get().mayPostTo(conversationId, success.senderUserId)) {
                 // The conversation is named by the payload, which the sender
                 // wrote. This one is a one-to-one chat between two other
@@ -352,7 +361,7 @@ class ReceiveMessageUseCase
             // A blank/absent payload id falls back to the envelope's.
             messageRepository.get().insertDecryptedMessage(
                 conversationId = conversationId,
-                messageId = resolveId("message_id", routed.messageId, ctx.messageId),
+                messageId = messageId,
                 senderId = success.senderUserId,
                 content = routed.content,
                 contentType = routed.contentType,

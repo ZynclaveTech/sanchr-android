@@ -12,6 +12,7 @@ import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.ChatVaultPolicy
 import com.sanchr.core.model.Conversation
 import com.sanchr.core.model.ConversationType
@@ -32,6 +33,7 @@ import com.sanchr.domain.messaging.vault.AutoVaultScheduler
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.DeleteConversationRequest
 import com.sanchr.proto.messaging.DeleteMessageRequest
+import com.sanchr.proto.messaging.GetConversationsRequest
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.StartDirectConversationRequest
 import com.sanchr.proto.notifications.NotificationServiceClient
@@ -44,6 +46,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 import org.json.JSONArray
@@ -58,6 +61,7 @@ class MessageRepositoryImpl
         private val pendingMessageAckDao: PendingMessageAckDao,
         private val blockedUserDao: BlockedUserDao,
         private val notificationHandler: NotificationHandler,
+        private val userPreferences: UserPreferences,
         // Lazy: the evictor reads messages through this repository.
         private val mediaEvictor: Lazy<MessageMediaEvictor>,
         private val contactProfileDao: ContactProfileDao,
@@ -252,6 +256,80 @@ class MessageRepositoryImpl
             MessageReaction(emoji = emoji, userId = userId, timestamp = Instant.fromEpochMilliseconds(timestamp))
 
         override suspend fun isSenderBlocked(senderId: String): Boolean = blockedUserDao.isBlocked(senderId)
+
+        override suspend fun prepareConversationForIncoming(
+            conversationId: String,
+            messageId: String,
+            senderId: String,
+            timestampMillis: Long,
+        ) {
+            if (conversationDao.getConversationById(conversationId) != null) return
+            if (messageDao.wasDeleted(messageId)) return
+
+            val fromServer =
+                try {
+                    messagingClient
+                        .getConversations(GetConversationsRequest())
+                        .conversations
+                        .firstOrNull { it.id == conversationId }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not fetch conversation $conversationId for an incoming message; using a placeholder", e)
+                    null
+                }
+            if (fromServer != null) {
+                conversationDao.upsertFromServer(listOf(fromServer.toEntity()))
+                return
+            }
+
+            // A stand-in, under an id the message chose and with members
+            // that are a guess. Remembered as one, so the next sync can check
+            // it: see settlePlaceholderConversations.
+            userPreferences.addPlaceholderConversation(conversationId)
+            val self = sessionManager.getUserId()
+            val members = listOfNotNull(self, senderId).filter { it.isNotBlank() }.distinct()
+            conversationDao.upsertFromServer(
+                listOf(
+                    ConversationEntity(
+                        id = conversationId,
+                        type = DirectChatMembership.DIRECT,
+                        title = senderId.takeIf { it != self }?.let { contactProfileResolver.displayNameFor(it) },
+                        participantIds = JSONArray(members.toTypedArray()).toString(),
+                        updatedAt = timestampMillis,
+                        createdAt = timestampMillis,
+                    ),
+                ),
+            )
+        }
+
+        override suspend fun settlePlaceholderConversations(confirmedIds: Set<String>): Int {
+            val settled = userPreferences.placeholderConversations.first().intersect(confirmedIds)
+            if (settled.isEmpty()) return 0
+            val removed = settled.sumOf { removeOutsiders(it) }
+            userPreferences.removePlaceholderConversations(settled)
+            return removed
+        }
+
+        /** Removes what was filed in [conversationId] by someone who is not in it; how many went. */
+        private suspend fun removeOutsiders(conversationId: String): Int {
+            val conversation = conversationDao.getConversationById(conversationId) ?: return 0
+            val members = parseParticipantIds(conversation.participantIds)
+            val self = sessionManager.getUserId()
+            val outsiders =
+                messageDao
+                    .sendersInConversation(conversationId)
+                    .filterNot { DirectChatMembership.allows(conversation.type, members, it.senderId, self) }
+                    .map { it.id }
+            if (outsiders.isEmpty()) return 0
+            val evictor = mediaEvictor.get()
+            val files = outsiders.flatMap { evictor.evict(it) }
+            outsiders.chunked(ID_QUERY_CHUNK).forEach { messageDao.deleteMessages(it) }
+            evictor.again(files)
+            notificationHandler.cancelNotificationsForConversation(conversationId)
+            Log.w(TAG, "removed ${outsiders.size} message(s) filed in a one-to-one chat their sender is not in")
+            return outsiders.size
+        }
 
         override suspend fun mayPostTo(
             conversationId: String,

@@ -307,6 +307,23 @@ interface MessageDao {
     @Query("DELETE FROM message_reactions WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = :conversationId)")
     suspend fun deleteReactionsInConversation(conversationId: String)
 
+    /** Who sent each message of a conversation. */
+    @Query("SELECT id, sender_id AS senderId FROM messages WHERE conversation_id = :conversationId")
+    suspend fun sendersInConversation(conversationId: String): List<MessageSender>
+
+    /** Removes these messages and their reactions. At most a few hundred ids a call. */
+    @Transaction
+    suspend fun deleteMessages(ids: List<String>) {
+        deleteReactionsOnMessages(ids)
+        deleteMessageRows(ids)
+    }
+
+    @Query("DELETE FROM messages WHERE id IN (:ids)")
+    suspend fun deleteMessageRows(ids: List<String>)
+
+    @Query("DELETE FROM message_reactions WHERE message_id IN (:ids)")
+    suspend fun deleteReactionsOnMessages(ids: List<String>)
+
     /** Every message a conversation holds, by id. For clearing a chat: its media has to be found before its rows go. */
     @Query("SELECT id FROM messages WHERE conversation_id = :conversationId")
     suspend fun messageIdsInConversation(conversationId: String): List<String>
@@ -395,3 +412,9 @@ interface MessageDao {
         selfUserId: String,
     ): Flow<List<MessageEntity>>
 }
+
+/** One message's id and who sent it. */
+data class MessageSender(
+    val id: String,
+    val senderId: String,
+)

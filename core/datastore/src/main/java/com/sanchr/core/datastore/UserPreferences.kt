@@ -85,6 +85,7 @@ class UserPreferences
             val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
             val BLOCK_LIST_RESTORED = booleanPreferencesKey("block_list_restored")
             val PENDING_BLOCK_SYNC = stringSetPreferencesKey("pending_block_sync")
+            val PLACEHOLDER_CONVERSATIONS = stringSetPreferencesKey("placeholder_conversations")
         }
 
         // --- Theme ---
@@ -457,6 +458,25 @@ class UserPreferences
                 entry.startsWith(UNBLOCKED_MARK) -> entry.drop(1) to false
                 else -> null
             }
+
+        /**
+         * Conversations this phone made a stand-in for because a message
+         * arrived before the server's copy could be had. Their members are a
+         * guess — this user and whoever sent the message — until a sync says
+         * who they really are.
+         */
+        val placeholderConversations: Flow<Set<String>> = dataStore.data.map { it[Keys.PLACEHOLDER_CONVERSATIONS].orEmpty() }
+
+        suspend fun addPlaceholderConversation(conversationId: String) {
+            dataStore.edit { it[Keys.PLACEHOLDER_CONVERSATIONS] = it[Keys.PLACEHOLDER_CONVERSATIONS].orEmpty() + conversationId }
+        }
+
+        suspend fun removePlaceholderConversations(conversationIds: Set<String>) {
+            dataStore.edit { prefs ->
+                val left = prefs[Keys.PLACEHOLDER_CONVERSATIONS].orEmpty() - conversationIds
+                if (left.isEmpty()) prefs.remove(Keys.PLACEHOLDER_CONVERSATIONS) else prefs[Keys.PLACEHOLDER_CONVERSATIONS] = left
+            }
+        }
 
         // --- Lifecycle ---
 
