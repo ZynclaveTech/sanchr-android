@@ -8,6 +8,7 @@ import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
@@ -30,6 +31,7 @@ import io.mockk.every
 import io.mockk.mockk
 import java.security.MessageDigest
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -240,6 +242,107 @@ class ContactRepositoryImplTest {
     private val conversationDao = mockk<ConversationDao>(relaxed = true)
     private val notificationHandler = mockk<NotificationHandler>(relaxed = true)
 
+    /** What the server has still to be told, as `UserPreferences` keeps it. */
+    private val pending = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    private val userPreferences =
+        mockk<UserPreferences>(relaxed = true) {
+            every { pendingBlockSync } returns pending
+            coEvery { setPendingBlockSync(any(), any()) } coAnswers {
+                val userId = firstArg<String>()
+                val blocked = secondArg<Boolean?>()
+                pending.value = if (blocked == null) pending.value - userId else pending.value + (userId to blocked)
+            }
+        }
+
+    /** A server that refuses block calls until [reachable] is set. */
+    private class FlakyBlockClient : ContactServiceClient {
+        var reachable = false
+        val calls = mutableListOf<Pair<String, Boolean>>()
+
+        override suspend fun syncContacts(request: SyncContactsRequest): SyncContactsResponse = error("not used in test")
+
+        override suspend fun getContacts(request: GetContactsRequest): GetContactsResponse = error("not used in test")
+
+        override suspend fun blockContact(request: BlockContactRequest): BlockContactResponse = answer(request.userId, true)
+
+        override suspend fun unblockContact(request: UnblockContactRequest): UnblockContactResponse {
+            answer(request.userId, false)
+            return UnblockContactResponse(success = true)
+        }
+
+        override suspend fun getBlockedList(request: GetBlockedListRequest): GetBlockedListResponse =
+            GetBlockedListResponse(blockedUsers = listOf(Contact(userId = "alice", phoneNumber = "")), nextPageToken = "")
+
+        private fun answer(
+            userId: String,
+            blocked: Boolean,
+        ): BlockContactResponse {
+            if (!reachable) throw java.io.IOException("offline")
+            calls += userId to blocked
+            return BlockContactResponse(success = true)
+        }
+    }
+
+    /**
+     * A block is written on the phone first and sent afterwards. One that
+     * could not be sent was only logged, so the server's list stayed wrong.
+     */
+    @Test
+    fun `a block the server missed is sent the next time, and then forgotten`() =
+        runTest {
+            val client = FlakyBlockClient()
+            val repo = repo(client, NoOpContactDao())
+
+            repo.setBlocked("alice", blocked = true)
+            assertEquals(mapOf("alice" to true), pending.value)
+            assertEquals(0, repo.syncPendingBlockChanges())
+
+            client.reachable = true
+            assertEquals(1, repo.syncPendingBlockChanges())
+
+            assertEquals(listOf("alice" to true), client.calls)
+            assertEquals(emptyMap<String, Boolean>(), pending.value)
+            assertEquals(0, repo.syncPendingBlockChanges())
+        }
+
+    @Test
+    fun `a block the server took leaves nothing owed`() =
+        runTest {
+            val client = FlakyBlockClient().apply { reachable = true }
+
+            repo(client, NoOpContactDao()).setBlocked("alice", blocked = true)
+
+            assertEquals(emptyMap<String, Boolean>(), pending.value)
+        }
+
+    @Test
+    fun `blocked then unblocked while offline owes the server only the unblock`() =
+        runTest {
+            val client = FlakyBlockClient()
+            val repo = repo(client, NoOpContactDao())
+            repo.setBlocked("alice", blocked = true)
+            repo.setBlocked("alice", blocked = false)
+
+            client.reachable = true
+            repo.syncPendingBlockChanges()
+
+            assertEquals(listOf("alice" to false), client.calls)
+        }
+
+    /** The server still lists them; taking its word would block them again. */
+    @Test
+    fun `restoring the list does not re-block someone whose unblock the server has yet to hear`() =
+        runTest {
+            val client = FlakyBlockClient()
+            val repo = repo(client, NoOpContactDao())
+            repo.setBlocked("alice", blocked = true)
+            repo.setBlocked("alice", blocked = false)
+
+            repo.restoreBlockedFromServer()
+
+            assertFalse(repo.isBlocked("alice"))
+        }
+
     @Test
     fun `blocking someone withdraws the notification for the chat with them`() =
         runTest {
@@ -268,6 +371,7 @@ class ContactRepositoryImplTest {
         blockedUserDao = blocks,
         conversationDao = conversationDao,
         notificationHandler = notificationHandler,
+        userPreferences = userPreferences,
         contactProfileDao = profiles,
         discoveryRepository = discovery,
         sessionManager = mockk<SessionManager> { every { getStoredPhoneE164() } returns own },

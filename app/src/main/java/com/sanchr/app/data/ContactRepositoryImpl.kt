@@ -9,6 +9,7 @@ import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.core.model.ContactDisplayName
 import com.sanchr.core.model.User
 import com.sanchr.core.notifications.NotificationHandler
@@ -30,6 +31,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.datetime.Instant
 
 @Singleton
@@ -41,6 +43,7 @@ class ContactRepositoryImpl
         private val blockedUserDao: BlockedUserDao,
         private val conversationDao: ConversationDao,
         private val notificationHandler: NotificationHandler,
+        private val userPreferences: UserPreferences,
         private val contactProfileDao: ContactProfileDao,
         private val discoveryRepository: DiscoveryRepository,
         private val sessionManager: SessionManager,
@@ -161,18 +164,40 @@ class ContactRepositoryImpl
             } else {
                 blockedUserDao.unblock(userId)
             }
+            // Told now if it can be, and remembered if not: the server's list
+            // is what a new phone starts from.
+            userPreferences.setPendingBlockSync(userId, if (tellServer(userId, blocked)) null else blocked)
+        }
+
+        override suspend fun syncPendingBlockChanges(): Int {
+            var sent = 0
+            for ((userId, blocked) in userPreferences.pendingBlockSync.first()) {
+                if (tellServer(userId, blocked)) {
+                    userPreferences.setPendingBlockSync(userId, null)
+                    sent++
+                }
+            }
+            return sent
+        }
+
+        /** @return whether the server took it. */
+        private suspend fun tellServer(
+            userId: String,
+            blocked: Boolean,
+        ): Boolean =
             try {
                 if (blocked) {
                     contactClient.blockContact(BlockContactRequest(userId = userId))
                 } else {
                     contactClient.unblockContact(UnblockContactRequest(userId = userId))
                 }
+                true
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                Log.w(TAG, "block state not synced to the server; enforced locally", error)
+                Log.w(TAG, "block state not synced to the server; enforced locally and kept to send again", error)
+                false
             }
-        }
 
         override suspend fun setFavorite(
             userId: String,
@@ -205,8 +230,18 @@ class ContactRepositoryImpl
         override suspend fun restoreBlockedFromServer(): Int {
             // Every page first: a list that fails half way is not written.
             val server = serverBlockedList()
+            // Not anyone unblocked here whose unblock the server has yet to
+            // hear: it still lists them, and taking its word would block
+            // them again.
+            val unblockedHere =
+                userPreferences.pendingBlockSync
+                    .first()
+                    .filterValues { !it }
+                    .keys
             val now = System.currentTimeMillis()
-            blockedUserDao.blockAll(server.map { BlockedUserEntity(userId = it.userId, blockedAt = now) })
+            blockedUserDao.blockAll(
+                server.filterNot { it.userId in unblockedHere }.map { BlockedUserEntity(userId = it.userId, blockedAt = now) },
+            )
             return server.size
         }
 

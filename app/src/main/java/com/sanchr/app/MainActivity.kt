@@ -231,7 +231,10 @@ class MainActivity : FragmentActivity() {
             // Its own coroutine: nothing about the keys waits on it, and it
             // must not be skipped by the early returns below.
             launch { serverSettingsLoader.load() }
-            launch { blockListRestorer.restoreOnce() }
+            launch {
+                blockListRestorer.restoreOnce()
+                blockListRestorer.syncPending()
+            }
             // Messages deleted by an older version kept what they said.
             // Then the photos older versions left behind when their message
             // went. In that order: erasing removes what it can still name.
