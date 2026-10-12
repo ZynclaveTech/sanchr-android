@@ -40,6 +40,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
 import org.json.JSONArray
@@ -151,6 +152,12 @@ class MessageRepositoryImpl
         }
 
         override suspend fun messageIds(conversationId: String): List<String> = messageDao.messageIdsInConversation(conversationId)
+
+        override suspend fun expiredMessageIds(nowMillis: Long): List<String> = messageDao.expiredMessageIds(nowMillis)
+
+        override suspend fun deleteExpiredMessages(nowMillis: Long): Int = messageDao.deleteExpiredMessages(nowMillis)
+
+        override fun observeNextExpiryMillis(): Flow<Long?> = messageDao.observeNextExpiry().distinctUntilChanged()
 
         override suspend fun clearMessages(conversationId: String) {
             messageDao.deleteAllMessagesInConversation(conversationId)

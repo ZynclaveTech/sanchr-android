@@ -6,6 +6,7 @@ import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.MessageReactionEntity
 import kotlin.test.assertEquals
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -180,5 +181,33 @@ class ReactionCleanupTest {
             ReactionCleanup.sweep(db.openHelper.writableDatabase, now)
 
             assertEquals(0, reactionsOn("m1"))
+        }
+
+    // ── Expiry ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `a message is due at its deadline, not a millisecond after`() =
+        runTest {
+            conversation("c1")
+            message("due", expiresAt = now)
+            message("not-yet", expiresAt = now + 1)
+            message("forever")
+
+            assertEquals(listOf("due"), db.messageDao().expiredMessageIds(now))
+            assertEquals(1, db.messageDao().deleteExpiredMessages(now))
+            assertEquals(listOf("forever", "not-yet"), db.messageDao().messageIdsInConversation("c1").sorted())
+        }
+
+    @Test
+    fun `the next deadline is the earliest one held, and none when nothing disappears`() =
+        runTest {
+            conversation("c1")
+            message("forever")
+            assertEquals(null, db.messageDao().observeNextExpiry().first())
+
+            message("later", expiresAt = now + 60_000)
+            message("sooner", expiresAt = now + 5_000)
+
+            assertEquals(now + 5_000, db.messageDao().observeNextExpiry().first())
         }
 }

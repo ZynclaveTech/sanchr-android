@@ -20,7 +20,7 @@ import kotlinx.datetime.Instant
 class ClearChatUseCaseTest {
     private val repository = mockk<MessageRepository>(relaxed = true)
     private val downloader = mockk<AttachmentDownloader>(relaxed = true)
-    private val clearChat = ClearChatUseCase(repository, downloader)
+    private val clearChat = ClearChatUseCase(repository, MessageMediaEvictor(repository, downloader))
 
     private fun attachment(mimeType: String) = MediaAttachment(url = "sanchr-media://x", mimeType = mimeType, sizeBytes = 1)
 
@@ -60,7 +60,7 @@ class ClearChatUseCaseTest {
 
             clearChat("c1")
 
-            coVerify(exactly = 1) { downloader.evict("p1", "image/jpeg") }
+            coVerify(exactly = 2) { downloader.evict("p1", "image/jpeg") }
         }
 
     /** Each tile of an album is cached under its own id. */
@@ -71,9 +71,9 @@ class ClearChatUseCaseTest {
 
             clearChat("c1")
 
-            coVerify(exactly = 1) { downloader.evict("a1#0", "image/jpeg") }
-            coVerify(exactly = 1) { downloader.evict("a1#1", "image/png") }
-            coVerify(exactly = 1) { downloader.evict("a1#2", "video/mp4") }
+            coVerify(exactly = 2) { downloader.evict("a1#0", "image/jpeg") }
+            coVerify(exactly = 2) { downloader.evict("a1#1", "image/png") }
+            coVerify(exactly = 2) { downloader.evict("a1#2", "video/mp4") }
         }
 
     /** The rows say which files there are, so the files go first. */
@@ -102,7 +102,7 @@ class ClearChatUseCaseTest {
 
             clearChat("c1")
 
-            coVerify(exactly = 1) { downloader.evict("p2", "image/jpeg") }
+            coVerify(exactly = 2) { downloader.evict("p2", "image/jpeg") }
             coVerify(exactly = 1) { repository.clearMessages("c1") }
         }
 

@@ -1,10 +1,6 @@
 package com.sanchr.domain.messaging
 
-import android.util.Log
-import com.sanchr.domain.messaging.media.AttachmentDownloader
-import com.sanchr.domain.messaging.vault.AutoVaultRules
 import javax.inject.Inject
-import kotlinx.coroutines.CancellationException
 
 /**
  * Clears a chat: every message in it goes from this phone, and so does
@@ -25,34 +21,14 @@ class ClearChatUseCase
     @Inject
     constructor(
         private val messageRepository: MessageRepository,
-        private val attachmentDownloader: AttachmentDownloader,
+        private val mediaEvictor: MessageMediaEvictor,
     ) {
         suspend operator fun invoke(conversationId: String): Int {
             val ids = messageRepository.messageIds(conversationId)
-            for (id in ids) removeCachedMedia(id)
+            val files = ids.flatMap { mediaEvictor.evict(it) }
             messageRepository.clearMessages(conversationId)
+            // And once more now the rows are gone: see MessageMediaEvictor.again.
+            mediaEvictor.again(files)
             return ids.size
-        }
-
-        /**
-         * One message's files. A failure here is logged and passed over: a
-         * file that would not delete must not be what keeps the messages
-         * themselves on the phone.
-         */
-        private suspend fun removeCachedMedia(messageId: String) {
-            try {
-                val message = messageRepository.message(messageId) ?: return
-                for ((cacheId, attachment) in AutoVaultRules.cachedAttachments(message)) {
-                    attachmentDownloader.evict(cacheId, attachment.mimeType)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "could not remove cached media for $messageId while clearing its chat", e)
-            }
-        }
-
-        private companion object {
-            const val TAG = "ClearChatUseCase"
         }
     }
