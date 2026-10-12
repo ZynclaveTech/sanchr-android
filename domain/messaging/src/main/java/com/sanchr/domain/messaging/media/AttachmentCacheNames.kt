@@ -22,6 +22,26 @@ object AttachmentCacheNames {
 
     fun fileName(messageId: String): String = if (SAFE.matches(messageId)) messageId else sha256(messageId)
 
+    /**
+     * The message a cached file belongs to, read back from its name, or null
+     * if the name does not say.
+     *
+     * The reverse of [fileName] for the ordinary case: `<id>.jpg`,
+     * `<id>#2.mp4`, either with `.part` on the end. Only a name whose id is
+     * the UUID every message id in practice is: a hash (see above) does not
+     * give its id back, and anything else is some other file. Those are
+     * answered with null rather than a guess — the caller is deciding what
+     * to delete.
+     */
+    fun messageIdOf(cachedFileName: String): String? {
+        val whole = cachedFileName.removeSuffix(PARTIAL_SUFFIX)
+        val base = whole.substringBeforeLast('.', missingDelimiterValue = whole).substringBefore('#')
+        return base.takeIf(UUID::matches)
+    }
+
+    private const val PARTIAL_SUFFIX = ".part"
+    private val UUID = Regex("^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
+
     /** Whether [id] is a shape a message or conversation id is allowed to have. */
     fun isWellFormedId(id: String): Boolean = SAFE.matches(id) && !id.contains('#')
 

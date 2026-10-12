@@ -89,6 +89,15 @@ class AttachmentDownloader
                 }
             }
 
+        /** Every file in the attachment cache, finished or partial. Empty if there is no cache yet. */
+        suspend fun cachedFiles(): List<File> =
+            withContext(Dispatchers.IO) {
+                File(context.cacheDir, CACHE_DIR).listFiles()?.filter { it.isFile }.orEmpty()
+            }
+
+        /** Removes one file found by [cachedFiles]; true when it was deleted. */
+        suspend fun remove(file: File): Boolean = inFlight.withLock { withContext(Dispatchers.IO) { file.delete() } }
+
         /**
          * Whether this attachment is already on disk, so it can be shown
          * without spending data. Lets the auto-download policy hold back only

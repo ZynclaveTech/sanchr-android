@@ -344,6 +344,9 @@ interface MessageRepository {
      */
     suspend fun eraseDeletedMessages(): Int
 
+    /** Which of [ids] are messages on this phone that can still have media in the cache. */
+    suspend fun messageIdsHoldingMedia(ids: List<String>): Set<String>
+
     /** The ids of every message this device holds for a conversation. */
     suspend fun messageIds(conversationId: String): List<String>
 

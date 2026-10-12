@@ -214,6 +214,14 @@ interface MessageDao {
     @Query("UPDATE messages SET is_deleted = 1, content_type = 'text', content_body = '' WHERE id = :messageId")
     suspend fun flagDeleted(messageId: String)
 
+    /**
+     * Which of [ids] are messages that can still have media in the cache:
+     * here, not deleted, and not text or a marker left where media used to
+     * be. At most a few hundred ids a call (SQLite's variable limit).
+     */
+    @Query("SELECT id FROM messages WHERE id IN (:ids) AND is_deleted = 0 AND content_type NOT IN ('text', 'system')")
+    suspend fun idsHoldingMedia(ids: List<String>): List<String>
+
     /** Messages deleted before deleting emptied them: flagged, but still holding what they said. */
     @Query("SELECT id FROM messages WHERE is_deleted = 1 AND content_body != ''")
     suspend fun deletedMessageIdsStillHoldingContent(): List<String>
