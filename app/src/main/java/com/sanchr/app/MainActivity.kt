@@ -50,6 +50,7 @@ import com.sanchr.core.designsystem.theme.LocalEnterSendsMessage
 import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
+import com.sanchr.domain.messaging.DisappearingMessageSweeper
 import com.sanchr.feature.chats.share.ShareTargetScreen
 import com.sanchr.feature.chats.share.toSharedContent
 import com.sanchr.sync.SyncState
@@ -67,6 +68,8 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var serverSettingsLoader: ServerSettingsLoader
 
     @Inject lateinit var blockListRestorer: BlockListRestorer
+
+    @Inject lateinit var disappearingMessageSweeper: DisappearingMessageSweeper
 
     @Inject
     lateinit var notificationHandler: NotificationHandler
@@ -223,6 +226,9 @@ class MainActivity : FragmentActivity() {
             // must not be skipped by the early returns below.
             launch { serverSettingsLoader.load() }
             launch { blockListRestorer.restoreOnce() }
+            // While the app is on screen: a message whose time is up goes
+            // then, not whenever the background sync next happens to run.
+            launch { repeatOnLifecycle(Lifecycle.State.STARTED) { disappearingMessageSweeper.run() } }
 
             val userId = sessionManager.getUserId() ?: return@launch
             val deviceId = sessionManager.getDeviceId()?.toIntOrNull() ?: return@launch

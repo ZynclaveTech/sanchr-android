@@ -321,6 +321,20 @@ interface MessageRepository {
         muted: Boolean,
     )
 
+    /** The ids of every disappearing message whose deadline is at or before [nowMillis]. */
+    suspend fun expiredMessageIds(nowMillis: Long): List<String>
+
+    /**
+     * Removes every disappearing message whose deadline is at or before
+     * [nowMillis]. Rows only — see [ExpireMessagesUseCase] for the files.
+     *
+     * @return how many were removed.
+     */
+    suspend fun deleteExpiredMessages(nowMillis: Long): Int
+
+    /** The earliest deadline among the disappearing messages held, or null; re-emits as messages come and go. */
+    fun observeNextExpiryMillis(): Flow<Long?>
+
     /** The ids of every message this device holds for a conversation. */
     suspend fun messageIds(conversationId: String): List<String>
 

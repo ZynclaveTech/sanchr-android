@@ -24,6 +24,7 @@ import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
+import com.sanchr.domain.messaging.ExpireMessagesUseCase
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
@@ -73,6 +74,7 @@ class SyncWorker
         private val conversationDao: ConversationDao,
         private val messageDao: MessageDao,
         private val messageRepository: MessageRepository,
+        private val expireMessages: ExpireMessagesUseCase,
         private val chatBackupManager: ChatBackupManager,
         private val syncState: SyncState,
         private val contactProfileResolver: ContactProfileResolver,
@@ -380,8 +382,7 @@ class SyncWorker
          * has passed.
          */
         private suspend fun cleanExpiredVaultItems() {
-            val now = System.currentTimeMillis()
-            val deletedCount = messageDao.deleteExpiredMessages(now)
+            val deletedCount = expireMessages(System.currentTimeMillis())
             if (deletedCount > 0) {
                 Log.d(TAG, "Cleaned $deletedCount expired message(s)")
             }

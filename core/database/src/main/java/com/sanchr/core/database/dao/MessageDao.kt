@@ -262,6 +262,14 @@ interface MessageDao {
     @Query("DELETE FROM messages")
     suspend fun deleteAllMessages()
 
+    /** Messages whose time is up, by id. Their media has to be found before their rows go. */
+    @Query("SELECT id FROM messages WHERE expires_at IS NOT NULL AND expires_at <= :currentTimeMillis")
+    suspend fun expiredMessageIds(currentTimeMillis: Long): List<String>
+
+    /** The earliest deadline among the disappearing messages held, or null if there are none. */
+    @Query("SELECT MIN(expires_at) FROM messages WHERE expires_at IS NOT NULL")
+    fun observeNextExpiry(): Flow<Long?>
+
     /** @return how many messages expired. */
     @Transaction
     suspend fun deleteExpiredMessages(currentTimeMillis: Long): Int {
@@ -272,7 +280,7 @@ interface MessageDao {
     @Query(
         """
         DELETE FROM messages
-        WHERE expires_at IS NOT NULL AND expires_at < :currentTimeMillis
+        WHERE expires_at IS NOT NULL AND expires_at <= :currentTimeMillis
         """,
     )
     suspend fun deleteExpiredMessageRows(currentTimeMillis: Long): Int
@@ -280,7 +288,7 @@ interface MessageDao {
     @Query(
         """
         DELETE FROM message_reactions
-        WHERE message_id IN (SELECT id FROM messages WHERE expires_at IS NOT NULL AND expires_at < :currentTimeMillis)
+        WHERE message_id IN (SELECT id FROM messages WHERE expires_at IS NOT NULL AND expires_at <= :currentTimeMillis)
         """,
     )
     suspend fun deleteReactionsOnExpiredMessages(currentTimeMillis: Long)

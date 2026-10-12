@@ -20,7 +20,7 @@ import kotlinx.datetime.Instant
 class ClearChatUseCaseTest {
     private val repository = mockk<MessageRepository>(relaxed = true)
     private val downloader = mockk<AttachmentDownloader>(relaxed = true)
-    private val clearChat = ClearChatUseCase(repository, downloader)
+    private val clearChat = ClearChatUseCase(repository, MessageMediaEvictor(repository, downloader))
 
     private fun attachment(mimeType: String) = MediaAttachment(url = "sanchr-media://x", mimeType = mimeType, sizeBytes = 1)
 
