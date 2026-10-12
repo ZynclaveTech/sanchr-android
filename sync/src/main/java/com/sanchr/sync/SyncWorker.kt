@@ -355,6 +355,8 @@ class SyncWorker
                 // only on this device and must survive every refresh.
                 conversationDao.upsertFromServer(entities)
                 Log.d(TAG, "Refreshed ${entities.size} conversation(s)")
+                // Now that the server has said who is in them.
+                messageRepository.settlePlaceholderConversations(entities.mapTo(HashSet()) { it.id })
             }
         }
 

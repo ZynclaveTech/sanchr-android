@@ -35,6 +35,7 @@ class MessageRepositoryImplUnreadTest {
     private val messagingClient = mockk<MessagingServiceClient>(relaxed = true)
     private val notificationClient = mockk<NotificationServiceClient>(relaxed = true)
     private val notificationHandler = mockk<NotificationHandler>(relaxed = true)
+    private val userPreferences = mockk<com.sanchr.core.datastore.UserPreferences>(relaxed = true)
     private val mediaEvictor = mockk<MessageMediaEvictor>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
@@ -44,6 +45,7 @@ class MessageRepositoryImplUnreadTest {
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
             notificationHandler = notificationHandler,
+            userPreferences = userPreferences,
             mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk<ContactProfileDao>(relaxed = true),
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),

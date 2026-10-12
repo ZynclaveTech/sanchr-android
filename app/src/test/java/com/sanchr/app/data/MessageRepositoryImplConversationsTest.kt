@@ -25,6 +25,7 @@ class MessageRepositoryImplConversationsTest {
     private val messageDao = mockk<MessageDao>(relaxed = true)
     private val conversationDao = mockk<ConversationDao>(relaxed = true)
     private val notificationHandler = mockk<com.sanchr.core.notifications.NotificationHandler>(relaxed = true)
+    private val userPreferences = mockk<com.sanchr.core.datastore.UserPreferences>(relaxed = true)
     private val mediaEvictor = mockk<com.sanchr.domain.messaging.MessageMediaEvictor>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
@@ -34,6 +35,7 @@ class MessageRepositoryImplConversationsTest {
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
             notificationHandler = notificationHandler,
+            userPreferences = userPreferences,
             mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk<ContactProfileDao>(relaxed = true),
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),

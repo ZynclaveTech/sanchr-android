@@ -4,10 +4,12 @@ import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.MessageDao
+import com.sanchr.core.database.dao.MessageSender
 import com.sanchr.core.database.dao.PendingMessageAckDao
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.datastore.UserPreferences
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.proto.messaging.Conversation as ProtoConversation
 import com.sanchr.proto.messaging.GetConversationsResponse
@@ -18,6 +20,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -38,6 +41,7 @@ class MessageRepositoryImplConversationTitleTest {
     private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" }
 
     private val notificationHandler = mockk<com.sanchr.core.notifications.NotificationHandler>(relaxed = true)
+    private val userPreferences = mockk<UserPreferences>(relaxed = true)
     private val mediaEvictor = mockk<com.sanchr.domain.messaging.MessageMediaEvictor>(relaxed = true)
     private val messageDao = mockk<MessageDao>(relaxed = true)
     private val repo =
@@ -48,6 +52,7 @@ class MessageRepositoryImplConversationTitleTest {
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
             notificationHandler = notificationHandler,
+            userPreferences = userPreferences,
             mediaEvictor = { mediaEvictor },
             contactProfileDao = contactProfileDao,
             contactProfileResolver = resolver,
@@ -142,6 +147,8 @@ class MessageRepositoryImplConversationTitleTest {
             assertEquals("DIRECT", saved.captured.single().type)
             assertEquals("""["self","peer"]""", saved.captured.single().participantIds)
             assertEquals("~Alice", saved.captured.single().title)
+            // The server's own copy is not a guess.
+            coVerify(exactly = 0) { userPreferences.addPlaceholderConversation(any()) }
         }
 
     @Test
@@ -154,6 +161,8 @@ class MessageRepositoryImplConversationTitleTest {
             prepare()
 
             coVerify(exactly = 1) { conversationDao.upsertFromServer(capture(saved)) }
+            // Remembered as a guess, for the next sync to check.
+            coVerify(exactly = 1) { userPreferences.addPlaceholderConversation("conv-1") }
             val shell = saved.captured.single()
             assertEquals("conv-1", shell.id)
             assertEquals("DIRECT", shell.type)
@@ -210,5 +219,73 @@ class MessageRepositoryImplConversationTitleTest {
 
             coVerify(exactly = 0) { messagingClient.getConversations(any()) }
             coVerify(exactly = 0) { conversationDao.upsertFromServer(any()) }
+        }
+
+    // ── Checking a placeholder once the server has spoken ────────────────
+
+    private fun placeholders(vararg ids: String) {
+        every { userPreferences.placeholderConversations } returns flowOf(ids.toSet())
+    }
+
+    private fun chatWithAlice() {
+        coEvery { conversationDao.getConversationById("conv-1") } returns
+            ConversationEntity(id = "conv-1", type = "DIRECT", participantIds = """["self","alice"]""", updatedAt = 1, createdAt = 1)
+    }
+
+    /**
+     * A placeholder is filed under an id its first message chose. If that id
+     * is this user's chat with someone else, the message does not belong.
+     */
+    @Test
+    fun `a message that made a placeholder for someone else's chat is removed once the server says whose chat it is`() =
+        runTest {
+            placeholders("conv-1")
+            chatWithAlice()
+            coEvery { messageDao.sendersInConversation("conv-1") } returns
+                listOf(MessageSender("from-mallory", "mallory"), MessageSender("from-alice", "alice"), MessageSender("mine", "self"))
+
+            assertEquals(1, repo.settlePlaceholderConversations(setOf("conv-1")))
+
+            coVerify(exactly = 1) { messageDao.deleteMessages(listOf("from-mallory")) }
+            coVerify(exactly = 1) { mediaEvictor.evict("from-mallory") }
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("conv-1") }
+            coVerify(exactly = 1) { userPreferences.removePlaceholderConversations(setOf("conv-1")) }
+        }
+
+    @Test
+    fun `a placeholder that was right loses nothing and stops being a guess`() =
+        runTest {
+            placeholders("conv-1")
+            chatWithAlice()
+            coEvery { messageDao.sendersInConversation("conv-1") } returns
+                listOf(MessageSender("from-alice", "alice"), MessageSender("mine", "self"))
+
+            assertEquals(0, repo.settlePlaceholderConversations(setOf("conv-1")))
+
+            coVerify(exactly = 0) { messageDao.deleteMessages(any()) }
+            coVerify(exactly = 1) { userPreferences.removePlaceholderConversations(setOf("conv-1")) }
+        }
+
+    @Test
+    fun `a placeholder the server has not listed is left for a later sync`() =
+        runTest {
+            placeholders("conv-1")
+
+            assertEquals(0, repo.settlePlaceholderConversations(setOf("some-other-chat")))
+
+            coVerify(exactly = 0) { messageDao.sendersInConversation(any()) }
+            coVerify(exactly = 0) { userPreferences.removePlaceholderConversations(any()) }
+        }
+
+    /** Only chats this phone guessed at are ever checked this way. */
+    @Test
+    fun `a conversation that was never a placeholder is not touched`() =
+        runTest {
+            placeholders()
+
+            assertEquals(0, repo.settlePlaceholderConversations(setOf("conv-1")))
+
+            coVerify(exactly = 0) { messageDao.sendersInConversation(any()) }
+            coVerify(exactly = 0) { messageDao.deleteMessages(any()) }
         }
 }

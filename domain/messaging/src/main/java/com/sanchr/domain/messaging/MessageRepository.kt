@@ -97,6 +97,21 @@ interface MessageRepository {
     )
 
     /**
+     * Checks the stand-in conversations [prepareConversationForIncoming]
+     * made against what the server has now said about them.
+     *
+     * A stand-in is filed under an id its first message chose, with members
+     * that are a guess. If that id turns out to be this user's one-to-one
+     * chat with someone else, the message that created it does not belong
+     * there and nor does anything else its sender put in: it is removed, as
+     * it would have been refused had the chat been known when it arrived.
+     *
+     * @param confirmedIds conversations the server has just listed.
+     * @return how many messages were removed.
+     */
+    suspend fun settlePlaceholderConversations(confirmedIds: Set<String>): Int
+
+    /**
      * Whether a message from [senderId] may be filed in [conversationId] —
      * see [DirectChatMembership] for the rule and for why it says yes to
      * anything it cannot be sure about.
