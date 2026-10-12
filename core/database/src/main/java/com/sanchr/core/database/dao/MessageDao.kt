@@ -202,8 +202,25 @@ interface MessageDao {
         flagDeleted(messageId)
     }
 
-    @Query("UPDATE messages SET is_deleted = 1 WHERE id = :messageId")
+    /**
+     * Flags the row deleted and empties it.
+     *
+     * The row has to stay: it is what stops the same message being saved
+     * again if it is redelivered (see [insertMessageIfAbsent]). What it said
+     * does not. Flagged but left whole, a "deleted" message kept its text —
+     * or the keys to its photo — in the database for good, and went into
+     * every backup.
+     */
+    @Query("UPDATE messages SET is_deleted = 1, content_type = 'text', content_body = '' WHERE id = :messageId")
     suspend fun flagDeleted(messageId: String)
+
+    /** Messages deleted before deleting emptied them: flagged, but still holding what they said. */
+    @Query("SELECT id FROM messages WHERE is_deleted = 1 AND content_body != ''")
+    suspend fun deletedMessageIdsStillHoldingContent(): List<String>
+
+    /** Empties every deleted message that still holds what it said. @return how many. */
+    @Query("UPDATE messages SET content_type = 'text', content_body = '' WHERE is_deleted = 1 AND content_body != ''")
+    suspend fun emptyDeletedMessages(): Int
 
     @Query("DELETE FROM message_reactions WHERE message_id = :messageId")
     suspend fun deleteReactionsOn(messageId: String)

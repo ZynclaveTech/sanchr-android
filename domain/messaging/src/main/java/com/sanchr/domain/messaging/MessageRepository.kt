@@ -335,6 +335,15 @@ interface MessageRepository {
     /** The earliest deadline among the disappearing messages held, or null; re-emits as messages come and go. */
     fun observeNextExpiryMillis(): Flow<Long?>
 
+    /**
+     * Finishes deleting messages that were deleted before deleting erased
+     * anything: empties what they said and removes their cached media.
+     * Cheap when there is nothing to do, which is every time but the first.
+     *
+     * @return how many were emptied.
+     */
+    suspend fun eraseDeletedMessages(): Int
+
     /** The ids of every message this device holds for a conversation. */
     suspend fun messageIds(conversationId: String): List<String>
 
