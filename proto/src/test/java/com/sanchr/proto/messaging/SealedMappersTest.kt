@@ -89,4 +89,34 @@ class SealedMappersTest {
         assertEquals(2, response.tokens.size)
         assertContentEquals(ByteArray(32) { 1 }, response.tokens[0])
     }
+
+    /**
+     * These were logged as "unhandled" and dropped, so a sealed message was
+     * never received as it was sent, only at the next sync.
+     */
+    @Test
+    fun `a sealed message on the stream is delivered, in the shape a sync gives it`() {
+        val event =
+            Messaging.ServerEvent
+                .newBuilder()
+                .setSealedMessage(
+                    Messaging.SealedInboundMessage
+                        .newBuilder()
+                        .setSealedEnvelope(ByteString.copyFrom(byteArrayOf(1, 2, 3)))
+                        .setServerTimestamp(42)
+                        .setMessageId("m-1"),
+                ).build()
+
+        val mapped = event.toManual()
+
+        val envelope = (mapped as ServerEvent.Message).envelope!!
+        assertContentEquals(byteArrayOf(1, 2, 3), envelope.cipherText)
+        assertEquals("m-1", envelope.messageId)
+        assertEquals(42L, envelope.serverTimestamp)
+        // What the receive path tells a sealed envelope by.
+        assertEquals("sealed", envelope.contentType)
+        assertEquals("00000000-0000-0000-0000-000000000000", envelope.senderId)
+        assertEquals(0, envelope.senderDevice)
+        assertEquals("00000000-0000-0000-0000-000000000000", envelope.conversationId)
+    }
 }

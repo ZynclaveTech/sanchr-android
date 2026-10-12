@@ -118,6 +118,7 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.grpc.testing)
     testImplementation(libs.grpc.inprocess)
+    testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.grpc.stub)
 
     androidTestImplementation(libs.junit.ext)
