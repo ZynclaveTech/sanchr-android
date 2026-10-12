@@ -15,6 +15,7 @@ import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
+import com.sanchr.core.notifications.MessageDrainScheduler
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
@@ -60,6 +61,7 @@ class RealtimeManager
         private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val incomingCallEvents: IncomingCallEvents,
         private val sendPresence: SendPresenceUseCase,
+        private val drainScheduler: MessageDrainScheduler,
         // `@ApplicationScope` runs on Dispatchers.Default (see AppModule) and is shared with
         // other app-wide singletons, so everything reached from handleServerEvent() must stay
         // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
@@ -273,8 +275,15 @@ class RealtimeManager
          */
         private suspend fun keepStreamOpen() {
             val backoff = ReconnectBackoff()
+            var reopening = false
             while (!sessionManager.getAccessToken().isNullOrEmpty()) {
                 var heardFromServer = false
+                // The stream carries only what is pushed while it is up. What
+                // was sent during the gap is read from the server's queue, as
+                // iOS does on every reopen, rather than left for the next
+                // push or the fifteen-minute sync to notice.
+                if (reopening) drainScheduler.enqueueDrain()
+                reopening = true
                 try {
                     messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
                         heardFromServer = true

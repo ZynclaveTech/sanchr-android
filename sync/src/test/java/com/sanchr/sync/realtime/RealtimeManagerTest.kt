@@ -8,6 +8,7 @@ import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.notifications.MessageDrainScheduler
 import com.sanchr.domain.messaging.PresenceStatus
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
 import com.sanchr.domain.messaging.SendPresenceUseCase
@@ -64,6 +65,7 @@ class RealtimeManagerTest {
     private val receiveMessageUseCase = mockk<ReceiveMessageUseCase>(relaxed = true)
     private val incomingCallEvents = mockk<IncomingCallEvents>(relaxed = true)
     private val sendPresence = mockk<SendPresenceUseCase>(relaxed = true)
+    private val drainScheduler = mockk<MessageDrainScheduler>(relaxed = true)
 
     /** Counts how many `messageStream(...).collect { }` invocations are live right now. */
     private val activeCollectors = AtomicInteger(0)
@@ -130,6 +132,7 @@ class RealtimeManagerTest {
             receiveMessageUseCase = receiveMessageUseCase,
             incomingCallEvents = incomingCallEvents,
             sendPresence = sendPresence,
+            drainScheduler = drainScheduler,
             appScope = scope,
         )
     }
@@ -431,6 +434,22 @@ class RealtimeManagerTest {
             runCurrent()
 
             assertTrue(opened.get() > 1, "a closed stream was left closed: nothing arrives until the app is reopened")
+        }
+
+    @Test
+    fun `what was sent while the stream was down is fetched when it reopens`() =
+        runTest {
+            val opened = AtomicInteger(0)
+            every { messagingClient.messageStream(any()) } returns flow { opened.incrementAndGet() }
+
+            buildManager().enterForeground()
+            runCurrent()
+            verify(exactly = 0) { drainScheduler.enqueueDrain() }
+
+            advanceTimeBy(ReconnectBackoff.CEILING_MS * 2)
+            runCurrent()
+
+            verify(exactly = opened.get() - 1) { drainScheduler.enqueueDrain() }
         }
 
     @Test
