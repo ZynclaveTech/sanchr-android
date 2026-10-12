@@ -76,6 +76,14 @@ interface ContactRepository {
      */
     suspend fun restoreBlockedFromServer(): Int
 
+    /**
+     * Sends the server every block and unblock it has not yet been told
+     * about. One that fails again is kept for the next time.
+     *
+     * @return how many were sent.
+     */
+    suspend fun syncPendingBlockChanges(): Int
+
     /** Adds a contact to favorites. */
     suspend fun setFavorite(
         userId: String,

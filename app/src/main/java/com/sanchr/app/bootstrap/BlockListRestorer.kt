@@ -47,6 +47,21 @@ class BlockListRestorer
             }
         }
 
+        /**
+         * Sends the server the blocks and unblocks it missed. After
+         * [restoreOnce], which leaves alone anyone waiting here to be
+         * unblocked.
+         */
+        suspend fun syncPending(): Int =
+            try {
+                contactRepository.syncPendingBlockChanges()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "could not send pending block changes; will try again at the next launch", e)
+                0
+            }
+
         private companion object {
             const val TAG = "BlockListRestorer"
         }

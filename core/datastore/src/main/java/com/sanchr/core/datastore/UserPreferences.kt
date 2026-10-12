@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -83,6 +84,7 @@ class UserPreferences
             val MEDIA_AUTO_DOWNLOAD = stringPreferencesKey("media_auto_download") // "wifi", "always", "never"
             val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
             val BLOCK_LIST_RESTORED = booleanPreferencesKey("block_list_restored")
+            val PENDING_BLOCK_SYNC = stringSetPreferencesKey("pending_block_sync")
         }
 
         // --- Theme ---
@@ -424,6 +426,38 @@ class UserPreferences
             dataStore.edit { it[Keys.BLOCK_LIST_RESTORED] = restored }
         }
 
+        /**
+         * Blocks and unblocks made on this phone that the server has not
+         * been told about yet: user id to whether they are blocked.
+         *
+         * A block is written here first and sent afterwards. A send that
+         * failed was only logged, so the server's list could stay wrong for
+         * good — and the server's list is what a new phone starts from.
+         */
+        val pendingBlockSync: Flow<Map<String, Boolean>> =
+            dataStore.data.map { prefs -> prefs[Keys.PENDING_BLOCK_SYNC].orEmpty().mapNotNull(::decodePendingBlock).toMap() }
+
+        /** Records that [userId]'s state still has to reach the server, or with null that it has. */
+        suspend fun setPendingBlockSync(
+            userId: String,
+            blocked: Boolean?,
+        ) {
+            dataStore.edit { prefs ->
+                // The latest choice replaces an earlier one that never got sent.
+                val others = prefs[Keys.PENDING_BLOCK_SYNC].orEmpty().filterNot { decodePendingBlock(it)?.first == userId }
+                val updated = if (blocked == null) others else others + ((if (blocked) BLOCKED_MARK else UNBLOCKED_MARK) + userId)
+                if (updated.isEmpty()) prefs.remove(Keys.PENDING_BLOCK_SYNC) else prefs[Keys.PENDING_BLOCK_SYNC] = updated.toSet()
+            }
+        }
+
+        private fun decodePendingBlock(entry: String): Pair<String, Boolean>? =
+            when {
+                entry.length < 2 -> null
+                entry.startsWith(BLOCKED_MARK) -> entry.drop(1) to true
+                entry.startsWith(UNBLOCKED_MARK) -> entry.drop(1) to false
+                else -> null
+            }
+
         // --- Lifecycle ---
 
         /**
@@ -438,6 +472,9 @@ class UserPreferences
         }
 
         companion object {
+            private const val BLOCKED_MARK = "+"
+            private const val UNBLOCKED_MARK = "-"
+
             /** Matches iOS's default and settings.proto's implicit empty-string case. */
             const val PROFILE_PHOTO_VISIBILITY_DEFAULT = "everyone"
         }

@@ -59,4 +59,15 @@ class BlockListRestorerTest {
 
             coVerify(exactly = 0) { prefs.setBlockListRestored(any()) }
         }
+
+    @Test
+    fun `what the server missed is sent, and a failure to send it is not the app's problem`() =
+        runTest {
+            val (restorer, _) = restorer(alreadyRestored = true)
+            coEvery { repository.syncPendingBlockChanges() } returns 2
+            kotlin.test.assertEquals(2, restorer.syncPending())
+
+            coEvery { repository.syncPendingBlockChanges() } throws RuntimeException("offline")
+            kotlin.test.assertEquals(0, restorer.syncPending())
+        }
 }
