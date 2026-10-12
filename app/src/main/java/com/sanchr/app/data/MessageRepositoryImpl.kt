@@ -24,6 +24,7 @@ import com.sanchr.core.model.User
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.DirectChatMembership
 import com.sanchr.domain.messaging.FailureClass
+import com.sanchr.domain.messaging.MessageMediaEvictor
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiptRule
 import com.sanchr.domain.messaging.vault.AutoVaultScheduler
@@ -34,6 +35,7 @@ import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.messaging.StartDirectConversationRequest
 import com.sanchr.proto.notifications.NotificationServiceClient
 import com.sanchr.proto.notifications.SetConversationNotificationPrefsRequest
+import dagger.Lazy
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -54,6 +56,8 @@ class MessageRepositoryImpl
         private val conversationDao: ConversationDao,
         private val pendingMessageAckDao: PendingMessageAckDao,
         private val blockedUserDao: BlockedUserDao,
+        // Lazy: the evictor reads messages through this repository.
+        private val mediaEvictor: Lazy<MessageMediaEvictor>,
         private val contactProfileDao: ContactProfileDao,
         private val contactProfileResolver: ContactProfileResolver,
         private val sessionManager: SessionManager,
@@ -174,7 +178,22 @@ class MessageRepositoryImpl
             } catch (e: Exception) {
                 Log.w(TAG, "server delete of conversation $conversationId failed: ${e.message}")
             }
+            // Its messages go with it, and so must the photos they had put
+            // in the cache — found now, while the rows still say which.
+            val evictor = mediaEvictor.get()
+            val files = messageDao.messageIdsInConversation(conversationId).flatMap { evictor.evict(it) }
             conversationDao.deleteConversation(conversationId)
+            evictor.again(files)
+        }
+
+        override suspend fun eraseDeletedMessages(): Int {
+            val ids = messageDao.deletedMessageIdsStillHoldingContent()
+            if (ids.isEmpty()) return 0
+            val evictor = mediaEvictor.get()
+            val files = ids.flatMap { evictor.evict(it) }
+            val emptied = messageDao.emptyDeletedMessages()
+            evictor.again(files)
+            return emptied
         }
 
         override fun observeConversation(conversationId: String): Flow<Conversation?> =
@@ -359,7 +378,13 @@ class MessageRepositoryImpl
             messageId: String,
             forEveryone: Boolean,
         ) {
+            // Deleting erases: the cached photo first, while the row still
+            // says which file is its; then what the row holds; then the file
+            // once more (see MessageMediaEvictor.again).
+            val evictor = mediaEvictor.get()
+            val files = evictor.evict(messageId)
             messageDao.softDeleteMessage(messageId)
+            evictor.again(files)
 
             if (forEveryone) {
                 messagingClient.deleteMessage(

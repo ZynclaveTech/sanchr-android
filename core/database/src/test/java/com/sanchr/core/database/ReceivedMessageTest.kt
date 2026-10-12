@@ -123,6 +123,35 @@ class ReceivedMessageTest {
             assertEquals("READ", stored().status)
         }
 
+    // ── Deleting ─────────────────────────────────────────────────────────
+
+    /** The row stays, to keep the id taken. What it said does not. */
+    @Test
+    fun `a deleted message keeps its place and none of its content`() =
+        runTest {
+            db.messageDao().insertMessageIfAbsent(message("peer", "something private"))
+
+            db.messageDao().softDeleteMessage("m1")
+
+            assertTrue(stored().isDeleted)
+            assertEquals("", stored().contentBody)
+            assertEquals("text", stored().contentType)
+            assertEquals("peer", stored().senderId)
+        }
+
+    @Test
+    fun `messages deleted before deleting emptied them are found and emptied`() =
+        runTest {
+            db.messageDao().insertMessage(message("peer", "left behind").copy(isDeleted = true))
+            assertEquals(listOf("m1"), db.messageDao().deletedMessageIdsStillHoldingContent())
+
+            assertEquals(1, db.messageDao().emptyDeletedMessages())
+
+            assertEquals("", stored().contentBody)
+            assertEquals(emptyList(), db.messageDao().deletedMessageIdsStillHoldingContent())
+            assertEquals(0, db.messageDao().emptyDeletedMessages())
+        }
+
     // ── Receipts ─────────────────────────────────────────────────────────
 
     private val notYetRead = listOf("QUEUED", "SENDING", "SENT", "FAILED", "DELIVERED")

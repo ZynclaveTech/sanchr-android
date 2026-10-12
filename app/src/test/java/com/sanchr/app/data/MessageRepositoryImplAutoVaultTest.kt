@@ -18,6 +18,7 @@ class MessageRepositoryImplAutoVaultTest {
     private val messageDao = mockk<MessageDao>(relaxed = true)
     private val conversationDao = mockk<ConversationDao>(relaxed = true)
     private val scheduler = mockk<AutoVaultScheduler>(relaxed = true)
+    private val mediaEvictor = mockk<com.sanchr.domain.messaging.MessageMediaEvictor>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
             messagingClient = mockk(relaxed = true),
@@ -25,6 +26,7 @@ class MessageRepositoryImplAutoVaultTest {
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk(relaxed = true),
             blockedUserDao = mockk(relaxed = true),
+            mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk(relaxed = true),
             contactProfileResolver = mockk(relaxed = true),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },

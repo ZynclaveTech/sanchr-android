@@ -36,6 +36,7 @@ class MessageRepositoryImplConversationTitleTest {
     private val resolver = mockk<ContactProfileResolver>()
     private val sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" }
 
+    private val mediaEvictor = mockk<com.sanchr.domain.messaging.MessageMediaEvictor>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
             messagingClient = messagingClient,
@@ -43,6 +44,7 @@ class MessageRepositoryImplConversationTitleTest {
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
+            mediaEvictor = { mediaEvictor },
             contactProfileDao = contactProfileDao,
             contactProfileResolver = resolver,
             sessionManager = sessionManager,

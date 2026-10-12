@@ -10,6 +10,7 @@ import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.domain.messaging.ContactProfileResolver
+import com.sanchr.domain.messaging.MessageMediaEvictor
 import com.sanchr.proto.messaging.MessagingServiceClient
 import com.sanchr.proto.notifications.NotificationServiceClient
 import com.sanchr.proto.notifications.SetConversationNotificationPrefsRequest
@@ -28,6 +29,7 @@ class MessageRepositoryImplUnreadTest {
     private val conversationDao = mockk<ConversationDao>(relaxed = true)
     private val messagingClient = mockk<MessagingServiceClient>(relaxed = true)
     private val notificationClient = mockk<NotificationServiceClient>(relaxed = true)
+    private val mediaEvictor = mockk<MessageMediaEvictor>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
             messagingClient = messagingClient,
@@ -35,6 +37,7 @@ class MessageRepositoryImplUnreadTest {
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
+            mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk<ContactProfileDao>(relaxed = true),
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),
             sessionManager = mockk<SessionManager> { every { getUserId() } returns "self" },
@@ -146,6 +149,65 @@ class MessageRepositoryImplUnreadTest {
 
             coVerify(exactly = 0) { messageDao.advanceOwnMessageStatus(any(), any(), any(), any()) }
             coVerify(exactly = 0) { messageDao.updateMessageStatus(any(), any()) }
+        }
+
+    private val photo = MessageMediaEvictor.CachedFile("m1", "image/jpeg")
+
+    @Test
+    fun `deleting a message removes its cached media, before the row is emptied and again after`() =
+        runTest {
+            coEvery { mediaEvictor.evict("m1") } returns listOf(photo)
+
+            repo.deleteMessage("m1", forEveryone = false)
+
+            coVerifyOrder {
+                mediaEvictor.evict("m1")
+                messageDao.softDeleteMessage("m1")
+                mediaEvictor.again(listOf(photo))
+            }
+        }
+
+    @Test
+    fun `deleting a conversation removes the cached media of every message in it`() =
+        runTest {
+            coEvery { messageDao.messageIdsInConversation("c1") } returns listOf("m1", "m2")
+            coEvery { mediaEvictor.evict("m1") } returns listOf(photo)
+            coEvery { mediaEvictor.evict("m2") } returns emptyList()
+
+            repo.deleteConversation("c1")
+
+            coVerifyOrder {
+                mediaEvictor.evict("m1")
+                mediaEvictor.evict("m2")
+                conversationDao.deleteConversation("c1")
+                mediaEvictor.again(listOf(photo))
+            }
+        }
+
+    @Test
+    fun `messages deleted by an older version are emptied, media first`() =
+        runTest {
+            coEvery { messageDao.deletedMessageIdsStillHoldingContent() } returns listOf("m1")
+            coEvery { mediaEvictor.evict("m1") } returns listOf(photo)
+            coEvery { messageDao.emptyDeletedMessages() } returns 1
+
+            org.junit.Assert.assertEquals(1, repo.eraseDeletedMessages())
+
+            coVerifyOrder {
+                mediaEvictor.evict("m1")
+                messageDao.emptyDeletedMessages()
+                mediaEvictor.again(listOf(photo))
+            }
+        }
+
+    @Test
+    fun `with nothing left over, erasing touches nothing`() =
+        runTest {
+            coEvery { messageDao.deletedMessageIdsStillHoldingContent() } returns emptyList()
+
+            org.junit.Assert.assertEquals(0, repo.eraseDeletedMessages())
+
+            coVerify(exactly = 0) { messageDao.emptyDeletedMessages() }
         }
 
     @Test
