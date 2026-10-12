@@ -280,7 +280,31 @@ private fun Messaging.CallLifecycleEvent.toManual(): CallLifecycleEvent =
         actorId = actorId,
     )
 
-private fun Messaging.ServerEvent.toManual(): ServerEvent? =
+/**
+ * A sealed message as it arrives on the stream, in the shape the same message
+ * has when a sync fetches it: marked `sealed`, from nobody the server can
+ * name, in no conversation it can name. The receive path tells a sealed
+ * envelope by exactly those marks.
+ *
+ * These were logged as "unhandled" and dropped, so on Android a sealed
+ * message — which is every one-to-one message — was never received as it was
+ * sent, only at the next sync.
+ */
+internal fun Messaging.SealedInboundMessage.toEnvelope(): EncryptedEnvelope =
+    EncryptedEnvelope(
+        conversationId = NIL_UUID,
+        messageId = messageId,
+        senderId = NIL_UUID,
+        senderDevice = 0,
+        cipherText = sealedEnvelope.toByteArray(),
+        contentType = SEALED_CONTENT_TYPE,
+        serverTimestamp = serverTimestamp,
+    )
+
+private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
+private const val SEALED_CONTENT_TYPE = "sealed"
+
+internal fun Messaging.ServerEvent.toManual(): ServerEvent? =
     when (eventCase) {
         Messaging.ServerEvent.EventCase.MESSAGE -> ServerEvent.Message(message.toManual())
         Messaging.ServerEvent.EventCase.TYPING -> ServerEvent.Typing(typing.toManual())
@@ -291,11 +315,11 @@ private fun Messaging.ServerEvent.toManual(): ServerEvent? =
         Messaging.ServerEvent.EventCase.CALL_LIFECYCLE ->
             ServerEvent.CallLifecycle(callLifecycle.toManual())
         Messaging.ServerEvent.EventCase.REACTION -> ServerEvent.Reaction(reaction.toManual())
-        Messaging.ServerEvent.EventCase.SEALED_MESSAGE,
+        Messaging.ServerEvent.EventCase.SEALED_MESSAGE -> ServerEvent.Message(sealedMessage.toEnvelope())
         Messaging.ServerEvent.EventCase.MESSAGE_EDITED,
         Messaging.ServerEvent.EventCase.EVENT_NOT_SET,
         -> {
-            Log.d(TAG, "Unhandled ServerEvent case: $eventCase (deferred to M3)")
+            Log.d(TAG, "Unhandled ServerEvent case: $eventCase")
             null
         }
     }

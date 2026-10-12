@@ -20,8 +20,12 @@ import org.json.JSONObject
  * sourced from `local.properties` (`sanchr.grpc.tls`) or `SANCHR_GRPC_TLS`
  * env, defaulting to `true` so production builds always use TLS.
  *
- * A default 10 s unary deadline is applied channel-wide via
- * [grpc_service_config.json] loaded from classpath resources. The
+ * A default 10 s deadline is applied to unary calls via
+ * [grpc_service_config.json] loaded from classpath resources. The streams
+ * are named there one by one and exempted: a deadline on a call is a limit
+ * on its whole life, and applied to everything it closed the realtime
+ * message stream — and a call's signalling stream — ten seconds after each
+ * was opened, so nothing was ever received as it was sent. The
  * [AuthInterceptor] and [UnauthenticatedRefreshInterceptor] are chained so
  * every RPC is authenticated outbound and observed inbound.
  */

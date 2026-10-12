@@ -1,6 +1,20 @@
 {
   "methodConfig": [
     {
+      "name": [
+        { "service": "sanchr.messaging.MessagingService", "method": "MessageStream" },
+        { "service": "sanchr.calling.CallSignalingService", "method": "CallStream" }
+      ],
+      "waitForReady": false
+    },
+    {
+      "name": [
+        { "service": "sanchr.messaging.MessagingService", "method": "SyncMessages" }
+      ],
+      "timeout": "60s",
+      "waitForReady": false
+    },
+    {
       "name": [{}],
       "timeout": "10s",
       "waitForReady": false
