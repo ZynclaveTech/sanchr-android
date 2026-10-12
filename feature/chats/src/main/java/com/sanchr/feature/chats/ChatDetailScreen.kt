@@ -569,6 +569,25 @@ private fun TranscriptList(
         derivedStateOf { listState.firstVisibleItemIndex > JUMP_VISIBLE_AFTER_ROWS }
     }
 
+    // Follow the conversation. A list keeps whatever row was first on screen
+    // where it is, so a message arriving at the bottom of a chat being read
+    // there, or one just sent, was added below the edge of the screen and had
+    // to be scrolled to by hand, every time.
+    val newest = (rows.firstOrNull() as? TranscriptRow.Msg)?.message
+    var newestSeenId by remember(uiState.conversation?.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(newest?.id) {
+        val previous = newestSeenId
+        newestSeenId = newest?.id
+        val follow =
+            followsNewest(
+                previousNewestId = previous,
+                newest = newest,
+                nearNewest = !showJumpToLatest,
+                searching = focusedResultId != null,
+            )
+        if (follow) listState.animateScrollToItem(0)
+    }
+
     Box(modifier = modifier) {
         if (rows.isEmpty() && !uiState.isLoading) {
             // iOS says this. Android drew an empty rectangle, which reads as a

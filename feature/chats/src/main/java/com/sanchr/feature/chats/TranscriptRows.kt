@@ -255,3 +255,29 @@ fun bubbleCorners(
 // Both 4 on iOS, and kept apart because they are 4 for different reasons.
 private val BUBBLE_JOINED_CORNER = 4.dp
 private val BUBBLE_TAIL_CORNER = 4.dp
+
+/**
+ * Whether the transcript should move to its newest message, now that the
+ * newest message has changed.
+ *
+ * Always for a message of our own: having sent it, the user is looking for
+ * it. For one received, only when they were already at the newest end; if
+ * they have scrolled back to read something, the list stays where they put
+ * it and the jump button brings them down.
+ *
+ * @param previousNewestId null the first time the transcript is drawn, when
+ *   the list opens at its newest message of its own accord.
+ * @param searching a search result is being shown, and the list belongs to
+ *   that.
+ */
+fun followsNewest(
+    previousNewestId: String?,
+    newest: MessageUiModel?,
+    nearNewest: Boolean,
+    searching: Boolean,
+): Boolean =
+    newest != null &&
+        previousNewestId != null &&
+        newest.id != previousNewestId &&
+        !searching &&
+        (newest.isFromMe || nearNewest)
