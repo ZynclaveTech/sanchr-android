@@ -291,6 +291,24 @@ interface MessageDao {
     @Query("SELECT id FROM messages WHERE expires_at IS NOT NULL AND expires_at <= :currentTimeMillis")
     suspend fun expiredMessageIds(currentTimeMillis: Long): List<String>
 
+    /**
+     * Conversations with a message whose time is up that may still be on
+     * show in a notification: someone else's, in a chat that has unread
+     * messages.
+     */
+    @Query(
+        """
+        SELECT DISTINCT m.conversation_id FROM messages m
+        INNER JOIN conversations c ON c.id = m.conversation_id
+        WHERE m.expires_at IS NOT NULL AND m.expires_at <= :currentTimeMillis
+          AND m.sender_id != :ownUserId AND m.is_deleted = 0 AND c.unread_count > 0
+        """,
+    )
+    suspend fun conversationsWithUnreadExpiredMessages(
+        currentTimeMillis: Long,
+        ownUserId: String,
+    ): List<String>
+
     /** The earliest deadline among the disappearing messages held, or null if there are none. */
     @Query("SELECT MIN(expires_at) FROM messages WHERE expires_at IS NOT NULL")
     fun observeNextExpiry(): Flow<Long?>

@@ -210,4 +210,20 @@ class ReactionCleanupTest {
 
             assertEquals(now + 5_000, db.messageDao().observeNextExpiry().first())
         }
+
+    @Test
+    fun `only a chat with unread messages and an expired message from someone else has a notification to withdraw`() =
+        runTest {
+            conversation("unread")
+            conversation("read")
+            conversation("mine")
+            db.conversationDao().incrementUnread("unread", now)
+            db.conversationDao().incrementUnread("mine", now)
+            message("a", conversationId = "unread", expiresAt = now)
+            message("b", conversationId = "read", expiresAt = now)
+            db.messageDao().insertMessage(entity("c", "mine", expiresAt = now).copy(senderId = "self"))
+            message("d", conversationId = "unread", expiresAt = now + 1)
+
+            assertEquals(listOf("unread"), db.messageDao().conversationsWithUnreadExpiredMessages(now, "self"))
+        }
 }

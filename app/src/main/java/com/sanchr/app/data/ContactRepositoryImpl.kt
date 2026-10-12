@@ -4,12 +4,14 @@ import android.util.Log
 import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
+import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.ContactDisplayName
 import com.sanchr.core.model.User
+import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.contacts.BlockedContact
 import com.sanchr.domain.contacts.ContactRepository
 import com.sanchr.domain.contacts.DeviceContact
@@ -37,6 +39,8 @@ class ContactRepositoryImpl
         private val contactClient: ContactServiceClient,
         private val contactDao: ContactDao,
         private val blockedUserDao: BlockedUserDao,
+        private val conversationDao: ConversationDao,
+        private val notificationHandler: NotificationHandler,
         private val contactProfileDao: ContactProfileDao,
         private val discoveryRepository: DiscoveryRepository,
         private val sessionManager: SessionManager,
@@ -150,6 +154,10 @@ class ContactRepositoryImpl
         ) {
             if (blocked) {
                 blockedUserDao.block(BlockedUserEntity(userId = userId, blockedAt = System.currentTimeMillis()))
+                // What they already sent may be sitting in the shade.
+                conversationDao
+                    .directConversationIdsWith("\"$userId\"")
+                    .forEach(notificationHandler::cancelNotificationsForConversation)
             } else {
                 blockedUserDao.unblock(userId)
             }

@@ -9,6 +9,7 @@ import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
+import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.MessageMediaEvictor
 import com.sanchr.proto.messaging.MessagingServiceClient
@@ -29,6 +30,7 @@ class MessageRepositoryImplUnreadTest {
     private val conversationDao = mockk<ConversationDao>(relaxed = true)
     private val messagingClient = mockk<MessagingServiceClient>(relaxed = true)
     private val notificationClient = mockk<NotificationServiceClient>(relaxed = true)
+    private val notificationHandler = mockk<NotificationHandler>(relaxed = true)
     private val mediaEvictor = mockk<MessageMediaEvictor>(relaxed = true)
     private val repo =
         MessageRepositoryImpl(
@@ -37,6 +39,7 @@ class MessageRepositoryImplUnreadTest {
             conversationDao = conversationDao,
             pendingMessageAckDao = mockk<PendingMessageAckDao>(relaxed = true),
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
+            notificationHandler = notificationHandler,
             mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk<ContactProfileDao>(relaxed = true),
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),
@@ -208,6 +211,58 @@ class MessageRepositoryImplUnreadTest {
             org.junit.Assert.assertEquals(0, repo.eraseDeletedMessages())
 
             coVerify(exactly = 0) { messageDao.emptyDeletedMessages() }
+        }
+
+    private fun incoming(sender: String) =
+        MessageEntity(
+            id = "m1",
+            conversationId = "c1",
+            senderId = sender,
+            contentType = "text",
+            contentBody = "hi",
+            status = "DELIVERED",
+            timestamp = 1,
+        )
+
+    /** A notification goes on showing what a message said after the message has gone. */
+    @Test
+    fun `clearing, deleting or reading a chat withdraws its notification`() =
+        runTest {
+            repo.clearMessages("c1")
+            repo.deleteConversation("c2")
+            repo.markAsRead("c3")
+
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("c1") }
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("c2") }
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("c3") }
+        }
+
+    @Test
+    fun `deleting a message someone sent withdraws the chat's notification, deleting our own does not`() =
+        runTest {
+            coEvery { messageDao.getMessageById("m1") } returns incoming("peer")
+            repo.deleteMessage("m1", forEveryone = false)
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("c1") }
+
+            coEvery { messageDao.getMessageById("m1") } returns incoming("self")
+            repo.deleteMessage("m1", forEveryone = false)
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("c1") }
+        }
+
+    @Test
+    fun `an expired message takes its chat's notification with it`() =
+        runTest {
+            coEvery { messageDao.conversationsWithUnreadExpiredMessages(500L, "self") } returns listOf("c1")
+            coEvery { messageDao.deleteExpiredMessages(500L) } returns 2
+
+            org.junit.Assert.assertEquals(2, repo.deleteExpiredMessages(500L))
+
+            coVerifyOrder {
+                messageDao.conversationsWithUnreadExpiredMessages(500L, "self")
+                messageDao.deleteExpiredMessages(500L)
+                notificationHandler.cancelNotificationsForConversation("c1")
+            }
+            coVerify(exactly = 0) { notificationHandler.cancelNotificationsForConversation("c2") }
         }
 
     @Test
