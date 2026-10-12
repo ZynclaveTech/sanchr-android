@@ -549,6 +549,13 @@ internal fun ConversationItem(
                 // timestamp in a trailing column of its own, which pushed it
                 // away from the name it belongs to and left the badge floating
                 // under it.
+                //
+                // The text takes all the width that is left, which is what
+                // puts the time and the badge against the trailing edge. It
+                // used to share that width with a spacer of equal weight: each
+                // was offered half, the text used only what it needed, and
+                // whatever it left over went unused — so the time stopped
+                // short of the edge and the badge sat in the middle of the row.
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -558,9 +565,8 @@ internal fun ConversationItem(
                         style = IosType.conversationName,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(modifier = Modifier.weight(1f))
                     conversation.lastMessage?.let { last ->
                         Text(
                             text = formatChatTimestamp(last.timestamp.toEpochMilliseconds()),
@@ -584,7 +590,7 @@ internal fun ConversationItem(
                             style = IosType.conversationPreview,
                             color = SanchrIndigo500,
                             maxLines = 1,
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier.weight(1f),
                         )
                     } else if (conversation.draftPreview() != null) {
                         // A draft outranks the last message: it is what the
@@ -602,7 +608,7 @@ internal fun ConversationItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier.weight(1f),
                         )
                     } else {
                         val last = conversation.lastMessage
@@ -626,11 +632,9 @@ internal fun ConversationItem(
                                 },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier.weight(1f),
                         )
                     }
-
-                    Spacer(modifier = Modifier.weight(1f))
 
                     if (conversation.isMuted) {
                         Icon(
