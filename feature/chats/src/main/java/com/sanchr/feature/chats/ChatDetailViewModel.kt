@@ -148,19 +148,6 @@ class ChatDetailViewModel
             }
         }
 
-        init {
-            restoreDraft()
-            persistDraft()
-            observeConversation()
-            observeMessages()
-            observeForwardTargets()
-            observeTyping()
-            observePresence()
-            observeLinkPreviewSetting()
-            markAsRead()
-            clearNotificationsForConversation()
-        }
-
         /**
          * A 1:1 chat on screen announces us to the peer and shows what they
          * last told us (`PresenceStore`). While there is a line to show it is
@@ -224,7 +211,10 @@ class ChatDetailViewModel
             viewModelScope.launch {
                 windowSize
                     .flatMapLatest { limit -> messageRepository.observeRecentMessages(conversationId, limit) }
-                    .catch { /* DB closed during logout — nav teardown cancels this scope */ }
+                    // Expected when the database closes during logout. Logged
+                    // all the same: swallowed in silence, a failure here is
+                    // an empty chat with nothing to say why.
+                    .catch { Log.w(TAG, "could not load messages for the chat on screen", it) }
                     .collect { messages ->
                         domainMessages = messages.associateBy { it.id }
                         _uiState.update { state ->
@@ -950,4 +940,31 @@ class ChatDetailViewModel
                 com.sanchr.core.model.MessageStatus.READ -> MessageStatus.READ
                 com.sanchr.core.model.MessageStatus.FAILED -> MessageStatus.FAILED
             }
+
+        /**
+         * Last in the class, on purpose.
+         *
+         * Kotlin sets up a class's properties and runs its `init` blocks in
+         * the order they are written. This block used to sit near the top,
+         * above `windowSize` and the other state declared further down — and
+         * on a phone `viewModelScope` runs a coroutine straight away, inside
+         * the constructor. So `observeMessages()` reached for `windowSize`
+         * before it existed, failed, and the failure was swallowed: every
+         * chat opened empty. (Tests did not see it. Their dispatcher runs
+         * coroutines later, by which time the constructor has finished.)
+         *
+         * Down here every property above it is ready.
+         */
+        init {
+            restoreDraft()
+            persistDraft()
+            observeConversation()
+            observeMessages()
+            observeForwardTargets()
+            observeTyping()
+            observePresence()
+            observeLinkPreviewSetting()
+            markAsRead()
+            clearNotificationsForConversation()
+        }
     }
