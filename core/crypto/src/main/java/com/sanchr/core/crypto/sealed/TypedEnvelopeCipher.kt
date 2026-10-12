@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.signal.libsignal.protocol.DuplicateMessageException
 import org.signal.libsignal.protocol.IdentityKey
+import org.signal.libsignal.protocol.InvalidKeyIdException
 import org.signal.libsignal.protocol.InvalidMessageException
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
@@ -174,8 +175,15 @@ class TypedEnvelopeCipher
             val identity = message.identityKey
             // The rehearsal: nothing it does outlives this call.
             val claimed =
-                withContext(dispatchers.signalDispatcher) {
-                    SessionCipher(RehearsalStore(store), REHEARSAL_ADDRESS).decrypt(message)
+                try {
+                    withContext(dispatchers.signalDispatcher) {
+                        SessionCipher(RehearsalStore(store), REHEARSAL_ADDRESS).decrypt(message)
+                    }
+                } catch (spent: InvalidKeyIdException) {
+                    // The one-time pre-key this was sent to has gone. Either
+                    // it is a replay, or it is a later message of a session
+                    // that key already started.
+                    return openLaterMessageInFirstForm(message, spent)
                 }
             val sender =
                 declaredSender(claimed)?.takeIf { it.userId.isNotBlank() }
@@ -192,6 +200,51 @@ class TypedEnvelopeCipher
                 }
             return SealedSenderCipher.DecryptedEnvelope(sender.userId, sender.deviceId, plaintext)
         }
+
+        /**
+         * Opens a message that is framed as the first of a session but is
+         * not the first: its session is already here.
+         *
+         * A sender goes on framing messages this way until it has heard
+         * back. iOS sends presence, then the Profile Key, then whatever the
+         * user typed, all before any reply can have arrived — so all in
+         * first-message form, all naming the same one-time pre-key. The
+         * first of them started the session and spent that key. The
+         * rehearsal starts every message from nothing, so for each one
+         * after it the key was missing and the message was refused: the
+         * first thing a new contact actually wrote never arrived.
+         *
+         * With the key gone, nothing new can be started from this message,
+         * so trying it against each session held is safe: only the session
+         * it belongs to can read it, and the others fail on the missing key
+         * without changing. Tried first against a copy, so that a miss
+         * leaves no mark; then for real under the address that read it.
+         *
+         * @throws InvalidKeyIdException [spent], if no session held reads it.
+         */
+        private suspend fun openLaterMessageInFirstForm(
+            message: PreKeySignalMessage,
+            spent: InvalidKeyIdException,
+        ): SealedSenderCipher.DecryptedEnvelope =
+            withContext(dispatchers.signalDispatcher) {
+                val address = sessionStore.allAddresses().firstOrNull { readsInFirstForm(message, it) } ?: throw spent
+                SealedSenderCipher.DecryptedEnvelope(address.name, address.deviceId, SessionCipher(store, address).decrypt(message))
+            }
+
+        /** Whether [address]'s existing session reads [message]; decided on a copy of that session. */
+        private fun readsInFirstForm(
+            message: PreKeySignalMessage,
+            address: SignalProtocolAddress,
+        ): Boolean =
+            try {
+                SessionCipher(RehearsalStore(store, readsHeldSessions = true), address).decrypt(message)
+                true
+            } catch (e: DuplicateMessageException) {
+                // Only the session it belongs to can recognise a replay.
+                throw e
+            } catch (e: Exception) {
+                false
+            }
 
         private suspend fun isVouchedFor(
             sender: DeclaredSender,
@@ -236,12 +289,23 @@ class TypedEnvelopeCipher
  */
 private class RehearsalStore(
     private val real: SignalProtocolStore,
+    /**
+     * Whether a session this device already holds is visible, as a copy.
+     * Off for the rehearsal of a genuine first message, which must start
+     * from nothing; on when asking whether an existing session reads a
+     * message, where what is written is still kept only here.
+     */
+    private val readsHeldSessions: Boolean = false,
 ) : SignalProtocolStore by real {
     private val sessions = HashMap<SignalProtocolAddress, SessionRecord>()
     private val identities = HashMap<SignalProtocolAddress, IdentityKey>()
 
     // Sessions: in memory only.
-    override fun loadSession(address: SignalProtocolAddress): SessionRecord = sessions[address] ?: SessionRecord()
+    override fun loadSession(address: SignalProtocolAddress): SessionRecord = sessions[address] ?: heldCopy(address) ?: SessionRecord()
+
+    /** A copy, so that reading a message against it advances nothing real. */
+    private fun heldCopy(address: SignalProtocolAddress): SessionRecord? =
+        if (readsHeldSessions && real.containsSession(address)) SessionRecord(real.loadSession(address).serialize()) else null
 
     override fun loadExistingSessions(addresses: List<SignalProtocolAddress>): List<SessionRecord> = addresses.mapNotNull { sessions[it] }
 
