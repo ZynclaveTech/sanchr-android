@@ -183,4 +183,40 @@ class TranscriptGroupingTest {
         assertEquals(10.dp, corners.topStart, "the chosen bubble style sets the round corners")
         assertEquals(4.dp, corners.bottomStart)
     }
+
+    // --- Following the newest message ----------------------------------------------------
+
+    @Test
+    fun `a message of our own always brings the list to it`() {
+        val sent = message("mine", fromMe = true, atMillis = base)
+
+        assertTrue(followsNewest("older", sent, nearNewest = false, searching = false), "even from far up the transcript")
+    }
+
+    @Test
+    fun `a received message is followed only from the newest end`() {
+        val received = message("theirs", fromMe = false, atMillis = base)
+
+        assertTrue(followsNewest("older", received, nearNewest = true, searching = false))
+        assertFalse(
+            followsNewest("older", received, nearNewest = false, searching = false),
+            "someone reading back must not be pulled away from what they are reading",
+        )
+    }
+
+    @Test
+    fun `nothing moves when the newest message has not changed`() {
+        val same = message("same", fromMe = true, atMillis = base)
+
+        assertFalse(followsNewest("same", same, nearNewest = true, searching = false), "an older page loading is not a new message")
+    }
+
+    @Test
+    fun `the first draw and a search are left alone`() {
+        val sent = message("mine", fromMe = true, atMillis = base)
+
+        assertFalse(followsNewest(null, sent, nearNewest = true, searching = false))
+        assertFalse(followsNewest("older", sent, nearNewest = true, searching = true))
+        assertFalse(followsNewest("older", null, nearNewest = true, searching = false))
+    }
 }
