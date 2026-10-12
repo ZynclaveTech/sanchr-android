@@ -255,4 +255,34 @@ class ReceivedMessageTest {
         runTest {
             assertEquals(0, db.messageDao().advanceOwnMessageStatus("nope", "self", "READ", notYetRead))
         }
+
+    // ── Held ─────────────────────────────────────────────────────────────
+
+    private fun held(text: String) =
+        com.sanchr.core.database.entity.HeldIncomingEntity(
+            senderUserId = "peer",
+            senderDeviceId = 1,
+            plaintext = text.toByteArray(),
+            serverTimestamp = 42,
+            envelopeConversationId = "env-conv",
+            envelopeMessageId = "env-msg",
+            contentType = "text",
+            heldAt = 1,
+        )
+
+    @Test
+    fun `a held message is kept whole, in the order it came, until it is let go`() =
+        runTest {
+            val first = db.heldIncomingDao().hold(held("first"))
+            db.heldIncomingDao().hold(held("second"))
+
+            assertEquals(listOf("first", "second"), db.heldIncomingDao().all().map { String(it.plaintext) })
+
+            db.heldIncomingDao().noteAttempt(first)
+            db.heldIncomingDao().noteAttempt(first)
+            assertEquals(listOf(2, 0), db.heldIncomingDao().all().map { it.attempts })
+
+            db.heldIncomingDao().release(first)
+            assertEquals(listOf("second"), db.heldIncomingDao().all().map { String(it.plaintext) })
+        }
 }

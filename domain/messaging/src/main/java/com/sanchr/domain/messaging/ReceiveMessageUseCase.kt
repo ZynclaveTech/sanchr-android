@@ -143,7 +143,7 @@ class ReceiveMessageUseCase
             withContext(dispatchers.io) {
                 try {
                     val success = decryptByKind(envelopeBytes, kind, serverTimestamp, declaredSender)
-                    envelopeContext?.let { ctx -> routeAndPersist(success, ctx, flushAckImmediately) }
+                    envelopeContext?.let { ctx -> fileOrHold(success, ctx, flushAckImmediately) }
                     success
                 } catch (e: DuplicateMessageException) {
                     Log.d(TAG, "duplicate message (unsealed) ignored", e)
@@ -200,6 +200,43 @@ class ReceiveMessageUseCase
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.CRYPTO_OTHER, e)
                 }
             }
+
+        /**
+         * Files what was decrypted, and if that fails keeps hold of it.
+         *
+         * From here on the envelope is spent: decrypting it moved the
+         * session on, and it cannot be decrypted again. A failure to file it
+         * used to fall through to the handlers above, be recorded as a
+         * decryption failure, and take the decrypted content with it. It is
+         * held instead and filed later ([HeldIncomingRetrier]) — and acked,
+         * because the server sending it again can no longer help.
+         *
+         * If it cannot even be held, the failure goes on up as before.
+         */
+        private suspend fun fileOrHold(
+            success: EnvelopeDecryptResult.Success,
+            ctx: IncomingEnvelopeContext,
+            flushAckImmediately: Boolean,
+        ) {
+            try {
+                routeAndPersist(success, ctx, flushAckImmediately)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "a decrypted message could not be filed; holding it to file later", e)
+                messageRepository.get().holdIncoming(HeldIncoming(decrypted = success, envelope = ctx))
+                messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
+            }
+        }
+
+        /**
+         * Files a message that was decrypted earlier and held. Throws if it
+         * still cannot be filed. Its envelope was acked when it was held.
+         */
+        suspend fun file(
+            decrypted: EnvelopeDecryptResult.Success,
+            envelope: IncomingEnvelopeContext,
+        ) = withContext(dispatchers.io) { routeAndPersist(decrypted, envelope, flushAckImmediately = false) }
 
         private suspend fun decryptByKind(
             envelopeBytes: ByteArray,

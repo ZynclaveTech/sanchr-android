@@ -25,6 +25,7 @@ import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
 import com.sanchr.domain.messaging.ExpireMessagesUseCase
+import com.sanchr.domain.messaging.HeldIncomingRetrier
 import com.sanchr.domain.messaging.IncomingEnvelopeContext
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.ReceiveMessageUseCase
@@ -75,6 +76,7 @@ class SyncWorker
         private val messageDao: MessageDao,
         private val messageRepository: MessageRepository,
         private val expireMessages: ExpireMessagesUseCase,
+        private val heldIncomingRetrier: HeldIncomingRetrier,
         private val chatBackupManager: ChatBackupManager,
         private val syncState: SyncState,
         private val contactProfileResolver: ContactProfileResolver,
@@ -357,6 +359,8 @@ class SyncWorker
                 Log.d(TAG, "Refreshed ${entities.size} conversation(s)")
                 // Now that the server has said who is in them.
                 messageRepository.settlePlaceholderConversations(entities.mapTo(HashSet()) { it.id })
+                // And anything that arrived before its conversation did.
+                heldIncomingRetrier.retry()
             }
         }
 

@@ -73,6 +73,18 @@ interface MessageRepository {
      */
     suspend fun isSenderBlocked(senderId: String): Boolean
 
+    /** Keeps a decrypted message that could not be filed; see [HeldIncomingRetrier]. */
+    suspend fun holdIncoming(held: HeldIncoming)
+
+    /** Everything being held, oldest first. */
+    suspend fun heldIncoming(): List<HeldIncoming>
+
+    /** Lets go of a held message: it has been filed, or given up on. */
+    suspend fun releaseIncoming(id: Long)
+
+    /** Records one more failed attempt to file a held message. */
+    suspend fun noteHeldAttempt(id: Long)
+
     /**
      * Makes sure [conversationId] is on this phone before a message for it
      * is saved.

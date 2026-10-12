@@ -16,6 +16,7 @@ import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
 import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.dao.EnvelopeQueueDao
+import com.sanchr.core.database.dao.HeldIncomingDao
 import com.sanchr.core.database.dao.MessageDao
 import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.dao.PendingMessageAckDao
@@ -32,6 +33,7 @@ import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.DeletedMessageEntity
 import com.sanchr.core.database.entity.EnvelopeQueueEntity
+import com.sanchr.core.database.entity.HeldIncomingEntity
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.database.entity.PendingMessageAckEntity
@@ -66,8 +68,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         MessageReactionEntity::class,
         BlockedUserEntity::class,
         DeletedMessageEntity::class,
+        HeldIncomingEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -101,6 +104,8 @@ abstract class SanchrDatabase : RoomDatabase() {
     abstract fun messageReactionDao(): MessageReactionDao
 
     abstract fun blockedUserDao(): BlockedUserDao
+
+    abstract fun heldIncomingDao(): HeldIncomingDao
 }
 
 /**
@@ -433,6 +438,23 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * v17→v18: somewhere to keep a received message that decrypted but could
+     * not be filed, so it is not lost. Starts empty.
+     */
+    internal val migration17To18 =
+        object : Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `held_incoming` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`sender_user_id` TEXT NOT NULL, `sender_device_id` INTEGER NOT NULL, `plaintext` BLOB NOT NULL, " +
+                        "`server_timestamp` INTEGER NOT NULL, `envelope_conversation_id` TEXT NOT NULL, " +
+                        "`envelope_message_id` TEXT NOT NULL, `content_type` TEXT NOT NULL, `attempts` INTEGER NOT NULL, " +
+                        "`held_at` INTEGER NOT NULL)",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -473,10 +495,14 @@ object DatabaseModule {
                     migration14To15,
                     migration15To16,
                     migration16To17,
+                    migration17To18,
                 ).addCallback(ReactionCleanup)
                 .build()
         }
     }
+
+    @Provides
+    fun provideHeldIncomingDao(database: SanchrDatabase): HeldIncomingDao = database.heldIncomingDao()
 
     @Provides
     fun provideBlockedUserDao(database: SanchrDatabase): BlockedUserDao = database.blockedUserDao()

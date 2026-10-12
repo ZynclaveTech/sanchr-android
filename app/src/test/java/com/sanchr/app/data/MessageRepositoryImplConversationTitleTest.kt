@@ -53,6 +53,7 @@ class MessageRepositoryImplConversationTitleTest {
             blockedUserDao = mockk<BlockedUserDao>(relaxed = true),
             notificationHandler = notificationHandler,
             userPreferences = userPreferences,
+            heldIncomingStore = mockk(relaxed = true),
             mediaEvictor = { mediaEvictor },
             contactProfileDao = contactProfileDao,
             contactProfileResolver = resolver,

@@ -30,6 +30,7 @@ class MessageRepositoryImplAutoVaultTest {
             blockedUserDao = mockk(relaxed = true),
             notificationHandler = notificationHandler,
             userPreferences = userPreferences,
+            heldIncomingStore = mockk(relaxed = true),
             mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk(relaxed = true),
             contactProfileResolver = mockk(relaxed = true),

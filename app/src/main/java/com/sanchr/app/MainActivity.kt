@@ -51,6 +51,7 @@ import com.sanchr.core.designsystem.theme.SanchrTheme
 import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.DisappearingMessageSweeper
+import com.sanchr.domain.messaging.HeldIncomingRetrier
 import com.sanchr.domain.messaging.MessageRepository
 import com.sanchr.domain.messaging.OrphanedMediaSweeper
 import com.sanchr.feature.chats.share.ShareTargetScreen
@@ -76,6 +77,8 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var messageRepository: MessageRepository
 
     @Inject lateinit var orphanedMediaSweeper: OrphanedMediaSweeper
+
+    @Inject lateinit var heldIncomingRetrier: HeldIncomingRetrier
 
     @Inject
     lateinit var notificationHandler: NotificationHandler
@@ -231,6 +234,8 @@ class MainActivity : FragmentActivity() {
             // Its own coroutine: nothing about the keys waits on it, and it
             // must not be skipped by the early returns below.
             launch { serverSettingsLoader.load() }
+            // Messages that decrypted on an earlier run but could not be saved.
+            launch { runCatching { heldIncomingRetrier.retry() } }
             launch {
                 blockListRestorer.restoreOnce()
                 blockListRestorer.syncPending()

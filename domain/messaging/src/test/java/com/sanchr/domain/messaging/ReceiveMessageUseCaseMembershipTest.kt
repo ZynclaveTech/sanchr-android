@@ -159,4 +159,84 @@ class ReceiveMessageUseCaseMembershipTest {
                 )
             }
         }
+
+    // ── A message that decrypted but could not be filed ──────────────────
+
+    private fun aMessageFromAlice() {
+        val payload =
+            InnerPayload(
+                conversationId = "payload-conv",
+                messageId = "payload-msg",
+                contentType = "text",
+                content = "do not lose me".toByteArray(),
+            )
+        coEvery { sealedSenderCipher.sealedDecrypt(bytes, 42L) } returns
+            SealedSenderCipher.DecryptedEnvelope(senderUserId = "alice-uuid", senderDeviceId = 1, plaintext = payload.encode())
+    }
+
+    /**
+     * The envelope cannot be decrypted twice. What came out of it used to be
+     * dropped when the save failed; it has to be kept instead.
+     */
+    @Test
+    fun `a message that cannot be saved is held, with what it said, and its envelope acked`() =
+        runTest {
+            aMessageFromAlice()
+            coEvery {
+                messageRepository.insertDecryptedMessage(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            } throws java.io.IOException("disk full")
+            val held = io.mockk.slot<HeldIncoming>()
+
+            val result = useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            assertTrue(result is EnvelopeDecryptResult.Success)
+            coVerify(exactly = 1) { messageRepository.holdIncoming(capture(held)) }
+            assertTrue(String(InnerPayload.decode(held.captured.decrypted.plaintext)!!.content).contains("do not lose me"))
+            kotlin.test.assertEquals("alice-uuid", held.captured.decrypted.senderUserId)
+            kotlin.test.assertEquals(ctx, held.captured.envelope)
+            // Sending it again cannot help: it will not decrypt a second time.
+            coVerify(exactly = 1) { messageRepository.ackEnvelope(ctx.conversationId, ctx.messageId, any()) }
+        }
+
+    @Test
+    fun `a message that is saved is not held`() =
+        runTest {
+            aMessageFromAlice()
+
+            useCase.receive(bytes, EnvelopeKind.SEALED, 42L, declaredSender = null, envelopeContext = ctx)
+
+            coVerify(exactly = 0) { messageRepository.holdIncoming(any()) }
+        }
+
+    @Test
+    fun `filing a held message goes through the same path a new one does`() =
+        runTest {
+            val payload =
+                InnerPayload(
+                    conversationId = "payload-conv",
+                    messageId = "payload-msg",
+                    contentType = "text",
+                    content = "later".toByteArray(),
+                )
+            val decrypted = EnvelopeDecryptResult.Success("alice-uuid", 1, payload.encode(), 42L)
+
+            useCase.file(decrypted, ctx)
+
+            io.mockk.coVerifyOrder {
+                messageRepository.prepareConversationForIncoming("payload-conv", "payload-msg", "alice-uuid", 42L)
+                messageRepository.mayPostTo("payload-conv", "alice-uuid")
+                messageRepository.insertDecryptedMessage(
+                    "payload-conv",
+                    "payload-msg",
+                    "alice-uuid",
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
+        }
 }
