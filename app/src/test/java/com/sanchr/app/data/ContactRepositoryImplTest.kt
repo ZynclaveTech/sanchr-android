@@ -3,10 +3,12 @@ package com.sanchr.app.data
 import com.sanchr.core.database.dao.BlockedUserDao
 import com.sanchr.core.database.dao.ContactDao
 import com.sanchr.core.database.dao.ContactProfileDao
+import com.sanchr.core.database.dao.ConversationDao
 import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.datastore.SessionManager
+import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.contacts.DeviceContact
 import com.sanchr.domain.contacts.DiscoveryRepository
 import com.sanchr.proto.contacts.BlockContactRequest
@@ -23,6 +25,7 @@ import com.sanchr.proto.contacts.SyncContactsResponse
 import com.sanchr.proto.contacts.UnblockContactRequest
 import com.sanchr.proto.contacts.UnblockContactResponse
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import java.security.MessageDigest
@@ -234,6 +237,21 @@ class ContactRepositoryImplTest {
 
     // ── Construction ─────────────────────────────────────────────────────
 
+    private val conversationDao = mockk<ConversationDao>(relaxed = true)
+    private val notificationHandler = mockk<NotificationHandler>(relaxed = true)
+
+    @Test
+    fun `blocking someone withdraws the notification for the chat with them`() =
+        runTest {
+            coEvery { conversationDao.directConversationIdsWith("\"peer-uuid\"") } returns listOf("c1")
+            val repo = repo(BlockRejectingClient(), NoOpContactDao())
+
+            repo.setBlocked("peer-uuid", blocked = true)
+            repo.setBlocked("peer-uuid", blocked = false)
+
+            coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("c1") }
+        }
+
     /** Discovery that reports every queried number as registered, unless [registered] is given. */
     private val discovery = FakeDiscovery()
 
@@ -248,6 +266,8 @@ class ContactRepositoryImplTest {
         contactClient = client,
         contactDao = dao,
         blockedUserDao = blocks,
+        conversationDao = conversationDao,
+        notificationHandler = notificationHandler,
         contactProfileDao = profiles,
         discoveryRepository = discovery,
         sessionManager = mockk<SessionManager> { every { getStoredPhoneE164() } returns own },

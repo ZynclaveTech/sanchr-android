@@ -21,6 +21,7 @@ import com.sanchr.core.model.MessageContent
 import com.sanchr.core.model.MessageReaction
 import com.sanchr.core.model.MessageStatus
 import com.sanchr.core.model.User
+import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.ContactProfileResolver
 import com.sanchr.domain.messaging.DirectChatMembership
 import com.sanchr.domain.messaging.FailureClass
@@ -56,6 +57,7 @@ class MessageRepositoryImpl
         private val conversationDao: ConversationDao,
         private val pendingMessageAckDao: PendingMessageAckDao,
         private val blockedUserDao: BlockedUserDao,
+        private val notificationHandler: NotificationHandler,
         // Lazy: the evictor reads messages through this repository.
         private val mediaEvictor: Lazy<MessageMediaEvictor>,
         private val contactProfileDao: ContactProfileDao,
@@ -162,7 +164,15 @@ class MessageRepositoryImpl
 
         override suspend fun expiredMessageIds(nowMillis: Long): List<String> = messageDao.expiredMessageIds(nowMillis)
 
-        override suspend fun deleteExpiredMessages(nowMillis: Long): Int = messageDao.deleteExpiredMessages(nowMillis)
+        override suspend fun deleteExpiredMessages(nowMillis: Long): Int {
+            // A notification goes on showing what a message said after the
+            // message has gone. Found first: the rows are what say which
+            // chats those are.
+            val notified = messageDao.conversationsWithUnreadExpiredMessages(nowMillis, sessionManager.getUserId().orEmpty())
+            val removed = messageDao.deleteExpiredMessages(nowMillis)
+            notified.forEach(notificationHandler::cancelNotificationsForConversation)
+            return removed
+        }
 
         override fun observeNextExpiryMillis(): Flow<Long?> = messageDao.observeNextExpiry().distinctUntilChanged()
 
@@ -171,6 +181,8 @@ class MessageRepositoryImpl
             // An unsent draft is not a message, but "clear this chat" that
             // leaves a half-written one behind has not cleared it.
             conversationDao.setDraftText(conversationId, null)
+            // Nor has one that leaves its last message readable in the shade.
+            notificationHandler.cancelNotificationsForConversation(conversationId)
         }
 
         override suspend fun deleteConversation(conversationId: String) {
@@ -187,6 +199,7 @@ class MessageRepositoryImpl
             val files = messageDao.messageIdsInConversation(conversationId).flatMap { evictor.evict(it) }
             conversationDao.deleteConversation(conversationId)
             evictor.again(files)
+            notificationHandler.cancelNotificationsForConversation(conversationId)
         }
 
         override suspend fun messageIdsHoldingMedia(ids: List<String>): Set<String> =
@@ -354,6 +367,7 @@ class MessageRepositoryImpl
 
         override suspend fun markAsRead(conversationId: String) {
             conversationDao.markAsRead(conversationId)
+            notificationHandler.cancelNotificationsForConversation(conversationId)
         }
 
         override suspend fun oneToOneRecipient(
@@ -389,8 +403,16 @@ class MessageRepositoryImpl
             // once more (see MessageMediaEvictor.again).
             val evictor = mediaEvictor.get()
             val files = evictor.evict(messageId)
+            val row = messageDao.getMessageById(messageId)
             messageDao.softDeleteMessage(messageId)
             evictor.again(files)
+            // A notification may be showing what it said. There is no
+            // telling which message a chat's notification holds, so deleting
+            // any message someone else sent withdraws it; one of our own was
+            // never in a notification.
+            if (row != null && row.senderId != sessionManager.getUserId()) {
+                notificationHandler.cancelNotificationsForConversation(row.conversationId)
+            }
 
             if (forEveryone) {
                 messagingClient.deleteMessage(
