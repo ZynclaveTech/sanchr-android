@@ -30,6 +30,7 @@ import com.sanchr.core.database.entity.BlockedUserEntity
 import com.sanchr.core.database.entity.ContactEntity
 import com.sanchr.core.database.entity.ContactProfileEntity
 import com.sanchr.core.database.entity.ConversationEntity
+import com.sanchr.core.database.entity.DeletedMessageEntity
 import com.sanchr.core.database.entity.EnvelopeQueueEntity
 import com.sanchr.core.database.entity.MessageEntity
 import com.sanchr.core.database.entity.MessageReactionEntity
@@ -64,8 +65,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         AccessKeyEntity::class,
         MessageReactionEntity::class,
         BlockedUserEntity::class,
+        DeletedMessageEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -417,6 +419,20 @@ object DatabaseModule {
             }
         }
 
+    /**
+     * v16→v17: a record of the ids of messages removed on purpose, so a
+     * message of a cleared or deleted chat cannot come back by redelivery.
+     * Starts empty: what was removed before this cannot be known.
+     */
+    internal val migration16To17 =
+        object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `deleted_messages` (`id` TEXT NOT NULL, `deleted_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
     @Provides
     @Singleton
     fun provideSanchrDatabase(
@@ -456,6 +472,7 @@ object DatabaseModule {
                     migration13To14,
                     migration14To15,
                     migration15To16,
+                    migration16To17,
                 ).addCallback(ReactionCleanup)
                 .build()
         }

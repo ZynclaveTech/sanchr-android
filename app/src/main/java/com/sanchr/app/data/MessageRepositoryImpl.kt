@@ -72,9 +72,6 @@ class MessageRepositoryImpl
 
             /** Ids per `IN (...)` query, well under SQLite's limit on bound variables. */
             const val ID_QUERY_CHUNK = 500
-
-            /** What an insert that leaves an existing row alone returns. */
-            const val ROW_NOT_INSERTED = -1L
         }
 
         /**
@@ -511,8 +508,9 @@ class MessageRepositoryImpl
             // holds, bring back one that was deleted, or refill a view-once
             // that has been opened. It also must not count as unread twice.
             // Our own messages echoed from another device are read.
-            val isNewRow = messageDao.insertMessageIfAbsent(entity) != ROW_NOT_INSERTED
-            if (!isNewRow) Log.d(TAG, "received a message under an id already held; kept the one here")
+            // Nor bring back one cleared or deleted from this phone on purpose.
+            val isNewRow = messageDao.insertReceivedMessage(entity)
+            if (!isNewRow) Log.d(TAG, "received a message under an id already held or deleted here; not saved")
             if (isNewRow && senderId != sessionManager.getUserId()) {
                 conversationDao.incrementUnread(conversationId, timestamp)
                 // Only a cheap check here, on the receive path: is this media,

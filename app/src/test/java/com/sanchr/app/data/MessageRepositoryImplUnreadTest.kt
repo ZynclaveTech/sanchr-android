@@ -26,7 +26,11 @@ import org.junit.Test
 
 /** A new inbound row bumps the chat's unread count and moves it up; resends and our own echoes do not. */
 class MessageRepositoryImplUnreadTest {
-    private val messageDao = mockk<MessageDao>(relaxed = true)
+    private val messageDao =
+        mockk<MessageDao>(relaxed = true) {
+            // A relaxed mock answers false: every message "already here".
+            coEvery { insertReceivedMessage(any()) } returns true
+        }
     private val conversationDao = mockk<ConversationDao>(relaxed = true)
     private val messagingClient = mockk<MessagingServiceClient>(relaxed = true)
     private val notificationClient = mockk<NotificationServiceClient>(relaxed = true)
@@ -75,7 +79,7 @@ class MessageRepositoryImplUnreadTest {
     @Test
     fun `a resend of an existing row and our own echoed message do not`() =
         runTest {
-            coEvery { messageDao.insertMessageIfAbsent(match { it.id == "m1" }) } returns -1L
+            coEvery { messageDao.insertReceivedMessage(match { it.id == "m1" }) } returns false
             insert(sender = "peer")
             insert(sender = "self", id = "m2")
             coVerify(exactly = 0) { conversationDao.incrementUnread(any(), any()) }
@@ -90,7 +94,7 @@ class MessageRepositoryImplUnreadTest {
         runTest {
             insert(sender = "peer")
 
-            coVerify(exactly = 1) { messageDao.insertMessageIfAbsent(match { it.id == "m1" && it.senderId == "peer" }) }
+            coVerify(exactly = 1) { messageDao.insertReceivedMessage(match { it.id == "m1" && it.senderId == "peer" }) }
             coVerify(exactly = 0) { messageDao.insertMessage(any()) }
             coVerify(exactly = 0) { messageDao.insertMessages(any()) }
         }

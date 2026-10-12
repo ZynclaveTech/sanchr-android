@@ -271,7 +271,34 @@ interface MessageDao {
     @Transaction
     suspend fun deleteAllMessagesInConversation(conversationId: String) {
         deleteReactionsInConversation(conversationId)
+        // Before the rows go: they are what say which ids these are.
+        rememberDeletedInConversation(conversationId, System.currentTimeMillis())
         deleteMessageRowsInConversation(conversationId)
+    }
+
+    /** Records every message of a conversation as deleted on purpose; see `DeletedMessageEntity`. */
+    @Query(
+        "INSERT OR REPLACE INTO deleted_messages (id, deleted_at) SELECT id, :nowMillis FROM messages WHERE conversation_id = :conversationId",
+    )
+    suspend fun rememberDeletedInConversation(
+        conversationId: String,
+        nowMillis: Long,
+    )
+
+    @Query("SELECT EXISTS(SELECT 1 FROM deleted_messages WHERE id = :messageId)")
+    suspend fun wasDeleted(messageId: String): Boolean
+
+    /**
+     * Saves a message that arrived from someone else, unless its id is
+     * taken: by a message already here ([insertMessageIfAbsent]), or by one
+     * removed from this phone on purpose.
+     *
+     * @return whether it was saved.
+     */
+    @Transaction
+    suspend fun insertReceivedMessage(message: MessageEntity): Boolean {
+        if (wasDeleted(message.id)) return false
+        return insertMessageIfAbsent(message) != -1L
     }
 
     @Query("DELETE FROM messages WHERE conversation_id = :conversationId")

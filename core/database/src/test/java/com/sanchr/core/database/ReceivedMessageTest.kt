@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sanchr.core.database.entity.ConversationEntity
 import com.sanchr.core.database.entity.MessageEntity
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -121,6 +122,66 @@ class ReceivedMessageTest {
             db.messageDao().insertMessageIfAbsent(message("peer", "hello"))
 
             assertEquals("READ", stored().status)
+        }
+
+    // ── Cleared and deleted chats ────────────────────────────────────────
+
+    /**
+     * Clearing a chat removes its rows outright, which left their ids free:
+     * the same message delivered again was saved as if it were new.
+     */
+    @Test
+    fun `a message of a cleared chat does not come back when it is delivered again`() =
+        runTest {
+            db.messageDao().insertReceivedMessage(message("peer", "hello"))
+            db.messageDao().deleteAllMessagesInConversation("c1")
+
+            assertFalse(db.messageDao().insertReceivedMessage(message("peer", "hello")))
+
+            assertEquals(null, db.messageDao().getMessageById("m1"))
+            assertTrue(db.messageDao().wasDeleted("m1"))
+        }
+
+    @Test
+    fun `nor does a message of a deleted chat, even once the chat exists again`() =
+        runTest {
+            db.messageDao().insertReceivedMessage(message("peer", "hello"))
+            db.conversationDao().deleteConversation("c1")
+            db.conversationDao().insertConversation(
+                ConversationEntity(id = "c1", type = "DIRECT", participantIds = "[]", createdAt = 1, updatedAt = 1),
+            )
+
+            assertFalse(db.messageDao().insertReceivedMessage(message("peer", "hello")))
+        }
+
+    @Test
+    fun `a new message in a cleared chat is saved`() =
+        runTest {
+            db.messageDao().insertReceivedMessage(message("peer", "hello"))
+            db.messageDao().deleteAllMessagesInConversation("c1")
+
+            assertTrue(db.messageDao().insertReceivedMessage(message("peer", "hello again").copy(id = "m2")))
+        }
+
+    @Test
+    fun `a message never seen was not deleted`() =
+        runTest {
+            assertFalse(db.messageDao().wasDeleted("never"))
+        }
+
+    @Test
+    fun `a deleted id is forgotten once nothing could send it again`() =
+        runTest {
+            db.messageDao().insertReceivedMessage(message("peer", "hello"))
+            db.messageDao().deleteAllMessagesInConversation("c1")
+            val helper = db.openHelper.writableDatabase
+            val now = System.currentTimeMillis()
+
+            ReactionCleanup.forgetOldDeletedIds(helper, now + ReactionCleanup.DELETED_ID_RETENTION_MILLIS - 60_000)
+            assertTrue(db.messageDao().wasDeleted("m1"))
+
+            ReactionCleanup.forgetOldDeletedIds(helper, now + ReactionCleanup.DELETED_ID_RETENTION_MILLIS + 60_000)
+            assertFalse(db.messageDao().wasDeleted("m1"))
         }
 
     // ── Deleting ─────────────────────────────────────────────────────────

@@ -176,4 +176,14 @@ class MigrationTest {
             }
         }
     }
+
+    @Test
+    fun migrate_16_to_17_adds_an_empty_record_of_deleted_messages() {
+        helper.createDatabase("migration-test-17", 16).close()
+        helper.runMigrationsAndValidate("migration-test-17", 17, true, DatabaseModule.migration16To17).use { db ->
+            db.query("SELECT COUNT(*) FROM deleted_messages").use { c ->
+                check(c.moveToFirst() && c.getInt(0) == 0) { "nothing is known to have been deleted before this" }
+            }
+        }
+    }
 }
