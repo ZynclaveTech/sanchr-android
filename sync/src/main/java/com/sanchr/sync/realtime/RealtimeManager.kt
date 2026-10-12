@@ -44,7 +44,10 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -76,6 +79,12 @@ class RealtimeManager
             /** How long a call wake keeps the stream open in the background: the server's ring timeout. */
             const val CALL_WAKE_WINDOW_MS = 60_000L
             const val PRESENCE_INTERVAL_MS = 30_000L
+
+            /**
+             * Well inside the sixty seconds of client silence after which the
+             * ingress closes the stream, so one lost beat does not cost it.
+             */
+            const val KEEPALIVE_INTERVAL_MS = 25_000L
         }
 
         private var inForeground = false
@@ -285,7 +294,7 @@ class RealtimeManager
                 if (reopening) drainScheduler.enqueueDrain()
                 reopening = true
                 try {
-                    messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
+                    messagingClient.messageStream(outboundWithKeepAlive()).collect { event ->
                         heardFromServer = true
                         handleServerEvent(event)
                     }
@@ -302,6 +311,25 @@ class RealtimeManager
                 delay(backoff.next())
             }
         }
+
+        /**
+         * What is sent up the stream, with a [ClientEvent.KeepAlive] added
+         * whenever the app has had nothing to say for a while.
+         *
+         * The first one goes a full interval after the stream opens, and they
+         * stop with the stream: the ticker lives in the flow the stream
+         * collects, so it is cancelled when the call is.
+         */
+        private fun outboundWithKeepAlive(): Flow<ClientEvent> =
+            merge(
+                outboundEvents.receiveAsFlow(),
+                flow {
+                    while (true) {
+                        delay(KEEPALIVE_INTERVAL_MS)
+                        emit(ClientEvent.KeepAlive)
+                    }
+                },
+            )
 
         private fun stopStream() {
             synchronized(lock) { stopStreamLocked() }
