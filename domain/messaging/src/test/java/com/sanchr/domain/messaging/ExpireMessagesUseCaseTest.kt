@@ -52,6 +52,27 @@ class ExpireMessagesUseCaseTest {
             }
         }
 
+    /**
+     * A chat that is open can ask for the picture again between the first
+     * removal and the row going. Nothing asks once the row is gone.
+     */
+    @Test
+    fun `the copy is removed again once the row is gone`() =
+        runTest {
+            coEvery { repository.expiredMessageIds(500L) } returns listOf("p1")
+            coEvery { repository.message("p1") } returns photoMessage("p1")
+            coEvery { repository.deleteExpiredMessages(500L) } returns 1
+
+            expire(500L)
+
+            coVerifyOrder {
+                downloader.evict("p1", "image/jpeg")
+                repository.deleteExpiredMessages(500L)
+                downloader.evict("p1", "image/jpeg")
+            }
+            coVerify(exactly = 2) { downloader.evict("p1", "image/jpeg") }
+        }
+
     @Test
     fun `nothing due means nothing is touched`() =
         runTest {

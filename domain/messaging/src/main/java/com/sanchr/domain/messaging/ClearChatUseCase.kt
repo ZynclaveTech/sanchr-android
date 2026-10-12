@@ -25,8 +25,10 @@ class ClearChatUseCase
     ) {
         suspend operator fun invoke(conversationId: String): Int {
             val ids = messageRepository.messageIds(conversationId)
-            for (id in ids) mediaEvictor.evict(id)
+            val files = ids.flatMap { mediaEvictor.evict(it) }
             messageRepository.clearMessages(conversationId)
+            // And once more now the rows are gone: see MessageMediaEvictor.again.
+            mediaEvictor.again(files)
             return ids.size
         }
     }
