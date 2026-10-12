@@ -496,7 +496,7 @@ private fun ConversationAvatar(conversation: Conversation) {
 private fun DeliveryStatusIcon(status: MessageStatus) {
     val tint =
         when (status) {
-            MessageStatus.READ -> SanchrIndigo500
+            MessageStatus.READ -> SanchrSuccess
             MessageStatus.FAILED -> MaterialTheme.colorScheme.error
             else -> SanchrGray400
         }

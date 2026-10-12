@@ -204,6 +204,72 @@ class SendReadReceiptUseCaseTest {
             assertEquals(42_000L, receipt.timestamp)
         }
 
+    // ── Delivered ────────────────────────────────────────────────────────
+
+    private fun onePeerDevice(plaintext: io.mockk.CapturingSlot<ByteArray>) {
+        coEvery { signalSessionManager.encryptForAllDevices(capture(plaintext), "peer-uuid") } returns
+            listOf(DeviceEncryptedMessage(deviceId = 1, ciphertext = byteArrayOf(1, 2, 3), messageType = 3, registrationId = 42))
+    }
+
+    private fun statusSent(plaintext: io.mockk.CapturingSlot<ByteArray>): String =
+        Messaging.ReceiptUpdate.parseFrom(InnerPayload.decode(plaintext.captured)!!.content).status
+
+    /**
+     * The switch is about whether you have looked. This says only that the
+     * phone has the message.
+     */
+    @Test
+    fun `a delivered receipt is sent even with read receipts switched off`() =
+        runTest {
+            primeCommonMocks()
+            every { userPreferences.canSendReadReceipts } returns flowOf(false)
+            every { userPreferences.sanchrModeEnabled } returns flowOf(false)
+            val plaintext = slot<ByteArray>()
+            onePeerDevice(plaintext)
+
+            useCase.delivered("conv-1", "msg-1")
+
+            assertEquals("delivered", statusSent(plaintext))
+            coVerify(exactly = 1) { messagingClient.sendSealedMessage(any()) }
+        }
+
+    /** Sanchr Mode holds back everything that shows the phone to be reachable. */
+    @Test
+    fun `no delivered receipt is sent in Sanchr Mode`() =
+        runTest {
+            primeCommonMocks()
+            every { userPreferences.sanchrModeEnabled } returns flowOf(true)
+
+            useCase.delivered("conv-1", "msg-1")
+
+            coVerify(exactly = 0) { deliveryTokenStore.acquire() }
+            coVerify(exactly = 0) { messagingClient.sendSealedMessage(any()) }
+        }
+
+    @Test
+    fun `no delivered receipt is sent for a group`() =
+        runTest {
+            primeCommonMocks()
+            every { userPreferences.sanchrModeEnabled } returns flowOf(false)
+            coEvery { messageRepository.oneToOneRecipient("conv-1", "self-uuid") } returns null
+
+            useCase.delivered("conv-1", "msg-1")
+
+            coVerify(exactly = 0) { messagingClient.sendSealedMessage(any()) }
+        }
+
+    @Test
+    fun `a read receipt still says read`() =
+        runTest {
+            primeCommonMocks()
+            val plaintext = slot<ByteArray>()
+            onePeerDevice(plaintext)
+
+            useCase.invoke("conv-1", "msg-1")
+
+            assertEquals("read", statusSent(plaintext))
+        }
+
     @Test
     fun `a send failure is logged and dropped, not thrown`() =
         runTest {

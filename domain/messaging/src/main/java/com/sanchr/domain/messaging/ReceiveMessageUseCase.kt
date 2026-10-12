@@ -106,6 +106,7 @@ class ReceiveMessageUseCase
         private val sessionManager: SessionManager,
         private val presenceStore: PresenceStore,
         private val sessionRebuilds: SessionRebuildThrottle,
+        private val deliveryReceipts: DeliveryReceiptDispatcher,
     ) {
         /**
          * Scope for fire-and-forget session rebuilds. A SupervisorJob is used
@@ -455,6 +456,11 @@ class ReceiveMessageUseCase
                 replyToId = routed.replyToMessageId,
             )
             messageRepository.get().ackEnvelope(ctx.conversationId, ctx.messageId, flushAckImmediately)
+            // It is on this phone now; tell whoever sent it. Not for our own
+            // message echoed from another of our devices.
+            if (success.senderUserId != sessionManager.getUserId()) {
+                deliveryReceipts.messageArrived(conversationId, messageId)
+            }
         }
 
         /**

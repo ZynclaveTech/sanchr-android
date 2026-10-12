@@ -56,6 +56,7 @@ class ReceiveMessageUseCaseProfileKeyTest {
             sessionManager,
             PresenceStore(),
             SessionRebuildThrottle(),
+            mockk<DeliveryReceiptDispatcher>(relaxed = true),
         )
 
     private val bytes = byteArrayOf(10, 20, 30)

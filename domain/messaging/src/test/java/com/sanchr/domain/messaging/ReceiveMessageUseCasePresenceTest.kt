@@ -47,6 +47,7 @@ class ReceiveMessageUseCasePresenceTest {
             mockk<SessionManager> { every { getUserId() } returns "self" },
             presenceStore,
             SessionRebuildThrottle(),
+            mockk<DeliveryReceiptDispatcher>(relaxed = true),
         )
     private val bytes = byteArrayOf(1)
     private val ctx = IncomingEnvelopeContext(conversationId = "c", messageId = "m", contentType = "text")

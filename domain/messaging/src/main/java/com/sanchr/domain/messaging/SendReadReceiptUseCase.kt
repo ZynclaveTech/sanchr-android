@@ -94,26 +94,59 @@ class SendReadReceiptUseCase
         private val receiptJitter: ReceiptJitter,
         private val profileKeyStore: ProfileKeyStore,
     ) {
+        /** Tells the sender their message has been read. */
         suspend operator fun invoke(
             conversationId: String,
             messageId: String,
+        ) = send(conversationId, messageId, Kind.READ)
+
+        /**
+         * Tells the sender their message has arrived on this phone.
+         *
+         * Nothing else can. The server reports delivery only for messages
+         * it can attribute to a sender, and a sealed message — which every
+         * one-to-one message is — hides its sender from the server. So a
+         * one-to-one message went from one tick straight to "read", or
+         * stayed on one tick for good if the reader kept read receipts off.
+         *
+         * Not held back by the read-receipts switch: that switch is about
+         * whether you have looked, and this says only that the phone has
+         * the message. Sanchr Mode holds it back, as it does everything
+         * that shows the phone to be reachable.
+         */
+        suspend fun delivered(
+            conversationId: String,
+            messageId: String,
+        ) = send(conversationId, messageId, Kind.DELIVERED)
+
+        private suspend fun send(
+            conversationId: String,
+            messageId: String,
+            kind: Kind,
         ) {
             withContext(dispatcherProvider.io) {
                 try {
-                    sendReceipt(conversationId, messageId)
+                    sendReceipt(conversationId, messageId, kind)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
-                    Log.w(TAG, "read receipt send failed for conversation=$conversationId message=$messageId", error)
+                    Log.w(TAG, "${kind.status} receipt send failed for conversation=$conversationId message=$messageId", error)
                 }
             }
         }
 
+        private suspend fun mayTell(kind: Kind): Boolean =
+            when (kind) {
+                Kind.READ -> userPreferences.canSendReadReceipts.first()
+                Kind.DELIVERED -> !userPreferences.sanchrModeEnabled.first()
+            }
+
         private suspend fun sendReceipt(
             conversationId: String,
             messageId: String,
+            kind: Kind,
         ) {
-            if (!userPreferences.canSendReadReceipts.first()) return
+            if (!mayTell(kind)) return
 
             val selfUserId = sessionManager.getUserId()
             if (selfUserId.isNullOrBlank()) return
@@ -128,7 +161,7 @@ class SendReadReceiptUseCase
                     .setConversationId(conversationId)
                     .setMessageId(messageId)
                     .setRecipientId(selfUserId)
-                    .setStatus(STATUS_READ)
+                    .setStatus(kind.status)
                     .setTimestamp(receiptClock.nowEpochMillis())
                     .build()
 
@@ -165,6 +198,13 @@ class SendReadReceiptUseCase
         private companion object {
             private const val TAG = "SendReadReceiptUseCase"
             private const val CONTENT_TYPE_RECEIPT = "receipt/v1"
-            private const val STATUS_READ = "read"
+        }
+
+        /** What a receipt reports, and the word for it on the wire. */
+        private enum class Kind(
+            val status: String,
+        ) {
+            READ("read"),
+            DELIVERED("delivered"),
         }
     }

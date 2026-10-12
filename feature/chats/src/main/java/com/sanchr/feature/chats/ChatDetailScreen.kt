@@ -1656,7 +1656,9 @@ private fun MessageStatusIcon(message: MessageUiModel) {
                 imageVector = Icons.Filled.DoneAll,
                 contentDescription = "Read",
                 modifier = Modifier.size(14.dp),
-                tint = SanchrIndigo500,
+                // Green, and only this: one tick is sent, two grey are
+                // delivered, two green are read.
+                tint = SanchrSuccess,
             )
     }
 }
