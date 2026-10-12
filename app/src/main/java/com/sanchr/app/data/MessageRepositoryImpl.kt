@@ -68,6 +68,9 @@ class MessageRepositoryImpl
         private companion object {
             const val TAG = "MessageRepositoryImpl"
 
+            /** Ids per `IN (...)` query, well under SQLite's limit on bound variables. */
+            const val ID_QUERY_CHUNK = 500
+
             /** What an insert that leaves an existing row alone returns. */
             const val ROW_NOT_INSERTED = -1L
         }
@@ -185,6 +188,9 @@ class MessageRepositoryImpl
             conversationDao.deleteConversation(conversationId)
             evictor.again(files)
         }
+
+        override suspend fun messageIdsHoldingMedia(ids: List<String>): Set<String> =
+            ids.chunked(ID_QUERY_CHUNK).flatMapTo(mutableSetOf()) { messageDao.idsHoldingMedia(it) }
 
         override suspend fun eraseDeletedMessages(): Int {
             val ids = messageDao.deletedMessageIdsStillHoldingContent()

@@ -52,6 +52,7 @@ import com.sanchr.core.designsystem.theme.ThemeMode
 import com.sanchr.core.notifications.NotificationHandler
 import com.sanchr.domain.messaging.DisappearingMessageSweeper
 import com.sanchr.domain.messaging.MessageRepository
+import com.sanchr.domain.messaging.OrphanedMediaSweeper
 import com.sanchr.feature.chats.share.ShareTargetScreen
 import com.sanchr.feature.chats.share.toSharedContent
 import com.sanchr.sync.SyncState
@@ -73,6 +74,8 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var disappearingMessageSweeper: DisappearingMessageSweeper
 
     @Inject lateinit var messageRepository: MessageRepository
+
+    @Inject lateinit var orphanedMediaSweeper: OrphanedMediaSweeper
 
     @Inject
     lateinit var notificationHandler: NotificationHandler
@@ -230,7 +233,12 @@ class MainActivity : FragmentActivity() {
             launch { serverSettingsLoader.load() }
             launch { blockListRestorer.restoreOnce() }
             // Messages deleted by an older version kept what they said.
-            launch { runCatching { messageRepository.eraseDeletedMessages() } }
+            // Then the photos older versions left behind when their message
+            // went. In that order: erasing removes what it can still name.
+            launch {
+                runCatching { messageRepository.eraseDeletedMessages() }
+                orphanedMediaSweeper.sweep()
+            }
             // While the app is on screen: a message whose time is up goes
             // then, not whenever the background sync next happens to run.
             launch { repeatOnLifecycle(Lifecycle.State.STARTED) { disappearingMessageSweeper.run() } }
