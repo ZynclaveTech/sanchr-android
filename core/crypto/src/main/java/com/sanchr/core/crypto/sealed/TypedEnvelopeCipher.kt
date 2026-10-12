@@ -227,7 +227,18 @@ class TypedEnvelopeCipher
             spent: InvalidKeyIdException,
         ): SealedSenderCipher.DecryptedEnvelope =
             withContext(dispatchers.signalDispatcher) {
-                val address = sessionStore.allAddresses().firstOrNull { readsInFirstForm(message, it) } ?: throw spent
+                val held = sessionStore.allAddresses()
+                val address =
+                    held.firstOrNull { readsInFirstForm(message, it) } ?: run {
+                        // Which sessions were tried says whether the one this
+                        // message belongs to was ever here. Prefixes only.
+                        Log.w(
+                            TAG,
+                            "first-form message names spent pre-key ${message.preKeyId}; none of ${held.size} session(s) reads it: " +
+                                held.joinToString { "${it.name.take(ID_PREFIX)}:${it.deviceId}" },
+                        )
+                        throw spent
+                    }
                 SealedSenderCipher.DecryptedEnvelope(address.name, address.deviceId, SessionCipher(store, address).decrypt(message))
             }
 
@@ -275,6 +286,7 @@ class TypedEnvelopeCipher
             /** Exists only in [RehearsalStore]'s memory. */
             val REHEARSAL_ADDRESS = SignalProtocolAddress("rehearsal", 1)
             const val VOUCH_ATTEMPTS = 3
+            const val ID_PREFIX = 8
             const val VOUCH_RETRY_DELAY_MS = 400L
         }
     }
