@@ -72,8 +72,12 @@ object IosSpacing {
     val bubbleHPadding: Dp = md
     val bubbleVPadding: Dp = 10.dp
     val messageGap: Dp = sm
-    val composerButtonSize: Dp = 40.dp
-    val composerSendSize: Dp = 44.dp
+
+    /** The composer's plus, mic and send: 36, as `ChatInputBarView` frames them. */
+    val composerControl: Dp = 36.dp
+
+    /** The composer field's corner, 22 continuous on iOS. */
+    val composerFieldRadius: Dp = 22.dp
 
     /** How much of the width one message may take. */
     const val MESSAGE_MAX_WIDTH_FRACTION: Float = 0.75f

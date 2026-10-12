@@ -1,5 +1,7 @@
 package com.sanchr.feature.chats
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -203,3 +205,15 @@ private const val GROUPING_WINDOW_MS = 180_000L
 private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
 private const val WEEK_DAYS = 6
 private const val EXPECTED_DAYS = 8
+
+/**
+ * The margin above and below one message row.
+ *
+ * iOS's rule exactly — `.margins(.vertical, isGroupedWithPrev ? 2 : 6)`. The
+ * margins of two neighbours add up, so a run's second bubble sits 8dp under
+ * its first, later ones 4dp apart, and two unrelated bubbles 12dp apart.
+ */
+fun bubbleRowMargin(groupedWithPrevious: Boolean): Dp = if (groupedWithPrevious) GROUPED_ROW_MARGIN else UNGROUPED_ROW_MARGIN
+
+private val GROUPED_ROW_MARGIN = 2.dp
+private val UNGROUPED_ROW_MARGIN = 6.dp

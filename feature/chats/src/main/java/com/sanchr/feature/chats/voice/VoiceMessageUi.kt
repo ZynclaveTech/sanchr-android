@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.sanchr.core.designsystem.theme.IosSpacing
 import com.sanchr.core.designsystem.theme.IosType
 import java.io.File
 import java.util.Locale
@@ -66,6 +67,12 @@ fun VoiceRecordButton(
     enabled: Boolean,
     onClip: (VoiceClip) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Told when a recording or its preview is on screen, so the composer can
+     * give it the whole row as iOS does. Squeezed in beside the text field,
+     * the clock and the waveform had a button's width to live in.
+     */
+    onCapturingChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val recorder = remember { VoiceRecorder(context) }
@@ -89,8 +96,11 @@ fun VoiceRecordButton(
             delay(SAMPLE_INTERVAL_MS)
         }
     }
+    val capturing = recording || pending != null
+    LaunchedEffect(capturing) { onCapturingChange(capturing) }
     DisposableEffect(Unit) {
         onDispose {
+            onCapturingChange(false)
             recorder.cancel()
             // A clip still waiting in the preview when the screen goes is
             // deleted: it was never sent, and it is audio of the user in the
@@ -115,43 +125,58 @@ fun VoiceRecordButton(
         return
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+    val toggleRecording = {
         if (recording) {
-            IconButton(
-                onClick = {
-                    recorder.cancel()
-                    recording = false
-                    elapsedMs = 0
-                },
-                modifier = Modifier.size(40.dp),
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = "Discard recording", tint = MaterialTheme.colorScheme.error)
-            }
-            Text(text = formatClock(elapsedMs), style = IosType.sectionLabel)
-            Spacer(modifier = Modifier.width(4.dp))
+            recording = false
+            elapsedMs = 0
+            pending = recorder.stop()
+            // A tap too short to be a recording was dropped in silence.
+            if (pending == null) Toast.makeText(context, "Hold on a little longer to record", Toast.LENGTH_SHORT).show()
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            if (recorder.start()) recording = true
+        } else {
+            askPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
-        FilledIconButton(
+    }
+
+    if (!recording) {
+        // At rest it is a plain glyph in the secondary text colour, as iOS
+        // draws it. It used to be a filled indigo disc, the loudest thing in
+        // the footer, for the action used least.
+        IconButton(onClick = toggleRecording, enabled = enabled, modifier = modifier.size(IosSpacing.composerControl)) {
+            Icon(
+                imageVector = Icons.Filled.Mic,
+                contentDescription = "Record voice message",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        return
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        IconButton(
             onClick = {
-                if (recording) {
-                    recording = false
-                    elapsedMs = 0
-                    pending = recorder.stop()
-                    // A tap too short to be a recording was dropped in silence.
-                    if (pending == null) Toast.makeText(context, "Hold on a little longer to record", Toast.LENGTH_SHORT).show()
-                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                    PackageManager.PERMISSION_GRANTED
-                ) {
-                    if (recorder.start()) recording = true
-                } else {
-                    askPermission.launch(Manifest.permission.RECORD_AUDIO)
-                }
+                recorder.cancel()
+                recording = false
+                elapsedMs = 0
             },
+            modifier = Modifier.size(IosSpacing.composerControl),
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = "Discard recording", tint = MaterialTheme.colorScheme.error)
+        }
+        Text(text = formatClock(elapsedMs), style = IosType.sectionLabel)
+        Spacer(modifier = Modifier.weight(1f))
+        FilledIconButton(
+            onClick = toggleRecording,
             enabled = enabled,
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(IosSpacing.composerControl),
         ) {
             Icon(
-                imageVector = if (recording) Icons.Filled.Stop else Icons.Filled.Mic,
-                contentDescription = if (recording) "Stop recording" else "Record voice message",
+                imageVector = Icons.Filled.Stop,
+                contentDescription = "Stop recording",
                 modifier = Modifier.size(20.dp),
             )
         }
