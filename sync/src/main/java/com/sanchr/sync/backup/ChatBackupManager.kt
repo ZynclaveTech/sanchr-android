@@ -307,17 +307,46 @@ class ChatBackupManager
                     )
                 }
 
+            val currentUserId = sessionManager.getUserId().orEmpty()
+            // See BackupMessageRules for what is left out, and why.
+            val messages =
+                messageDao
+                    .getAllMessages()
+                    .filter { BackupMessageRules.belongsInBackup(it.contentType, it.contentBody, it.expiresAt, it.isDeleted) }
+                    .map { message ->
+                        BackupArchiveMessageFrame(
+                            id = message.id,
+                            conversationID = message.conversationId,
+                            senderID = message.senderId,
+                            timestampMs = message.timestamp,
+                            contentType = message.contentType,
+                            contentBody = message.contentBody,
+                            previewText = previewTextFor(message.contentType, message.contentBody),
+                            status = message.status,
+                            isOutgoing = message.senderId == currentUserId,
+                            replyToMessageID = message.replyToId,
+                            expiresAtMs = message.expiresAt,
+                            isDeleted = message.isDeleted,
+                        )
+                    }
+            val backedUpIds = messages.mapTo(HashSet()) { it.id }
+
             val conversations =
                 conversationDao.getAllConversations().map { conversation ->
+                    // A chat's preview is a copy of its last message. Unless
+                    // that message is known to be in the backup, its preview
+                    // is not either; a restored chat list is drawn from the
+                    // messages themselves.
+                    val previewKept = conversation.lastMessageId?.let { it in backedUpIds } == true
                     BackupArchiveConversationFrame(
                         id = conversation.id,
                         conversationType = conversation.type,
                         title = conversation.title,
                         avatarURL = conversation.avatarUrl,
                         participantIDs = parseParticipantIds(conversation.participantIds),
-                        lastMessageID = conversation.lastMessageId,
-                        lastMessagePreview = conversation.lastMessagePreview,
-                        lastMessageTimestampMs = conversation.lastMessageTimestamp,
+                        lastMessageID = conversation.lastMessageId.takeIf { previewKept },
+                        lastMessagePreview = conversation.lastMessagePreview.takeIf { previewKept },
+                        lastMessageTimestampMs = conversation.lastMessageTimestamp.takeIf { previewKept },
                         lastMessageSenderID = null,
                         lastMessageStatus = null,
                         lastMessageContentType = null,
@@ -329,25 +358,6 @@ class ChatBackupManager
                         disappearingDurationMs = conversation.disappearingDurationMs,
                         createdAtMs = conversation.createdAt,
                         updatedAtMs = conversation.updatedAt,
-                    )
-                }
-
-            val currentUserId = sessionManager.getUserId().orEmpty()
-            val messages =
-                messageDao.getAllMessages().map { message ->
-                    BackupArchiveMessageFrame(
-                        id = message.id,
-                        conversationID = message.conversationId,
-                        senderID = message.senderId,
-                        timestampMs = message.timestamp,
-                        contentType = message.contentType,
-                        contentBody = message.contentBody,
-                        previewText = previewTextFor(message.contentType, message.contentBody),
-                        status = message.status,
-                        isOutgoing = message.senderId == currentUserId,
-                        replyToMessageID = message.replyToId,
-                        expiresAtMs = message.expiresAt,
-                        isDeleted = message.isDeleted,
                     )
                 }
 
@@ -430,7 +440,9 @@ class ChatBackupManager
                     )
                 }
 
-                snapshot.messages.forEach { message ->
+                // The same rule on the way in: an older backup, or one made by
+                // an app that does not apply it, may hold what should not be kept.
+                snapshot.messages.filter(BackupMessageRules::belongsInBackup).forEach { message ->
                     messageDao.insertMessage(
                         MessageEntity(
                             id = message.id,
