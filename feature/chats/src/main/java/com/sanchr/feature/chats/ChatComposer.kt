@@ -25,24 +25,17 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.EmojiEmotions
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.outlined.SentimentSatisfied
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +43,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -82,13 +74,11 @@ internal fun MessageInputBar(
     enterSendsMessage: Boolean,
     onSend: () -> Unit,
     onEmojiClick: () -> Unit,
-    onAttachSticker: () -> Unit,
-    onAttachFile: () -> Unit,
-    onAttachPhotos: () -> Unit,
-    onCapturePhoto: () -> Unit,
-    onAttachLocation: () -> Unit,
-    onAttachViewOnce: () -> Unit,
-    onAttachContact: () -> Unit,
+    /** Whether the attachment tray is showing under the bar. */
+    trayOpen: Boolean,
+    onToggleTray: () -> Unit,
+    /** The field took focus, which is the keyboard asking for the tray's place. */
+    onFieldFocused: () -> Unit,
     onVoiceClip: (VoiceClip) -> Unit,
     isSending: Boolean,
     modifier: Modifier = Modifier,
@@ -116,16 +106,8 @@ internal fun MessageInputBar(
     ) {
         if (!capturingVoice) {
             AttachmentsButton(
-                entries =
-                    listOf(
-                        AttachmentEntry("Camera", Icons.Filled.PhotoCamera, onCapturePhoto),
-                        AttachmentEntry("Photos", Icons.Filled.PhotoLibrary, onAttachPhotos),
-                        AttachmentEntry("File", Icons.Filled.AttachFile, onAttachFile),
-                        AttachmentEntry("View-once photo", Icons.Filled.LocalFireDepartment, onAttachViewOnce),
-                        AttachmentEntry("Location", Icons.Filled.Place, onAttachLocation),
-                        AttachmentEntry("Contact", Icons.Filled.Person, onAttachContact),
-                        AttachmentEntry("Sticker", Icons.Filled.EmojiEmotions, onAttachSticker),
-                    ),
+                open = trayOpen,
+                onToggle = onToggleTray,
                 modifier = Modifier.padding(bottom = SIDE_CONTROL_LIFT),
             )
             ComposerField(
@@ -135,6 +117,7 @@ internal fun MessageInputBar(
                 onSend = { if (hasInput && !isSending) onSend() },
                 onEmojiClick = onEmojiClick,
                 showEmoji = !hasInput,
+                onFocused = onFieldFocused,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -159,51 +142,36 @@ internal fun MessageInputBar(
     }
 }
 
-private data class AttachmentEntry(
-    val label: String,
-    val icon: ImageVector,
-    val onPick: () -> Unit,
-)
-
-/** The plus: a 36dp disc tinted with the primary colour, which turns into a close mark while its menu is open. */
+/**
+ * The plus: a 36dp disc tinted with the primary colour. It opens the
+ * attachment tray, and while the tray is open it is a close mark that shuts
+ * it, which is what the glyph promises.
+ */
 @Composable
 private fun AttachmentsButton(
-    entries: List<AttachmentEntry>,
+    open: Boolean,
+    onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var open by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        Box(
-            modifier =
-                Modifier
-                    .size(IosSpacing.composerControl)
-                    .clip(CircleShape)
-                    .background(SanchrIndigo500.copy(alpha = PLUS_TINT_ALPHA))
-                    .clickable(
-                        onClickLabel = if (open) "Close" else "Send a photo, video, document, location or contact",
-                        role = Role.Button,
-                    ) { open = !open },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = if (open) Icons.Filled.Close else Icons.Filled.Add,
-                contentDescription = if (open) "Close" else "Attachments",
-                tint = SanchrIndigo500,
-                modifier = Modifier.size(GLYPH_SIZE),
-            )
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            entries.forEach { entry ->
-                DropdownMenuItem(
-                    text = { Text(entry.label) },
-                    leadingIcon = { Icon(entry.icon, contentDescription = null) },
-                    onClick = {
-                        open = false
-                        entry.onPick()
-                    },
-                )
-            }
-        }
+    Box(
+        modifier =
+            modifier
+                .size(IosSpacing.composerControl)
+                .clip(CircleShape)
+                .background(SanchrIndigo500.copy(alpha = PLUS_TINT_ALPHA))
+                .clickable(
+                    onClickLabel = if (open) "Close the panel" else "Send a photo, video, document, location or contact",
+                    role = Role.Button,
+                    onClick = onToggle,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (open) Icons.Filled.Close else Icons.Filled.Add,
+            contentDescription = if (open) "Close" else "Attachments",
+            tint = SanchrIndigo500,
+            modifier = Modifier.size(GLYPH_SIZE),
+        )
     }
 }
 
@@ -219,10 +187,13 @@ private fun ComposerField(
     onSend: () -> Unit,
     onEmojiClick: () -> Unit,
     showEmoji: Boolean,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val currentOnFocused by rememberUpdatedState(onFocused)
+    LaunchedEffect(focused) { if (focused) currentOnFocused() }
     val shape = RoundedCornerShape(IosSpacing.composerFieldRadius)
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = QUIET_ALPHA)
     BasicTextField(
