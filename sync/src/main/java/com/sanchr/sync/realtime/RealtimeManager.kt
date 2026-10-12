@@ -15,6 +15,7 @@ import com.sanchr.core.database.dao.MessageReactionDao
 import com.sanchr.core.database.entity.MessageReactionEntity
 import com.sanchr.core.datastore.SessionManager
 import com.sanchr.core.model.MessageStatus
+import com.sanchr.core.notifications.MessageDrainScheduler
 import com.sanchr.domain.messaging.EnvelopeDecryptResult
 import com.sanchr.domain.messaging.EnvelopeKind
 import com.sanchr.domain.messaging.EnvelopeKindResolver
@@ -60,6 +61,7 @@ class RealtimeManager
         private val receiveMessageUseCase: ReceiveMessageUseCase,
         private val incomingCallEvents: IncomingCallEvents,
         private val sendPresence: SendPresenceUseCase,
+        private val drainScheduler: MessageDrainScheduler,
         // `@ApplicationScope` runs on Dispatchers.Default (see AppModule) and is shared with
         // other app-wide singletons, so everything reached from handleServerEvent() must stay
         // non-blocking. Blocking work belongs behind withContext(dispatchers.io), the way
@@ -248,13 +250,7 @@ class RealtimeManager
             val job =
                 appScope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
-                            handleServerEvent(event)
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (error: Exception) {
-                        Log.e(TAG, "Realtime stream failed", error)
+                        keepStreamOpen()
                     } finally {
                         synchronized(lock) {
                             if (streamJob === coroutineContext[Job]) {
@@ -265,6 +261,46 @@ class RealtimeManager
                 }
             streamJob = job
             job.start()
+        }
+
+        /**
+         * Holds the stream open until the job is cancelled, opening it again
+         * each time it ends.
+         *
+         * It used to be opened once. When it failed, or the server closed it
+         * cleanly, which a deploy or a load balancer's idle limit both do,
+         * the job simply ended, and nothing arrived until the app was sent to
+         * the background and brought back. Anything sent in the meantime
+         * waits in the server's queue and is delivered on the new stream.
+         */
+        private suspend fun keepStreamOpen() {
+            val backoff = ReconnectBackoff()
+            var reopening = false
+            while (!sessionManager.getAccessToken().isNullOrEmpty()) {
+                var heardFromServer = false
+                // The stream carries only what is pushed while it is up. What
+                // was sent during the gap is read from the server's queue, as
+                // iOS does on every reopen, rather than left for the next
+                // push or the fifteen-minute sync to notice.
+                if (reopening) drainScheduler.enqueueDrain()
+                reopening = true
+                try {
+                    messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
+                        heardFromServer = true
+                        handleServerEvent(event)
+                    }
+                    Log.w(TAG, "Realtime stream closed by the server; reconnecting")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (error: Exception) {
+                    Log.e(TAG, "Realtime stream failed; reconnecting", error)
+                }
+                // A stream that delivered something was a working one, so the
+                // next drop is retried promptly rather than at the long wait a
+                // run of earlier failures had built up to.
+                if (heardFromServer) backoff.reset()
+                delay(backoff.next())
+            }
         }
 
         private fun stopStream() {
