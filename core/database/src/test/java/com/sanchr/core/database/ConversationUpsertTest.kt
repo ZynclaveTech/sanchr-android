@@ -83,6 +83,106 @@ class ConversationUpsertTest {
             assertEquals(true, stored()?.isArchived, "what only this phone knows survives a sync")
         }
 
+    /**
+     * What the server's list actually carries for a chat: its type and who
+     * is in it. Pin, mute and times come back as "no", "no" and nothing; its
+     * unread count only ever goes up.
+     */
+    private fun fromServer(
+        participants: String = """["self","alice"]""",
+        title: String? = null,
+        unread: Int = 7,
+    ) = ConversationEntity(
+        id = "c1",
+        type = "DIRECT",
+        title = title,
+        participantIds = participants,
+        unreadCount = unread,
+        isPinned = false,
+        isMuted = false,
+        lastMessagePreview = null,
+        lastMessageTimestamp = null,
+        createdAt = 999,
+        updatedAt = 999,
+    )
+
+    private suspend fun aChatTheUserHasSetUp() =
+        db.conversationDao().insertConversation(
+            ConversationEntity(
+                id = "c1",
+                type = "DIRECT",
+                title = "Alice",
+                avatarUrl = "https://cdn/alice.jpg",
+                participantIds = """["self"]""",
+                unreadCount = 0,
+                isPinned = true,
+                isMuted = true,
+                lastMessagePreview = "see you then",
+                lastMessageTimestamp = 50,
+                createdAt = 10,
+                updatedAt = 50,
+            ),
+        )
+
+    @Test
+    fun `a sync does not unpin or unmute a chat`() =
+        runTest {
+            aChatTheUserHasSetUp()
+
+            db.conversationDao().upsertFromServer(listOf(fromServer()))
+
+            assertEquals(true, stored()?.isPinned)
+            assertEquals(true, stored()?.isMuted)
+        }
+
+    /** The server is never told a chat was read; its count only goes up. */
+    @Test
+    fun `a sync does not bring back the unread badge on a chat that was read`() =
+        runTest {
+            aChatTheUserHasSetUp()
+
+            db.conversationDao().upsertFromServer(listOf(fromServer(unread = 7)))
+
+            assertEquals(0, stored()?.unreadCount)
+        }
+
+    @Test
+    fun `a sync does not reset a chat's times or its preview`() =
+        runTest {
+            aChatTheUserHasSetUp()
+
+            db.conversationDao().upsertFromServer(listOf(fromServer()))
+
+            assertEquals(10L, stored()?.createdAt)
+            assertEquals(50L, stored()?.updatedAt)
+            assertEquals("see you then", stored()?.lastMessagePreview)
+            assertEquals(50L, stored()?.lastMessageTimestamp)
+        }
+
+    @Test
+    fun `a sync does bring who is in the chat, and a name when it has one`() =
+        runTest {
+            aChatTheUserHasSetUp()
+
+            db.conversationDao().upsertFromServer(listOf(fromServer(title = "~Alice")))
+            assertEquals("""["self","alice"]""", stored()?.participantIds)
+            assertEquals("~Alice", stored()?.title)
+
+            // No name this time: the one already here is not wiped.
+            db.conversationDao().upsertFromServer(listOf(fromServer(title = null)))
+            assertEquals("~Alice", stored()?.title)
+            assertEquals("https://cdn/alice.jpg", stored()?.avatarUrl)
+        }
+
+    @Test
+    fun `a chat seen for the first time is written as the server gave it`() =
+        runTest {
+            db.conversationDao().upsertFromServer(listOf(fromServer(unread = 2)))
+
+            assertEquals(2, stored()?.unreadCount)
+            assertEquals("""["self","alice"]""", stored()?.participantIds)
+        }
+
     @Test
     fun `saving a conversation again keeps its messages`() =
         runTest {

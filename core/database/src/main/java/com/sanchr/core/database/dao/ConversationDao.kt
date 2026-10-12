@@ -72,13 +72,25 @@ interface ConversationDao {
 
     /**
      * Writes what the server knows about these conversations without
-     * discarding what only this device knows. `is_archived`, `is_hidden`,
-     * `wallpaper`, `draft_text`, the three `vault_*` policy flags,
-     * `disappearing_duration_ms` and `last_message_id` are not on the wire;
-     * a plain overwrite (see [insertConversations]) resets them to defaults,
-     * which un-archives every chat, unhides every hidden one, and clears
-     * every disappearing timer on each periodic sync. Server-owned columns are taken from [conversations]
-     * as given.
+     * discarding what only this device knows.
+     *
+     * What the server knows is little: which conversations exist, of what
+     * type, and who is in them. Everything else on the row is this phone's,
+     * and a refresh that overwrote it undid the user's own choices on every
+     * periodic sync:
+     *
+     * - `is_pinned`, `is_muted`: the server's list carries neither, so every
+     *   pin was dropped and every muted chat unmuted.
+     * - `unread_count`: the server only ever counts up — it is never told a
+     *   chat was read — so a chat that had been read showed as unread again.
+     * - `updated_at`, `created_at`, `last_message_preview`,
+     *   `last_message_timestamp`: absent from the server's list, so they
+     *   were reset to "now" or to nothing.
+     * - `is_archived`, `is_hidden`, `wallpaper`, `draft_text`, the three
+     *   `vault_*` flags, `disappearing_duration_ms`, `last_message_id`: not
+     *   on the wire at all.
+     *
+     * A conversation not yet here is written as given.
      */
     @Transaction
     suspend fun upsertFromServer(conversations: List<ConversationEntity>) {
@@ -88,16 +100,12 @@ interface ConversationDao {
                 if (local == null) {
                     incoming
                 } else {
-                    incoming.copy(
-                        isArchived = local.isArchived,
-                        isHidden = local.isHidden,
-                        wallpaper = local.wallpaper,
-                        draftText = local.draftText,
-                        vaultAutoIncoming = local.vaultAutoIncoming,
-                        vaultViewOnce = local.vaultViewOnce,
-                        vaultCaptureProtection = local.vaultCaptureProtection,
-                        disappearingDurationMs = local.disappearingDurationMs,
-                        lastMessageId = local.lastMessageId,
+                    local.copy(
+                        type = incoming.type,
+                        participantIds = incoming.participantIds,
+                        // Resolved by the caller from who is in it now.
+                        title = incoming.title ?: local.title,
+                        avatarUrl = incoming.avatarUrl ?: local.avatarUrl,
                     )
                 },
             )
