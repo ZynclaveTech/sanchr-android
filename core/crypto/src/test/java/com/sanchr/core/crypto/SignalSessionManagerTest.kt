@@ -275,7 +275,7 @@ class SignalSessionManagerTest {
     // ------------------------------------------------------------------
 
     @Test
-    fun `resetSession wipes only the target address and leaves peers untouched`() =
+    fun `resetSession leaves nothing to send on for the target and does not touch other peers`() =
         runTest {
             val charlieUserId = "33333333-3333-3333-3333-333333333333"
 
@@ -287,8 +287,53 @@ class SignalSessionManagerTest {
 
             aliceSessionManager.resetSession(bobUserId, bobDeviceId)
 
-            assertFalse(aliceStore.containsSession(SignalProtocolAddress(bobUserId, bobDeviceId)))
-            assertTrue(aliceStore.containsSession(SignalProtocolAddress(charlieUserId, bobDeviceId)))
+            assertFalse(aliceSessionManager.hasSession(bobUserId, bobDeviceId), "the next send must open a new session")
+            assertTrue(aliceSessionManager.hasSession(charlieUserId, bobDeviceId))
+        }
+
+    @Test
+    fun `the send after a reset opens a new session`() =
+        runTest {
+            aliceFakeClient.preKeyBundleResponse = publishBobsBundle()
+            aliceSessionManager.encrypt("first".toByteArray(), bobUserId, bobDeviceId)
+
+            aliceSessionManager.resetSession(bobUserId, bobDeviceId)
+            aliceFakeClient.preKeyBundleResponse = publishBobsBundle()
+            val next = aliceSessionManager.encrypt("second".toByteArray(), bobUserId, bobDeviceId)
+
+            assertEquals(CiphertextMessage.PREKEY_TYPE, next.messageType)
+            assertEquals(2, aliceFakeClient.getPreKeyBundleCalls.size, "a new bundle is fetched for the new session")
+        }
+
+    /**
+     * What broke both phones after a call. Bob is writing on a session he
+     * started; Alice places a call, which resets her session with him. Bob
+     * has not moved to her new session yet and writes again on his. The reset
+     * used to delete Alice's record, the pre-key Bob's session was opened
+     * with was long spent, and nothing could read him again.
+     */
+    @Test
+    fun `what the peer still sends on the old session is read after a reset`() =
+        runTest {
+            requireBobIdentity()
+            val aliceAddress = SignalProtocolAddress(aliceUserId, aliceDeviceId)
+            SessionBuilder(bobStore, aliceAddress).process(aliceBundleFromHerOwnStore())
+            val bobCipher = SessionCipher(bobStore, aliceAddress)
+            val first = bobCipher.encrypt(MessagePadding.pad("before the call".toByteArray()))
+            aliceSessionManager.decrypt(first.serialize(), bobUserId, bobDeviceId)
+
+            // The call: reset, then an offer on a new session Bob has not read.
+            aliceSessionManager.resetSession(bobUserId, bobDeviceId)
+            aliceFakeClient.preKeyBundleResponse = publishBobsBundle()
+            aliceSessionManager.encrypt("offer".toByteArray(), bobUserId, bobDeviceId)
+
+            // Still unanswered on his own session, so still in first-message form.
+            val later = bobCipher.encrypt(MessagePadding.pad("after the call".toByteArray()))
+            assertEquals(CiphertextMessage.PREKEY_TYPE, later.type)
+
+            val plaintext = aliceSessionManager.decrypt(later.serialize(), bobUserId, bobDeviceId)
+
+            assertTrue("after the call".toByteArray().contentEquals(plaintext))
         }
 
     // ------------------------------------------------------------------

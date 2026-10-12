@@ -182,9 +182,19 @@ class SignalSessionManager
             deviceId: Int,
         ): Boolean =
             withContext(dispatchers.signalDispatcher) {
-                val address = SignalProtocolAddress(userId, deviceId)
-                store.containsSession(address)
+                hasLiveSession(SignalProtocolAddress(userId, deviceId))
             }
+
+        /**
+         * Whether there is a session to encrypt on, which is more than there
+         * being a record: after [resetSession] the record is kept, holding
+         * only states to read with, and the next send must start a new one.
+         */
+        private fun hasLiveSession(address: SignalProtocolAddress): Boolean =
+            store.containsSession(address) && store.loadSession(address).hasSenderChain()
+
+        /** Everyone a session record is held for, to read with or to send on. */
+        suspend fun sessionPeers(): List<SignalProtocolAddress> = withContext(dispatchers.signalDispatcher) { store.sessionAddresses() }
 
         // ------------------------------------------------------------------
         // Encryption
@@ -213,7 +223,7 @@ class SignalSessionManager
             // block because it performs a network call via keyManager.fetchPreKeyBundle.
             val sessionExists =
                 withContext(dispatchers.signalDispatcher) {
-                    store.containsSession(SignalProtocolAddress(userId, deviceId))
+                    hasLiveSession(SignalProtocolAddress(userId, deviceId))
                 }
             if (!sessionExists) {
                 establishSession(userId, deviceId)
@@ -494,31 +504,34 @@ class SignalSessionManager
         }
 
         /**
-         * Resets/deletes the session with a specific device.
-         * Used for session recovery when decryption fails persistently,
-         * indicating a corrupted or out-of-sync session.
+         * Starts over with a device: the next send to it opens a new session.
          *
-         * After reset, the next encrypt call will re-establish the session
-         * via X3DH automatically.
-         *
-         * @param userId The remote user ID.
-         * @param deviceId The remote device ID.
+         * The session is set aside, not deleted. This used to delete the
+         * whole record, and a call does this before every offer, so placing
+         * a call threw away the only state able to read what the other
+         * side was still sending on the session it had: every message from
+         * them after that failed on a pre-key long since spent, and both
+         * phones went quiet. Set aside, the old states stay readable until
+         * the peer has moved to the new session, which is how libsignal means
+         * a session to be reset.
          */
         suspend fun resetSession(
             userId: String,
             deviceId: Int,
-        ) = withContext(dispatchers.signalDispatcher) {
-            val address = SignalProtocolAddress(userId, deviceId)
-            store.deleteSession(address)
-        }
+        ) = withContext(dispatchers.signalDispatcher) { setAside(SignalProtocolAddress(userId, deviceId)) }
 
-        /**
-         * Resets all sessions with a user (all their devices).
-         */
+        /** Starts over with every device of a user; see [resetSession]. */
         suspend fun resetAllSessions(userId: String) =
             withContext(dispatchers.signalDispatcher) {
-                store.deleteAllSessions(userId)
+                store.sessionAddresses().filter { it.name == userId }.forEach(::setAside)
             }
+
+        private fun setAside(address: SignalProtocolAddress) {
+            if (!store.containsSession(address)) return
+            val record = store.loadSession(address)
+            record.archiveCurrentState()
+            store.storeSession(address, record)
+        }
     }
 
 /** One `CallOffer.device_offers` entry: an iOS-framed call ciphertext for a device. */

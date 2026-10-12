@@ -61,6 +61,7 @@ class ReceiveMessageUseCaseTest {
             PresenceStore(),
             SessionRebuildThrottle(),
             mockk<DeliveryReceiptDispatcher>(relaxed = true),
+            mockk<StaleSessionHealer>(relaxed = true),
         )
 
     private val bytes = byteArrayOf(10, 20, 30)

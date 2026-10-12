@@ -28,6 +28,7 @@ import org.signal.libsignal.metadata.ProtocolLegacyMessageException
 import org.signal.libsignal.metadata.ProtocolNoSessionException
 import org.signal.libsignal.metadata.ProtocolUntrustedIdentityException
 import org.signal.libsignal.protocol.DuplicateMessageException
+import org.signal.libsignal.protocol.InvalidKeyIdException
 import org.signal.libsignal.protocol.InvalidMessageException
 import org.signal.libsignal.protocol.InvalidVersionException
 import org.signal.libsignal.protocol.LegacyMessageException
@@ -107,6 +108,7 @@ class ReceiveMessageUseCase
         private val presenceStore: PresenceStore,
         private val sessionRebuilds: SessionRebuildThrottle,
         private val deliveryReceipts: DeliveryReceiptDispatcher,
+        private val staleSessions: StaleSessionHealer,
     ) {
         /**
          * Scope for fire-and-forget session rebuilds. A SupervisorJob is used
@@ -224,6 +226,14 @@ class ReceiveMessageUseCase
                 } catch (e: ProtocolUntrustedIdentityException) {
                     // Same treatment on the sealed-sender path.
                     quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.UNTRUSTED_IDENTITY, e)
+                } catch (e: InvalidKeyIdException) {
+                    // Opens a session with a key this device no longer has,
+                    // and no session held reads it: the sender is on a session
+                    // lost here. The key is not coming back, so the envelope
+                    // is spent; what can be done is to get the sender onto a
+                    // session that does work.
+                    staleSessions.unreadableMessageArrived()
+                    quarantineAndResult(envelopeBytes, serverTimestamp, declaredSender, FailureClass.INVALID_MESSAGE, e)
                 } catch (e: CancellationException) {
                     // Must never be absorbed by the catch-all below — this
                     // exact class of bug (a broad catch swallowing

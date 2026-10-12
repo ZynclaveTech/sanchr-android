@@ -3,6 +3,7 @@ package com.sanchr.core.crypto.store
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.groups.state.SenderKeyStore
 import org.signal.libsignal.protocol.state.IdentityKeyStore
 import org.signal.libsignal.protocol.state.KyberPreKeyStore
@@ -43,6 +44,9 @@ class SanchrSignalProtocolStore
 
         /** Local device id (parsed from the `accounts` row). Sealed-sender needs this. */
         val localDeviceId: Int get() = identityKeyStore.getLocalDeviceId()
+
+        // Every address a session record is held for.
+        fun sessionAddresses(): List<SignalProtocolAddress> = sessionStore.allAddresses()
 
         /**
          * Wipes all cryptographic material across every sub-store.
