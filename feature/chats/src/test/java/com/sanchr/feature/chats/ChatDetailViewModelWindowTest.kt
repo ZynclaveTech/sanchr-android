@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -100,6 +101,28 @@ class ChatDetailViewModelWindowTest {
             connectivityMonitor = mockk(relaxed = true),
             appContext = mockk(relaxed = true),
         )
+
+    /**
+     * On a phone the view model's coroutines start at once, inside its
+     * constructor. Every other test here uses a dispatcher that runs them
+     * later, which is why none of them noticed that loading messages reached
+     * for a property the constructor had not set up yet — and every chat
+     * opened empty.
+     */
+    @Test
+    fun `a chat shows its messages when coroutines start at once, as they do on a phone`() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        every { messageRepository.observeRecentMessages(conversationId, any()) } returns flowOf(listOf(message(1), message(2)))
+
+        val viewModel = newViewModel()
+
+        assertEquals(
+            listOf("m1", "m2"),
+            viewModel.uiState.value.messages
+                .map { it.id },
+        )
+        verify { messageRepository.observeRecentMessages(conversationId, ChatDetailViewModel.INITIAL_WINDOW) }
+    }
 
     @Test
     fun `the chat opens on a bounded window, not the whole conversation`() =
