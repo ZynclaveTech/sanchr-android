@@ -248,13 +248,7 @@ class RealtimeManager
             val job =
                 appScope.launch(start = CoroutineStart.LAZY) {
                     try {
-                        messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
-                            handleServerEvent(event)
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (error: Exception) {
-                        Log.e(TAG, "Realtime stream failed", error)
+                        keepStreamOpen()
                     } finally {
                         synchronized(lock) {
                             if (streamJob === coroutineContext[Job]) {
@@ -265,6 +259,39 @@ class RealtimeManager
                 }
             streamJob = job
             job.start()
+        }
+
+        /**
+         * Holds the stream open until the job is cancelled, opening it again
+         * each time it ends.
+         *
+         * It used to be opened once. When it failed, or the server closed it
+         * cleanly, which a deploy or a load balancer's idle limit both do,
+         * the job simply ended, and nothing arrived until the app was sent to
+         * the background and brought back. Anything sent in the meantime
+         * waits in the server's queue and is delivered on the new stream.
+         */
+        private suspend fun keepStreamOpen() {
+            val backoff = ReconnectBackoff()
+            while (!sessionManager.getAccessToken().isNullOrEmpty()) {
+                var heardFromServer = false
+                try {
+                    messagingClient.messageStream(outboundEvents.receiveAsFlow()).collect { event ->
+                        heardFromServer = true
+                        handleServerEvent(event)
+                    }
+                    Log.w(TAG, "Realtime stream closed by the server; reconnecting")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (error: Exception) {
+                    Log.e(TAG, "Realtime stream failed; reconnecting", error)
+                }
+                // A stream that delivered something was a working one, so the
+                // next drop is retried promptly rather than at the long wait a
+                // run of earlier failures had built up to.
+                if (heardFromServer) backoff.reset()
+                delay(backoff.next())
+            }
         }
 
         private fun stopStream() {

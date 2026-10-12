@@ -113,7 +113,14 @@ class RealtimeManagerTest {
     private fun TestScope.buildManager(): RealtimeManager {
         // Matches production's AppModule-provided `@ApplicationScope`, which is backed by a
         // SupervisorJob so one child failure doesn't cascade-cancel its siblings.
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        // A child of the test's background scope, so it is cancelled when the test body ends:
+        // the manager now redials a stream that ends, and a scope left alive would have
+        // runTest chase that loop forever while it waits for the scheduler to go idle.
+        val scope =
+            CoroutineScope(
+                backgroundScope.coroutineContext + SupervisorJob(backgroundScope.coroutineContext[Job]) +
+                    StandardTestDispatcher(testScheduler),
+            )
         return RealtimeManager(
             appContext = appContext,
             messagingClient = messagingClient,
@@ -402,5 +409,80 @@ class RealtimeManagerTest {
             coVerify(exactly = 1) { reactionDao.upsert(MessageReactionEntity("m1", "alice", "❤️", 5)) }
             coVerify(exactly = 1) { reactionDao.delete("m1", "alice", "👍") }
             coVerify(exactly = 1) { reactionDao.upsert(any()) }
+        }
+
+    // --- The stream is reopened when it ends ------------------------------------------------
+
+    @Test
+    fun `a stream the server closes is opened again`() =
+        runTest {
+            val opened = AtomicInteger(0)
+            every { messagingClient.messageStream(any()) } returns
+                flow {
+                    // Closes cleanly straight away, as a deploy or an idle limit does.
+                    opened.incrementAndGet()
+                }
+
+            buildManager().enterForeground()
+            runCurrent()
+            assertEquals(1, opened.get())
+
+            advanceTimeBy(ReconnectBackoff.CEILING_MS * 2)
+            runCurrent()
+
+            assertTrue(opened.get() > 1, "a closed stream was left closed: nothing arrives until the app is reopened")
+        }
+
+    @Test
+    fun `a stream that fails is opened again`() =
+        runTest {
+            val opened = AtomicInteger(0)
+            every { messagingClient.messageStream(any()) } returns
+                flow {
+                    opened.incrementAndGet()
+                    throw IllegalStateException("UNAVAILABLE")
+                }
+
+            buildManager().enterForeground()
+            advanceTimeBy(ReconnectBackoff.CEILING_MS * 2)
+            runCurrent()
+
+            assertTrue(opened.get() > 1)
+        }
+
+    @Test
+    fun `reconnecting stops once the app is in the background`() =
+        runTest {
+            val opened = AtomicInteger(0)
+            every { messagingClient.messageStream(any()) } returns flow { opened.incrementAndGet() }
+            val manager = buildManager()
+            manager.enterForeground()
+            runCurrent()
+
+            manager.enterBackground()
+            advanceTimeBy(ReconnectBackoff.CEILING_MS * 4)
+            runCurrent()
+            val afterBackground = opened.get()
+            advanceTimeBy(ReconnectBackoff.CEILING_MS * 4)
+            runCurrent()
+
+            assertEquals(afterBackground, opened.get(), "a backgrounded app kept redialling")
+        }
+
+    @Test
+    fun `nothing is redialled after signing out`() =
+        runTest {
+            val opened = AtomicInteger(0)
+            every { messagingClient.messageStream(any()) } returns
+                flow {
+                    opened.incrementAndGet()
+                    every { sessionManager.getAccessToken() } returns null
+                }
+
+            buildManager().enterForeground()
+            advanceTimeBy(ReconnectBackoff.CEILING_MS * 4)
+            runCurrent()
+
+            assertEquals(1, opened.get())
         }
 }
