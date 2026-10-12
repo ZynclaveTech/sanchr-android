@@ -47,6 +47,7 @@ class MessageRepositoryImplUnreadTest {
             notificationHandler = notificationHandler,
             userPreferences = userPreferences,
             heldIncomingStore = mockk(relaxed = true),
+            placeholders = mockk(relaxed = true),
             mediaEvictor = { mediaEvictor },
             contactProfileDao = mockk<ContactProfileDao>(relaxed = true),
             contactProfileResolver = mockk<ContactProfileResolver>(relaxed = true),

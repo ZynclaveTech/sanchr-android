@@ -54,6 +54,16 @@ class MessageRepositoryImplConversationTitleTest {
             notificationHandler = notificationHandler,
             userPreferences = userPreferences,
             heldIncomingStore = mockk(relaxed = true),
+            placeholders =
+                PlaceholderConversations(
+                    userPreferences = userPreferences,
+                    conversationDao = conversationDao,
+                    messageDao = messageDao,
+                    sessionManager = sessionManager,
+                    contactProfileResolver = resolver,
+                    notificationHandler = notificationHandler,
+                    mediaEvictor = { mediaEvictor },
+                ),
             mediaEvictor = { mediaEvictor },
             contactProfileDao = contactProfileDao,
             contactProfileResolver = resolver,
@@ -228,9 +238,20 @@ class MessageRepositoryImplConversationTitleTest {
         every { userPreferences.placeholderConversations } returns flowOf(ids.toSet())
     }
 
+    /** As a stand-in leaves it once a sync has filled in its members: still named for the stranger. */
     private fun chatWithAlice() {
         coEvery { conversationDao.getConversationById("conv-1") } returns
-            ConversationEntity(id = "conv-1", type = "DIRECT", participantIds = """["self","alice"]""", updatedAt = 1, createdAt = 1)
+            ConversationEntity(
+                id = "conv-1",
+                type = "DIRECT",
+                title = "Mallory",
+                avatarUrl = "https://cdn/mallory.jpg",
+                participantIds = """["self","alice"]""",
+                unreadCount = 2,
+                updatedAt = 1,
+                createdAt = 1,
+            )
+        coEvery { resolver.displayNameFor("alice") } returns "Alice herself"
     }
 
     /**
@@ -249,6 +270,12 @@ class MessageRepositoryImplConversationTitleTest {
 
             coVerify(exactly = 1) { messageDao.deleteMessages(listOf("from-mallory")) }
             coVerify(exactly = 1) { mediaEvictor.evict("from-mallory") }
+            // Nor is the chat left named after them, or counting their message.
+            val renamed = slot<ConversationEntity>()
+            coVerify(exactly = 1) { conversationDao.updateConversation(capture(renamed)) }
+            assertEquals("Alice herself", renamed.captured.title)
+            assertEquals(null, renamed.captured.avatarUrl)
+            assertEquals(1, renamed.captured.unreadCount)
             coVerify(exactly = 1) { notificationHandler.cancelNotificationsForConversation("conv-1") }
             coVerify(exactly = 1) { userPreferences.removePlaceholderConversations(setOf("conv-1")) }
         }
