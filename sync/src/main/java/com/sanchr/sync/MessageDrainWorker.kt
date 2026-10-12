@@ -111,8 +111,9 @@ class MessageDrainWorker
                         flushAckImmediately = false,
                     )
                 if (result !is EnvelopeDecryptResult.Success) {
-                    // On non-success the repository did not insert a pending ack; log
-                    // and leave the envelope on the server queue for the next drain.
+                    // Whether it is acked is the use case's call: a duplicate or a
+                    // malformed envelope is, since sending it again changes
+                    // nothing; one that may yet be readable is left queued.
                     Log.d(TAG, "drain envelope ${envelope.messageId} result=$result")
                 }
             }
